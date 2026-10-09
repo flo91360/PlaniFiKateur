@@ -150,3 +150,16 @@ test('public binding requires separate owner and agent keys', () => {
   assert.throws(() => readConfig({ PLANIFIKATEUR_OWNER_TOKEN: 'same', PLANIFIKATEUR_READ_TOKEN: 'same' }), /différentes/);
   assert.equal(readConfig({}).host, '127.0.0.1');
 });
+
+test('deleting every project persists an empty workspace after reopening SQLite', t => {
+  const dir = mkdtempSync(join(tmpdir(), 'planifikateur-empty-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const filename = join(dir, 'data.sqlite');
+  const store = createStore(filename);
+  assert.deepEqual(store.write([], 1).projects, []);
+  store.close();
+  const reopened = createStore(filename);
+  assert.deepEqual(reopened.read().projects, []);
+  assert.equal(reopened.read().revision, 2);
+  reopened.close();
+});

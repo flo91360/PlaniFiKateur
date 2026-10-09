@@ -2,7 +2,7 @@ export const STATUSES = ['draft', 'ready', 'progress', 'clarify', 'review', 'don
 const priorities = ['low', 'normal', 'high'];
 
 export function validateWorkspace(projects) {
-  if (!Array.isArray(projects) || projects.length === 0) throw new Error('Au moins un projet est requis.');
+  if (!Array.isArray(projects)) throw new Error('Une liste de projets est requise.');
   const ids = new Set();
   const fail = message => { throw new Error(message); };
   const object = (value, path) => { if (!value || typeof value !== 'object' || Array.isArray(value)) fail(`${path} doit être un objet.`); };

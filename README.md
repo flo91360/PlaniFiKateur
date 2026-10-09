@@ -5,6 +5,7 @@ Un tableau de projets inspiré de Trello, conçu pour préparer des demandes con
 ## Interface et connectivité
 
 - Projets indépendants, listes personnalisées et cartes déplaçables.
+- Suppression d’un projet avec confirmation, y compris du dernier projet ; ses listes et cartes sont supprimées avec lui.
 - Création et édition avec titre, description, statut, priorité, étiquettes, critères et commentaires.
 - Recherche, filtres, affichage mobile et navigation au clavier.
 - Mode connecté : données SQLite partagées entre le site et l’API de consultation.

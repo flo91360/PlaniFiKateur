@@ -107,3 +107,31 @@ test('JSON import adds local cards to the API without replacing existing project
   expect(cards.data).toHaveLength(1);
   expect(cards.data[0].projectName).toBe('Projet importé');
 });
+
+test('project deletion requires confirmation, removes cards and permits an empty workspace', async ({ page, request, appServer }) => {
+  await login(page, appServer);
+  await page.getByRole('button', { name: 'Supprimer le projet', exact: true }).click();
+  await expect(page.getByRole('dialog')).toContainText(seed[0].name);
+  await page.getByRole('button', { name: 'Annuler', exact: true }).click();
+  await expect(page.getByRole('heading', { name: seed[0].name, exact: true })).toBeVisible();
+  const headers = { Authorization: `Bearer ${readToken}` };
+  expect((await (await request.get(`${appServer}/api/v1/projects`, { headers })).json()).data).toHaveLength(2);
+  await page.getByRole('button', { name: 'Supprimer le projet', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirmer la suppression', exact: true }).click();
+  await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+  await expect(page.getByRole('heading', { name: seed[1].name, exact: true })).toBeVisible();
+  expect((await request.get(`${appServer}/api/v1/projects/${seed[0].id}`, { headers })).status()).toBe(404);
+  expect((await request.get(`${appServer}/api/v1/cards/${seed[0].cards[0].id}`, { headers })).status()).toBe(404);
+  expect((await (await request.get(`${appServer}/api/v1/cards`, { headers })).json()).data).toHaveLength(seed[1].cards.length);
+  await page.getByRole('button', { name: 'Supprimer le projet', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirmer la suppression', exact: true }).click();
+  await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Aucun projet pour le moment', exact: true })).toBeVisible();
+  expect((await (await request.get(`${appServer}/api/v1/projects`, { headers })).json()).data).toEqual([]);
+  await page.locator('.empty-workspace').getByRole('button', { name: 'Créer un projet', exact: true }).click();
+  await page.getByLabel('Nom du projet', { exact: true }).fill('Nouveau départ');
+  await page.getByRole('button', { name: 'Créer le projet', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Nouveau départ', exact: true })).toBeVisible();
+  await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+});
