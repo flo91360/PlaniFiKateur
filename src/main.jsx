@@ -9,33 +9,14 @@ import '@fontsource/manrope/latin-700.css';
 import '@fontsource/manrope/latin-800.css';
 import './style.css';
 import { createId as uid } from './lib/id.js';
+import { useWorkspace, offlineMode, exportWorkspace } from './lib/use-workspace.js';
+import { validateWorkspace } from './lib/workspace.js';
 
-const STORAGE = 'planifikateur.workspace.v1';
 const statuses = { draft: { label: 'À explorer', icon: Circle }, ready: { label: 'Prête à démarrer', icon: ArrowRight }, progress: { label: 'En cours', icon: Clock3 }, clarify: { label: 'À préciser', icon: CircleHelp }, review: { label: 'À valider', icon: CheckCheck }, done: { label: 'Terminée', icon: Check } };
 const priorities = { low: 'Basse', normal: 'Normale', high: 'Haute' };
 const parseTags = text => [...new Set(text.split(',').map(tag => tag.trim()).filter(Boolean))];
-const seed = [{
-  id: 'planifikateur', name: 'PlaniFiKateur', emoji: '✳', color: '#cae5d7', description: 'Un espace pour faire grandir nos idées, ensemble.',
-  lists: [{ id: 'improvements', name: 'Améliorations', color: 'green' }, { id: 'features', name: 'Nouvelles idées', color: 'purple' }, { id: 'bugs', name: 'Bugs', color: 'orange' }],
-  cards: [
-    { id: 'c1', listId: 'improvements', title: 'Une vue plus claire de chaque projet', description: 'Afficher les informations essentielles du projet en un coup d’œil : demandes en cours, priorités et prochaines étapes.', status: 'progress', priority: 'high', tags: ['Interface', 'Expérience utilisateur'], comments: [{ id: 'm1', author: 'Vous', text: 'Prévoir un résumé en haut du tableau.', date: '2026-10-09T10:00:00Z' }], checklist: [{ id: 't1', text: 'Afficher la progression du projet', done: true }, { id: 't2', text: 'Mettre en avant les demandes à préciser', done: false }] },
-    { id: 'c2', listId: 'improvements', title: 'Retrouver une idée en quelques secondes', description: 'Rechercher dans les titres, descriptions et étiquettes des cartes du projet.', status: 'ready', priority: 'normal', tags: ['Recherche'], comments: [], checklist: [] },
-    { id: 'c3', listId: 'improvements', title: 'Personnaliser les listes du tableau', description: 'Chaque projet doit pouvoir organiser ses idées avec ses propres catégories.', status: 'draft', priority: 'low', tags: ['Organisation'], comments: [], checklist: [] },
-    { id: 'c4', listId: 'features', title: 'Confier une demande à un agent IA', description: 'Permettre de transmettre une carte prête à un agent et de suivre sa réalisation depuis le tableau. Cette fonctionnalité sera connectée à un orchestrateur dans une prochaine version.', status: 'draft', priority: 'high', tags: ['Agents IA'], comments: [], checklist: [{ id: 't3', text: 'Définir les critères d’acceptation', done: false }] },
-    { id: 'c5', listId: 'features', title: 'Un espace de discussion autour des idées', description: 'Centraliser les échanges et les demandes de précision sur chaque carte.', status: 'clarify', priority: 'normal', tags: ['Collaboration'], comments: [{ id: 'm2', author: 'Vous', text: 'Les discussions doivent-elles être partagées entre plusieurs projets ?', date: '2026-10-09T10:30:00Z' }], checklist: [] },
-    { id: 'c6', listId: 'features', title: 'Passer du tableau à une vue calendrier', description: 'Explorer une vue calendrier pour les cartes possédant une échéance.', status: 'draft', priority: 'low', tags: ['Exploration'], comments: [], checklist: [] },
-    { id: 'c7', listId: 'bugs', title: 'Conserver les idées après un rechargement', description: 'Les cartes et les modifications doivent rester disponibles lorsqu’on revient sur le tableau.', status: 'done', priority: 'high', tags: ['Sauvegarde'], comments: [], checklist: [{ id: 't4', text: 'Vérifier la sauvegarde locale', done: true }, { id: 't5', text: 'Recharger le tableau', done: true }] },
-    { id: 'c8', listId: 'bugs', title: 'Éviter les titres de carte vides', description: 'Demander un titre avant de créer une nouvelle carte.', status: 'review', priority: 'normal', tags: ['Interface'], comments: [], checklist: [] },
-  ]
-}, { id: 'website', name: 'Site vitrine', emoji: '◈', color: '#e5dbef', description: 'Imaginer une présence en ligne qui nous ressemble.', lists: [{ id: 'w1', name: 'Inspirations', color: 'purple' }, { id: 'w2', name: 'À construire', color: 'green' }, { id: 'w3', name: 'Retours', color: 'orange' }], cards: [{ id: 'w-card', listId: 'w1', title: 'Définir l’identité de la page d’accueil', description: 'Rassembler les inspirations et définir le message principal du site.', status: 'draft', priority: 'normal', tags: ['Design'], comments: [], checklist: [] }] }];
 
-function readWorkspace() {
-  try {
-    const data = JSON.parse(localStorage.getItem(STORAGE));
-    if (Array.isArray(data) && data.length && data.every(p => typeof p.id === 'string' && typeof p.name === 'string' && Array.isArray(p.lists) && Array.isArray(p.cards))) return data;
-  } catch { /* A fresh workspace remains usable if storage is unavailable. */ }
-  return seed;
-}
+
 
 function Status({ value }) {
   const status = statuses[value] || statuses.draft;
@@ -69,21 +50,35 @@ function Dialog({ title, children, onClose, wide = false }) {
   return <div className="overlay" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}><section ref={ref} role="dialog" aria-modal="true" aria-label={title} className={`dialog ${wide ? 'wide' : ''}`}><header className="dialog-header"><span>{title}</span><button className="icon-button" onClick={onClose} aria-label="Fermer"><X size={20} /></button></header>{children}</section></div>;
 }
 
+function ConnectionScreen({ needsLogin, error, onLogin, onRetry }) {
+  const [token, setToken] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const login = async () => {
+    if (!token.trim() || busy) return;
+    setBusy(true); setLoginError('');
+    try { await onLogin(token); } catch (error) { setLoginError(error.message); }
+    finally { setBusy(false); }
+  };
+  return <div className="connection-screen"><section><span className="info-illustration"><Layers3 size={28} /></span><h1>PlaniFiKateur</h1>{needsLogin ? <LocalForm onConfirm={login}><p>Connectez-vous à votre espace de projets.</p><label>Clé d’accès propriétaire<input aria-label="Clé d’accès propriétaire" type="password" autoComplete="current-password" value={token} onChange={e => setToken(e.target.value)} /></label>{(loginError || error) && <p role="alert" className="form-error">{loginError || error}</p>}<button type="button" onClick={login} className="primary-button" disabled={!token.trim() || busy}>{busy ? 'Connexion…' : 'Se connecter'}</button></LocalForm> : error ? <><p role="alert">Impossible de charger les projets : {error}</p><button className="primary-button" onClick={onRetry}>Réessayer</button></> : <p role="status">Chargement de vos projets…</p>}</section></div>;
+}
+
 function App() {
-  const [projects, setProjects] = useState(readWorkspace);
+  const workspace = useWorkspace();
+  const { projects, setProjects, ready, needsLogin, loadError, saveStatus, saveError } = workspace;
   const [projectId, setProjectId] = useState(projects[0].id);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [modal, setModal] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [sidebar, setSidebar] = useState(false);
-  const [storageError, setStorageError] = useState(false);
+  const storageError = offlineMode && saveStatus === 'error';
+  const [importError, setImportError] = useState('');
   const [dragging, setDragging] = useState(null);
   const [dropList, setDropList] = useState(null);
   const [notice, setNotice] = useState('');
   const project = projects.find(p => p.id === projectId) || projects[0];
   const selected = project.cards.find(c => c.id === selectedId);
-  useEffect(() => { try { localStorage.setItem(STORAGE, JSON.stringify(projects)); setStorageError(false); } catch { setStorageError(true); } }, [projects]);
   useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(''), 3500); return () => clearTimeout(timer); }, [notice]);
   const updateProject = transform => setProjects(ps => ps.map(p => p.id === project.id ? transform(p) : p));
   const updateCard = (id, patch) => updateProject(p => ({ ...p, cards: p.cards.map(c => c.id === id ? { ...c, ...patch } : c) }));
@@ -95,6 +90,7 @@ function App() {
   const total = project.cards.length;
   const filteredCount = project.cards.filter(matches).length;
 
+  if (!offlineMode && !ready) return <ConnectionScreen needsLogin={needsLogin} error={loadError} onLogin={workspace.login} onRetry={workspace.reload} />;
   return <div className="app-shell">
     {sidebar && <div className="sidebar-backdrop" onClick={() => setSidebar(false)} />}
     <aside className={`sidebar ${sidebar ? 'open' : ''}`}>
@@ -105,11 +101,12 @@ function App() {
       <nav aria-label="Projets">{projects.map(p => <button key={p.id} className={`project-link ${project.id === p.id ? 'active' : ''}`} onClick={() => chooseProject(p.id)}><span className="project-symbol" style={{ color: p.color }}>{p.emoji}</span><span>{p.name}</span><span className="project-count">{p.cards.length}</span></button>)}</nav>
       <button className="new-project" onClick={() => setModal('project')}><Plus size={16} />Nouveau projet</button>
       <div className="sidebar-tip"><span className="tip-icon"><Sparkles size={19} /></span><h3>Les idées d’abord.<br />Les agents, bientôt.</h3><p>Préparez vos demandes aujourd’hui. Vos agents pourront prendre le relais demain.</p><span className="coming-soon">EN PRÉPARATION</span></div>
-      <div className="sidebar-footer"><span className="user-avatar">V</span><div>Votre espace<small>Prototype · v0.1.4 · données locales</small></div><span className="online-dot" /></div>
+      <div className="sidebar-footer"><span className="user-avatar">V</span><div>Votre espace<small>v0.1.5 · {offlineMode ? 'données locales' : 'connecté au serveur'}</small></div><span className="online-dot" /></div>
     </aside>
     <main>
-      <header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" aria-label="Ouvrir les projets" onClick={() => setSidebar(true)}><Menu size={20} /></button><FolderKanban size={17} /><span>Mes projets</span><ChevronRight size={14} /><strong>{project.name}</strong></div><div className="topbar-right"><span className="save-indicator"><span className={storageError ? 'error-dot' : 'online-dot'} />{storageError ? 'Sauvegarde indisponible' : 'Sauvegardé sur cet appareil'}</span><button className="icon-button" aria-label="Informations sur le prototype" onClick={() => setModal('info')}><CircleHelp size={19} /></button><span className="header-avatar">V</span></div></header>
+      <header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" aria-label="Ouvrir les projets" onClick={() => setSidebar(true)}><Menu size={20} /></button><FolderKanban size={17} /><span>Mes projets</span><ChevronRight size={14} /><strong>{project.name}</strong></div><div className="topbar-right"><span className="save-indicator"><span className={saveStatus === 'error' || saveStatus === 'conflict' ? 'error-dot' : 'online-dot'} />{saveStatus === 'saving' ? 'Enregistrement…' : saveStatus !== 'saved' ? 'Sauvegarde indisponible' : offlineMode ? 'Sauvegardé sur cet appareil' : 'Sauvegardé sur le serveur'}</span><button className="icon-button" aria-label="Informations sur le prototype" onClick={() => setModal('info')}><CircleHelp size={19} /></button><span className="header-avatar">V</span></div></header>
       <div className="page-content">
+        {!offlineMode && saveStatus !== 'saved' && saveStatus !== 'saving' && <div className="sync-warning" role="alert"><p>{saveError} Vos modifications restent dans cette page.</p><button className="secondary-button" onClick={() => exportWorkspace(projects)}>Exporter mes modifications</button>{saveStatus === 'conflict' ? <button className="secondary-button" onClick={() => setModal('reload')}>Recharger le tableau</button> : <button className="secondary-button" onClick={workspace.retrySave}>Réessayer la sauvegarde</button>}</div>}
         <div className="project-heading"><div className="project-title"><span className="large-symbol" style={{ background: project.color }}>{project.emoji}</span><div><div className="eyebrow">DE L’IDÉE À LA RÉALISATION</div><h1>{project.name}</h1><p>{project.description}</p></div></div></div>
         <div className="stats"><div className="stat"><span className="stat-icon neutral"><Lightbulb size={18} /></span><div><strong>{total}<small>idées au total</small></strong><span>Toutes vos pistes, au même endroit</span></div></div><div className="stat"><span className="stat-icon blue"><Clock3 size={18} /></span><div><strong>{progress}<small>en cours</small></strong><span>Des idées qui prennent forme</span></div></div><div className="stat"><span className="stat-icon amber"><CircleHelp size={18} /></span><div><strong>{clarify}<small>à préciser</small></strong><span>Un peu de contexte pour avancer</span></div></div><div className="stat"><span className="stat-icon green"><CheckCheck size={18} /></span><div><strong>{done}<small>terminées</small></strong><span>{total ? Math.round(done / total * 100) : 0} % des idées concrétisées</span></div></div></div>
         <div className="board-toolbar"><div className="board-tab"><LayoutGrid size={16} />Tableau<span>{project.lists.length} listes</span></div><div className="board-controls"><label className="search-field"><Search size={16} /><input aria-label="Rechercher une carte" placeholder="Rechercher une idée…" value={query} onChange={e => setQuery(e.target.value)} />{query && <button aria-label="Effacer la recherche" onClick={() => setQuery('')}><X size={14} /></button>}</label><label className="filter-field"><ListFilter size={16} /><select aria-label="Filtrer par statut" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}><option value="all">Tous les statuts</option>{Object.entries(statuses).map(([key, s]) => <option key={key} value={key}>{s.label}</option>)}</select></label></div></div>
@@ -120,15 +117,27 @@ function App() {
     </main>
     {notice && <div className="toast" role="status"><Check size={16} />{notice}</div>}
     {storageError && <div className="storage-warning" role="alert">Les modifications restent en mémoire, mais ne pourront pas être conservées après fermeture. Vérifiez les autorisations de stockage de votre navigateur.</div>}
-    {modal && <Dialog wide={modal.type === 'card'} title={modal === 'project' ? 'Un nouveau projet' : modal === 'list' ? 'Une nouvelle liste' : modal.type === 'card' ? 'Une nouvelle idée' : modal === 'overview' ? 'Votre espace personnel' : 'À propos de cette première version'} onClose={() => setModal(null)}>
+    {modal && <Dialog wide={modal.type === 'card'} title={modal === 'project' ? 'Un nouveau projet' : modal === 'list' ? 'Une nouvelle liste' : modal === 'reload' ? 'Recharger le tableau' : modal.type === 'card' ? 'Une nouvelle idée' : modal === 'overview' ? 'Votre espace personnel' : 'À propos de cette première version'} onClose={() => setModal(null)}>
       {(modal === 'project' || modal === 'list' || modal.type === 'card') ? <CreationForm type={modal === 'project' ? 'project' : modal === 'list' ? 'list' : 'card'} lists={project.lists} listId={modal.listId} onCancel={() => setModal(null)} onSubmit={values => {
         if (modal === 'project') { const id = uid(); const newProject = { id, name: values.title, description: values.description || 'Votre prochaine grande idée commence ici.', emoji: '◈', color: '#e1e7cd', lists: [{ id: uid(), name: 'Améliorations', color: 'green' }, { id: uid(), name: 'Nouvelles idées', color: 'purple' }, { id: uid(), name: 'Bugs', color: 'orange' }], cards: [] }; setProjects(ps => [...ps, newProject]); chooseProject(id); setNotice('Projet créé'); }
         else if (modal === 'list') { const newList = { id: uid(), name: values.title, color: ['green', 'purple', 'orange'][project.lists.length % 3] }; updateProject(p => ({ ...p, lists: [...p.lists, newList] })); setNotice('Liste créée'); }
         else { const newCard = { id: uid(), listId: values.listId, title: values.title, description: values.description, status: values.status, priority: values.priority, tags: values.tags, comments: values.comment ? [{ id: uid(), author: 'Vous', text: values.comment, date: new Date().toISOString() }] : [], checklist: values.checklist }; updateProject(p => ({ ...p, cards: [...p.cards, newCard] })); setQuery(''); setStatusFilter('all'); setNotice('Carte créée'); }
         setModal(null);
-      }} /> : <div className="info-content">{modal === 'overview' ? <><span className="info-illustration"><FolderKanban size={30} /></span><h2>Toutes vos idées ont leur place.</h2><p>Votre espace rassemble {projects.length} projets et {projects.reduce((sum, p) => sum + p.cards.length, 0)} cartes. Sélectionnez un projet dans le menu pour retrouver son tableau.</p></> : <><span className="info-illustration"><Sparkles size={30} /></span><h2>Les fondations de vos futurs projets.</h2><p>Créez des projets, organisez vos cartes et suivez leur avancement. Les exemples présents au départ sont des données de démonstration.</p><div className="info-note"><strong>Sauvegarde locale</strong><p>Vos données sont conservées uniquement dans ce navigateur. Elles ne sont pas encore partagées entre appareils ou utilisateurs.</p></div><div className="info-note"><strong>Les agents IA arrivent ensuite</strong><p>Les statuts sont modifiables manuellement. Aucun agent n’est connecté et aucune tâche n’est déléguée automatiquement.</p></div></>}<button className="primary-button" onClick={() => setModal(null)}>C’est compris<ArrowRight size={16} /></button></div>}
+      }} /> : <div className="info-content">{modal === 'reload' ? <><h2>Reprendre les données du serveur ?</h2><p>Les modifications non sauvegardées de cette page seront abandonnées. Exportez-les avant de continuer si vous souhaitez les conserver.</p><button className="secondary-button" onClick={() => exportWorkspace(projects)}>Exporter mes modifications</button><button className="primary-button" onClick={() => { setModal(null); void workspace.reload(); }}>Recharger depuis le serveur</button></> : modal === 'overview' ? <><span className="info-illustration"><FolderKanban size={30} /></span><h2>Toutes vos idées ont leur place.</h2><p>Votre espace rassemble {projects.length} projets et {projects.reduce((sum, p) => sum + p.cards.length, 0)} cartes. Sélectionnez un projet dans le menu pour retrouver son tableau.</p></> : <><span className="info-illustration"><Sparkles size={30} /></span><h2>Les fondations de vos futurs projets.</h2><p>Créez des projets, organisez vos cartes et suivez leur avancement. Les exemples présents au départ sont des données de démonstration.</p><div className="info-note"><strong>{offlineMode ? 'Sauvegarde locale' : 'Sauvegarde serveur'}</strong><p>{offlineMode ? 'Cette copie HTML conserve vos données dans ce navigateur. Exportez vos projets pour les importer dans la version connectée au serveur.' : 'Les cartes enregistrées sont consultables par l’API. Si le serveur refuse une modification, elle reste dans cette page et un message vous permet de la conserver.'}</p></div><div className="info-note"><strong>Les agents IA arrivent ensuite</strong><p>Les statuts sont modifiables manuellement. Aucun agent n’est connecté et aucune tâche n’est déléguée automatiquement.</p></div></>}<div className="transfer-actions"><button className="secondary-button" onClick={() => exportWorkspace(projects)}>Exporter les projets (JSON)</button><label className="secondary-button import-button">Importer des projets<input type="file" accept=".json,application/json" aria-label="Importer des projets JSON" onChange={async e => {
+        const file = e.target.files?.[0]; e.target.value = ''; if (!file) return;
+        try {
+          if (file.size > 4 * 1024 * 1024) throw new Error('Le fichier dépasse 4 Mo.');
+          const json = JSON.parse(await file.text());
+          const imported = validateWorkspace(Array.isArray(json) ? json : json.projects).map(p => {
+            const listIds = new Map(p.lists.map(l => [l.id, uid()]));
+            return { ...p, id: uid(), lists: p.lists.map(l => ({ ...l, id: listIds.get(l.id) })), cards: p.cards.map(c => ({ ...c, id: uid(), listId: listIds.get(c.listId), comments: c.comments.map(m => ({ ...m, id: uid() })), checklist: c.checklist.map(t => ({ ...t, id: uid() })) })) };
+          });
+          validateWorkspace([...projects, ...imported]);
+          setProjects(ps => [...ps, ...imported]); setImportError(''); setNotice('Projets importés, sans remplacer les projets existants');
+        } catch (error) { setImportError(error.message); }
+      }} /></label></div>{importError && <p className="form-error" role="alert">{importError}</p>}<button className="primary-button" onClick={() => setModal(null)}>C’est compris<ArrowRight size={16} /></button></div>}
     </Dialog>}
-    {selected && <CardDetail card={selected} lists={project.lists} onClose={() => setSelectedId(null)} onUpdate={patch => updateCard(selected.id, patch)} onDelete={() => { updateProject(p => ({ ...p, cards: p.cards.filter(c => c.id !== selected.id) })); setSelectedId(null); setNotice('Carte supprimée'); }} />}
+    {selected && <CardDetail saveStatus={saveStatus} card={selected} lists={project.lists} onClose={() => setSelectedId(null)} onUpdate={patch => updateCard(selected.id, patch)} onDelete={() => { updateProject(p => ({ ...p, cards: p.cards.filter(c => c.id !== selected.id) })); setSelectedId(null); setNotice('Carte supprimée'); }} />}
   </div>;
 }
 
@@ -214,7 +223,7 @@ function CreationForm({ type, lists, listId, onCancel, onSubmit }) {
   </LocalForm>;
 }
 
-function CardDetail({ card, lists, onClose, onUpdate, onDelete }) {
+function CardDetail({ saveStatus, card, lists, onClose, onUpdate, onDelete }) {
   const [title, setTitle] = useState(card.title);
   const [description, setDescription] = useState(card.description);
   const [comment, setComment] = useState('');
@@ -228,7 +237,7 @@ function CardDetail({ card, lists, onClose, onUpdate, onDelete }) {
     onUpdate({ comments: [...card.comments, { id: uid(), author: 'Vous', text: comment.trim(), date: new Date().toISOString() }] });
     setComment('');
   };
-  return <Dialog title="Détail de la carte" wide onClose={close}><div className="detail-body"><div className="detail-main"><label className="detail-title-label">Titre<input aria-label="Titre de la carte" className="detail-title" value={title} maxLength={140} onChange={e => setTitle(e.target.value)} onBlur={saveFields} /></label><div className="detail-status"><Status value={card.status} /><span>dans {lists.find(l => l.id === card.listId)?.name}</span></div><label className="detail-label">Description<textarea aria-label="Description" rows={4} value={description} onChange={e => setDescription(e.target.value)} onBlur={saveFields} placeholder="Décrivez votre idée, le problème à résoudre ou le résultat attendu…" /></label><label className="detail-label">Étiquettes<input value={tags} onChange={e => setTags(e.target.value)} onBlur={saveFields} placeholder="Interface, Recherche… (séparées par une virgule)" /></label><ChecklistEditor value={card.checklist} onChange={checklist => onUpdate({ checklist })} draft={criterion} onDraftChange={setCriterion} /><div className="comments-section"><h3><MessageSquare size={17} />Discussion<span>{card.comments.length}</span></h3>{card.comments.map(c => <div className="comment" key={c.id}><span className="user-avatar">V</span><div><strong>{c.author}<time>{new Date(c.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</time></strong><p>{c.text}</p></div></div>)}{!card.comments.length && <p className="muted">Une question, une précision ? La discussion commence ici.</p>}<LocalForm onConfirm={publishComment}><textarea aria-label="Votre commentaire" rows={2} value={comment} onChange={e => setComment(e.target.value)} placeholder="Ajouter un commentaire…" /><button type="button" onClick={publishComment} className="secondary-button" disabled={!comment.trim()}>Publier<ArrowRight size={14} /></button></LocalForm></div></div><aside className="detail-side"><label>Statut<select aria-label="Statut" value={card.status} onChange={e => onUpdate({ status: e.target.value })}>{Object.entries(statuses).map(([key, s]) => <option key={key} value={key}>{s.label}</option>)}</select></label><label>Priorité<select aria-label="Priorité" value={card.priority} onChange={e => onUpdate({ priority: e.target.value })}>{Object.entries(priorities).map(([key, name]) => <option key={key} value={key}>{name}</option>)}</select></label><label>Déplacer vers<select aria-label="Déplacer vers" value={card.listId} onChange={e => onUpdate({ listId: e.target.value })}>{lists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></label><div className="agent-note"><Sparkles size={17} /><strong>Prête pour la suite</strong><p>Une description précise aidera vos futurs agents à prendre le relais.</p><span>Connexion IA à venir</span></div>{deleting ? <div className="delete-confirm"><p>Supprimer définitivement cette carte ?</p><button className="danger-button" onClick={onDelete}>Oui, supprimer</button><button className="secondary-button" onClick={() => setDeleting(false)}>Annuler</button></div> : <button className="delete-button" onClick={() => setDeleting(true)}><Trash2 size={14} />Supprimer la carte</button>}</aside></div><div className="detail-footer"><span><Check size={14} />Modifications enregistrées automatiquement</span><button className="primary-button" onClick={close}>Terminé<Check size={16} /></button></div></Dialog>;
+  return <Dialog title="Détail de la carte" wide onClose={close}><div className="detail-body"><div className="detail-main"><label className="detail-title-label">Titre<input aria-label="Titre de la carte" className="detail-title" value={title} maxLength={140} onChange={e => setTitle(e.target.value)} onBlur={saveFields} /></label><div className="detail-status"><Status value={card.status} /><span>dans {lists.find(l => l.id === card.listId)?.name}</span></div><label className="detail-label">Description<textarea aria-label="Description" rows={4} value={description} onChange={e => setDescription(e.target.value)} onBlur={saveFields} placeholder="Décrivez votre idée, le problème à résoudre ou le résultat attendu…" /></label><label className="detail-label">Étiquettes<input value={tags} onChange={e => setTags(e.target.value)} onBlur={saveFields} placeholder="Interface, Recherche… (séparées par une virgule)" /></label><ChecklistEditor value={card.checklist} onChange={checklist => onUpdate({ checklist })} draft={criterion} onDraftChange={setCriterion} /><div className="comments-section"><h3><MessageSquare size={17} />Discussion<span>{card.comments.length}</span></h3>{card.comments.map(c => <div className="comment" key={c.id}><span className="user-avatar">V</span><div><strong>{c.author}<time>{new Date(c.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</time></strong><p>{c.text}</p></div></div>)}{!card.comments.length && <p className="muted">Une question, une précision ? La discussion commence ici.</p>}<LocalForm onConfirm={publishComment}><textarea aria-label="Votre commentaire" rows={2} value={comment} onChange={e => setComment(e.target.value)} placeholder="Ajouter un commentaire…" /><button type="button" onClick={publishComment} className="secondary-button" disabled={!comment.trim()}>Publier<ArrowRight size={14} /></button></LocalForm></div></div><aside className="detail-side"><label>Statut<select aria-label="Statut" value={card.status} onChange={e => onUpdate({ status: e.target.value })}>{Object.entries(statuses).map(([key, s]) => <option key={key} value={key}>{s.label}</option>)}</select></label><label>Priorité<select aria-label="Priorité" value={card.priority} onChange={e => onUpdate({ priority: e.target.value })}>{Object.entries(priorities).map(([key, name]) => <option key={key} value={key}>{name}</option>)}</select></label><label>Déplacer vers<select aria-label="Déplacer vers" value={card.listId} onChange={e => onUpdate({ listId: e.target.value })}>{lists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></label><div className="agent-note"><Sparkles size={17} /><strong>Prête pour la suite</strong><p>Une description précise aidera vos futurs agents à prendre le relais.</p><span>Connexion IA à venir</span></div>{deleting ? <div className="delete-confirm"><p>Supprimer définitivement cette carte ?</p><button className="danger-button" onClick={onDelete}>Oui, supprimer</button><button className="secondary-button" onClick={() => setDeleting(false)}>Annuler</button></div> : <button className="delete-button" onClick={() => setDeleting(true)}><Trash2 size={14} />Supprimer la carte</button>}</aside></div><div className="detail-footer"><span><Check size={14} />{saveStatus === 'saved' ? 'Modifications enregistrées' : saveStatus === 'saving' ? 'Enregistrement en cours…' : 'Modifications non sauvegardées'}</span><button className="primary-button" onClick={close}>Terminé<Check size={16} /></button></div></Dialog>;
 }
 
 createRoot(document.getElementById('root')).render(<App />);

@@ -20,6 +20,6 @@ const css = readFileSync(resolve(dist, cssTag[1].replace(/^\//, '')), 'utf8').re
 );
 const js = readFileSync(resolve(dist, jsTag[1].replace(/^\//, '')), 'utf8');
 html = html.replace(cssTag[0], () => `<style>${css}</style>`);
-html = html.replace(jsTag[0], () => `<script type="module">${js.replace(/<\/script/gi, '<\\/script')}</script>`);
+html = html.replace(jsTag[0], () => `<script>globalThis.__PLANIFIKATEUR_OFFLINE__ = true;</script><script type="module">${js.replace(/<\/script/gi, '<\\/script')}</script>`);
 writeFileSync(output, html);
 console.log(`Aperçu autonome v${version} : ${output}`);

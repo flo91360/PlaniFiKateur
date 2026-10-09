@@ -1,57 +1,63 @@
 # PlaniFiKateur
 
-Un tableau de projets inspiré de Trello, conçu pour préparer des demandes qui pourront ensuite être confiées à des agents IA.
+Un tableau de projets inspiré de Trello, conçu pour préparer des demandes consultables par des agents IA.
 
-## Première version : interface utilisateur
+## Interface et connectivité
 
-- Projets indépendants avec leurs listes personnalisées.
-- Création, édition et suppression de cartes ; déplacement par glisser-déposer ou depuis le détail.
-- Statut indépendant de la liste, priorité, étiquettes et critères d’acceptation.
-- Création des cartes depuis leur liste, avec tous les champs disponibles dès le départ : description, statut, priorité, étiquettes, critères et premier commentaire.
-- Discussion sur chaque carte, recherche et filtre par statut.
-- Interface adaptative, navigation au clavier et sauvegarde locale dans le navigateur.
+- Projets indépendants, listes personnalisées et cartes déplaçables.
+- Création et édition avec titre, description, statut, priorité, étiquettes, critères et commentaires.
+- Recherche, filtres, affichage mobile et navigation au clavier.
+- Mode connecté : données SQLite partagées entre le site et l’API de consultation.
+- Accès agent en lecture seule et connexion propriétaire pour l’interface.
+- Détection des modifications concurrentes et messages de sauvegarde fiables.
+- Import/export JSON pour transférer des projets locaux sans remplacer les projets existants.
 
-Les projets et cartes présents au premier lancement sont des exemples. Aucun agent IA n’est connecté. Les données ne sont pas encore partagées entre appareils ou utilisateurs. Effacer le stockage du navigateur efface les modifications locales.
+Les données initiales sont des exemples. Aucun agent n’est exécuté ni aucune tâche déléguée automatiquement.
 
-## Développement
+## Démarrer le site avec l’API
 
-Prérequis : Node.js 22 ou 24 et npm. L’interface utilise React et Vite ; les polices sont servies avec l’application.
+Prérequis : **Node.js 24** et npm. SQLite utilise le module intégré à Node, sans service à installer.
 
 ```sh
 cd /workspace/PlaniFiKateur
 npm ci
-npm run dev -- --port 5173
+npm run dev
 ```
+
+La version compilée utilise le même stockage :
+
+```sh
+npm run build
+npm start
+```
+
+Le site et l’API écoutent sur `127.0.0.1:3000` par défaut. La base persistante `.data/planifikateur.sqlite` est ignorée par Git. Aucun secret n’est nécessaire pour un développement local. Toute exposition réseau ou exécution avec `NODE_ENV=production` exige des clés propriétaire et agent différentes. Les paramètres, les routes et des exemples de consultation sont décrits dans [la documentation API](docs/api.md).
+
+La spécification OpenAPI est disponible dans [public/openapi.json](public/openapi.json), servie par le site à `/openapi.json`.
+
+## Tests
 
 ```sh
 npm test
-npm run build
-npm run preview -- --port 4173
+npm run test:browser
 ```
 
-`npm test` vérifie la génération des identifiants, notamment dans les aperçus HTTP et les lecteurs HTML sans API `crypto`. Ces identifiants servent uniquement aux données locales, jamais à l’authentification.
+Les tests Node vérifient l’API, l’accès en lecture seule, les filtres, la pagination, la validation, les conflits et la conservation des cartes après réouverture de SQLite.
 
-`npm run test:browser` compile le fichier autonome et vérifie les parcours sur ordinateur et mobile, y compris dans un aperçu intégré qui interdit les soumissions natives de formulaires, avec et sans accès au stockage. Les actions locales passent directement par les clics ; Entrée valide les champs simples, Ctrl/⌘ + Entrée publie un commentaire et Entrée seule conserve les retours à la ligne dans les descriptions.
+Les tests navigateur couvrent les parcours sur ordinateur et mobile, la création d’une carte consultable par l’API, le partage entre navigateurs, les erreurs de sauvegarde, les conflits, l’import JSON et la copie autonome dans des aperçus qui interdisent les soumissions natives de formulaires.
 
-Ces tests utilisent Chromium installé sur la machine. S’il est absent, installez le navigateur de test avec `npx playwright install chromium`, ou indiquez son chemin via `PLAYWRIGHT_CHROMIUM_EXECUTABLE`.
+Les tests utilisent Chromium installé sur la machine. S’il est absent, exécuter `npx playwright install chromium` ou définir `PLAYWRIGHT_CHROMIUM_EXECUTABLE` vers le navigateur de test.
 
-## Aperçu HTML téléchargeable
+## Copie HTML autonome
 
 ```sh
 npm run export:preview
 ```
 
-Le fichier `dist/PlaniFiKateur-apercu-v0.1.4.html` contient l’interface, ses scripts et ses polices. Ouvrez-le dans un navigateur. Une copie déjà téléchargée ne reçoit pas les corrections du serveur : téléchargez et ouvrez le nouveau fichier après une mise à jour. La version est affichée en bas du menu des projets.
+`dist/PlaniFiKateur-apercu-v0.1.5.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
-## Parcours à vérifier
+Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 
-1. Créer un projet, puis une liste et une carte.
-2. Ouvrir la carte, modifier sa description, son statut et sa priorité.
-3. Ajouter un critère d’acceptation, le cocher et publier un commentaire.
-4. Déplacer la carte vers une autre liste, rechercher son titre et filtrer son statut.
-5. Recharger la page et vérifier la conservation des modifications.
-6. Vérifier le tableau et le menu des projets sur mobile.
+## Évolutions suivantes
 
-## Prochaines étapes
-
-Valider les parcours et l’organisation visuelle, puis connecter une API et une base PostgreSQL. La délégation aux agents pourra utiliser les mêmes projets, cartes, statuts et critères d’acceptation via cette API.
+Héberger le serveur sur une origine HTTPS avec un volume de données persistant. Ajouter ensuite les comptes et droits par projet, les routes de travail des agents et l’orchestration. La première API expose uniquement la consultation aux agents ; les écritures du site restent réservées à la session propriétaire.
