@@ -20,14 +20,14 @@ La base est conservée dans `.data/planifikateur.sqlite` et initialisée avec le
 
 Pour un accès réseau, configurer dans les paramètres sécurisés de l’hébergement deux clés longues, aléatoires et différentes :
 
-- `PLANIFIKATEUR_OWNER_TOKEN` : connexion propriétaire dans l’interface.
+- `PLANIFIKATEUR_OWNER_TOKEN` : initialisation du premier compte administrateur, utilisée une seule fois dans l’interface.
 - `PLANIFIKATEUR_READ_TOKEN` : accès des agents à l’API, **lecture seule sur tous les projets**.
 
-Ne pas inclure leurs valeurs dans le code, une URL ou un fichier HTML. Les fournir aux processus via les variables d’environnement. Un agent transmet sa clé dans `Authorization: Bearer …`. L’interface utilise une session HttpOnly qui expire après 12 heures et après redémarrage du serveur. Les tentatives de connexion sont limitées à 20 par minute et par adresse.
+Ne pas inclure leurs valeurs dans le code, une URL ou un fichier HTML. Les fournir aux processus via les variables d’environnement. Un agent transmet sa clé dans `Authorization: Bearer …`. L’interface utilise une session personnelle HttpOnly qui expire après 12 heures et persiste après un redémarrage du serveur. Voir [les comptes individuels](accounts.md). Les tentatives de connexion sont limitées à 20 par minute et par adresse.
 
 `PLANIFIKATEUR_HOST=0.0.0.0` permet une écoute réseau ; `PORT` choisit le port. Le serveur refuse cette exposition ou `NODE_ENV=production` sans les deux clés. Pour un déploiement, prévoir un volume persistant pour SQLite et un reverse proxy HTTPS qui conserve l’en-tête Host. Définir `PLANIFIKATEUR_PUBLIC_ORIGIN=https://votre-domaine` pour marquer le cookie de session Secure. Aucun domaine ou hébergement public n’est créé par ces commandes. L’API n’active pas de CORS : l’interface et l’API doivent partager la même origine ; les agents serveur peuvent utiliser HTTPS directement.
 
-Ce prototype possède un espace propriétaire unique. Les comptes individuels, permissions par projet et délégations d’agents restent des évolutions futures.
+L’espace est partagé entre les comptes actifs. Un administrateur invite les membres ; chacun se connecte avec son e-mail et son mot de passe. Les permissions par projet et les délégations d’agents restent des évolutions futures.
 
 ## Routes GET
 
@@ -46,10 +46,11 @@ Les routes de collection de cartes acceptent `listId`, `status`, `q`, `limit` (1
 Les statuts sont `draft`, `ready`, `progress`, `clarify`, `review`, `done`. Une catégorie de liste et un statut sont indépendants.
 
 ```sh
-# Développement local, sans clés configurées
-curl 'http://127.0.0.1:3000/api/v1/projects'
-curl 'http://127.0.0.1:3000/api/v1/projects/planifikateur/cards?status=ready&limit=20'
-curl 'http://127.0.0.1:3000/api/v1/projects/planifikateur/cards/c1'
+# Développement local : configurer PLANIFIKATEUR_READ_TOKEN sur le serveur
+# et dans le terminal qui effectue les requêtes
+curl --header "Authorization: Bearer $PLANIFIKATEUR_READ_TOKEN" 'http://127.0.0.1:3000/api/v1/projects'
+curl --header "Authorization: Bearer $PLANIFIKATEUR_READ_TOKEN" 'http://127.0.0.1:3000/api/v1/projects/planifikateur/cards?status=ready&limit=20'
+curl --header "Authorization: Bearer $PLANIFIKATEUR_READ_TOKEN" 'http://127.0.0.1:3000/api/v1/projects/planifikateur/cards/c1'
 
 # Avec une clé agent déjà injectée dans le processus
 curl --header "Authorization: Bearer $PLANIFIKATEUR_READ_TOKEN" \
@@ -58,7 +59,7 @@ curl --header "Authorization: Bearer $PLANIFIKATEUR_READ_TOKEN" \
 
 Pour rechercher « Amélioration menu principal », commencer par `GET /api/v1/projects`, identifier le projet voulu puis utiliser son **id**, pas son nom, dans `GET /api/v1/projects/{projectId}/cards?q=Am%C3%A9lioration%20menu%20principal`. La recherche renvoie une liste uniquement dans ce projet. Si plusieurs cartes correspondent dans ce même projet, choisir l’id de la carte voulue puis consulter `GET /api/v1/projects/{projectId}/cards/{cardId}` ; ne pas sélectionner automatiquement le premier résultat. Les noms de projets et titres de cartes ne sont pas des identifiants uniques.
 
-Cette modification impose le projet aux anciennes requêtes de cartes : les clients doivent ajouter `projectId` ou passer aux routes imbriquées. La clé agent conserve l’accès en lecture à tous les projets ; cette sélection explicite évite les confusions, sans introduire de permissions par projet. Les routes internes de l’interface (`workspace`) restent réservées à la session propriétaire.
+Cette modification impose le projet aux anciennes requêtes de cartes : les clients doivent ajouter `projectId` ou passer aux routes imbriquées. La clé agent conserve l’accès en lecture à tous les projets ; cette sélection explicite évite les confusions, sans introduire de permissions par projet. Les routes internes de l’interface (`workspace`) restent réservées à la session personnelle.
 
 Les réponses sont `{ "data": …, "meta": … }`. Une carte inclut `projectId`, `projectName`, `listId`, `listName`, `title`, `description`, `status`, `priority`, `tags`, `checklist` et `comments`. La pagination fournit `total`, `limit`, `offset` et `nextOffset` (null pour la dernière page). Toutes les réponses indiquent la `revision` du tableau : si elle change pendant un parcours paginé, recommencer la lecture pour obtenir une vue cohérente. Les données ne sont pas mises en cache.
 
@@ -75,7 +76,7 @@ La spécification **OpenAPI 3.1** est servie à `/openapi.json` et conservée da
 
 ## Synchronisation de l’interface
 
-Les routes `/api/v1/session` et `/api/v1/workspace` sont réservées à l’interface. GET session établit une session locale en développement ou indique qu’une connexion est requise. POST session reçoit `{ "token": "…" }` ; DELETE termine la session. GET workspace fournit projets et révision ; PUT enregistre un tableau validé, uniquement avec une session propriétaire, du JSON et l’en-tête `If-Match: "révision"`.
+Les routes `/api/v1/session` et `/api/v1/workspace` sont réservées à l’interface. GET session indique le compte connecté et si le premier compte administrateur doit être créé ; il n’établit pas de session anonyme. POST session reçoit `{ "email": "…", "password": "…" }` ; DELETE termine la session. GET workspace fournit projets et révision ; PUT enregistre un tableau validé, uniquement avec une session personnelle, du JSON et l’en-tête `If-Match: "révision"`.
 
 Une écriture périmée reçoit 409 et ne remplace jamais le tableau d’un autre navigateur. L’interface conserve alors les modifications en mémoire et permet de les exporter avant de recharger explicitement le serveur. Une sauvegarde réseau échouée peut être relancée. Les limites de contenu sont documentées dans `src/lib/workspace.js` ; une requête ne peut dépasser 4 Mo.
 
@@ -85,11 +86,11 @@ Dans la nouvelle copie autonome, ouvrir le bouton d’information puis « Export
 
 Les anciennes copies HTML restent indépendantes : les projets de votre navigateur ne sont pas accessibles à l’agent tant qu’ils n’ont pas été importés sur le serveur. La nouvelle copie ne peut pas récupérer les données d’une ancienne copie si le navigateur isole le stockage par fichier.
 
-## Actualisation et sauvegardes réservées au propriétaire
+## Actualisation et sauvegardes
 
-`GET /api/v1/workspace` accepte `If-None-Match: "révision"` et renvoie **304 sans corps** si la révision est inchangée. L’authentification propriétaire est vérifiée même pour cette réponse. Le site vérifie les changements toutes les 5 secondes et au retour sur l’onglet, sans envoyer de nouvelle écriture pour les données reçues. Les lectures sont suspendues pendant une fenêtre d’édition, un déplacement ou une sauvegarde ; une réponse arrivée pendant une saisie ou après une nouvelle sauvegarde est ignorée. Les conflits restent explicites et aucune fusion automatique n’est effectuée. Un problème réseau d’actualisation est affiché sans remplacer le tableau, puis réessayé automatiquement. La copie HTML hors ligne n’effectue aucune actualisation serveur.
+`GET /api/v1/workspace` accepte `If-None-Match: "révision"` et renvoie **304 sans corps** si la révision est inchangée. L’authentification du compte est vérifiée même pour cette réponse. Le site vérifie les changements toutes les 5 secondes et au retour sur l’onglet, sans envoyer de nouvelle écriture pour les données reçues. Les lectures sont suspendues pendant une fenêtre d’édition, un déplacement ou une sauvegarde ; une réponse arrivée pendant une saisie ou après une nouvelle sauvegarde est ignorée. Les conflits restent explicites et aucune fusion automatique n’est effectuée. Un problème réseau d’actualisation est affiché sans remplacer le tableau, puis réessayé automatiquement. La copie HTML hors ligne n’effectue aucune actualisation serveur.
 
-Les routes suivantes nécessitent une **session propriétaire**, vérifient l’origine et refusent la clé agent :
+Les routes suivantes nécessitent une **session administrateur**, vérifient l’origine et refusent la clé agent :
 
 | Route | Usage |
 | --- | --- |
@@ -98,3 +99,5 @@ Les routes suivantes nécessitent une **session propriétaire**, vérifient l’
 | `GET /api/v1/backups/{filename}` | Télécharger une copie SQLite existante |
 
 Les sauvegardes ne sont jamais servies comme fichiers publics. Une suppression de projet, liste ou carte est précédée d’une sauvegarde ; si elle échoue, l’écriture renvoie 503 (`backup_failed`) et laisse les données intactes. La restauration est une commande d’administration décrite dans [backups.md](backups.md), sans route publique de restauration.
+
+Les cartes incluent `createdBy`, `createdAt`, `updatedBy`, `updatedAt` et les commentaires `authorId`. Les identités sont attribuées par le serveur et restent nulles pour les créateurs inconnus d’avant la migration. Les routes de comptes et d’historique sont décrites dans [accounts.md](accounts.md). Aucun mot de passe, e-mail de compte ou secret de session n’est retourné par les routes de cartes.

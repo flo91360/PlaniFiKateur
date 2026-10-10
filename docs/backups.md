@@ -1,6 +1,6 @@
 # Sauvegardes et restauration
 
-À partir de la v0.1.6, le serveur crée une sauvegarde au démarrage, puis toutes les **6 heures lorsque la révision a changé**. Il crée aussi une copie avant une suppression de projet, de liste ou de carte. Une suppression n’est pas enregistrée si cette copie de sécurité échoue.
+À partir de la v0.1.6, le serveur crée une sauvegarde au démarrage, puis toutes les **6 heures lorsque les projets, les comptes ou leur historique ont changé**. Il crée aussi une copie avant une suppression de projet, de liste ou de carte. Une suppression n’est pas enregistrée si cette copie de sécurité échoue.
 
 Les copies utilisent `VACUUM INTO` : chaque fichier SQLite est autonome et inclut les modifications validées, même si elles étaient dans le journal WAL. Les copies sont vérifiées avant publication ; un fichier partiel n’est jamais proposé au téléchargement. Les **28 dernières copies** sont conservées, y compris celles prises au démarrage et avant suppression ; cela ne garantit pas 7 jours d’historique si vous redéployez ou supprimez souvent.
 
@@ -22,9 +22,9 @@ Le volume doit pouvoir contenir la base et ses copies. Vous pouvez réduire le n
 
 Dans le site connecté, ouvrir le bouton d’information puis la section **Sauvegardes**. « Créer et télécharger une sauvegarde SQLite » capture les données déjà enregistrées sur le serveur. Attendre « Sauvegardé sur le serveur » avant cette opération. Les anciennes copies sont également téléchargeables ; leurs dates sont affichées dans votre fuseau horaire.
 
-La consultation et le téléchargement des sauvegardes exigent la session propriétaire. La clé de lecture agent ne donne pas accès aux sauvegardes, qui contiennent tous les projets.
+La consultation et le téléchargement des sauvegardes exigent la session administrateur. La clé de lecture agent ne donne pas accès aux sauvegardes, qui contiennent tous les projets.
 
-**Les copies sur le même volume ne protègent pas contre la perte ou la suppression de ce volume.** Télécharger régulièrement une copie et la conserver dans un emplacement privé distinct. L’envoi automatique vers un stockage externe n’est pas configuré dans cette version. Le fichier contient les projets, cartes et commentaires ; il ne contient pas les clés d’accès configurées dans Railway.
+**Les copies sur le même volume ne protègent pas contre la perte ou la suppression de ce volume.** Télécharger régulièrement une copie et la conserver dans un emplacement privé distinct. L’envoi automatique vers un stockage externe n’est pas configuré dans cette version. Le fichier contient les projets, cartes, commentaires, comptes, empreintes de mots de passe, invitations, sessions et historique. Il ne contient pas les clés d’environnement configurées dans Railway. Le conserver dans un emplacement privé.
 
 Les échecs de sauvegarde sont affichés dans cette section et dans les logs. Le serveur continue de servir les données ; la prochaine sauvegarde programmée réessaiera.
 
@@ -52,7 +52,7 @@ npm run db:restore -- /data/backups/nom-de-la-sauvegarde.sqlite --confirm
 
 Le fichier est vérifié avant toute écriture. Une copie de l’état actuel est créée avant la restauration. Si la validation ou cette copie échoue, les projets ne sont pas remplacés. La restauration utilise la connexion SQLite et une écriture transactionnelle ; il ne faut ni remplacer à la main un fichier ouvert, ni supprimer ses fichiers WAL/SHM.
 
-Les identifiants, listes, cartes, commentaires et critères de la sauvegarde sont conservés. La révision du serveur **augmente**, pour que les anciennes sessions ne puissent pas écraser les données restaurées. Si une écriture concurrente a lieu entre la lecture et la restauration, la commande refuse l’écrasement.
+Les identifiants, listes, cartes, commentaires et critères de la sauvegarde sont conservés. Les comptes, mots de passe et sessions actuels ne sont pas remplacés ; l’historique courant est conservé et reçoit une action de restauration. La révision du serveur **augmente**, pour que les anciennes sessions ne puissent pas écraser les données restaurées. Si une écriture concurrente a lieu entre la lecture et la restauration, la commande refuse l’écrasement.
 
 Les navigateurs sans saisie en cours reçoivent les projets restaurés par l’actualisation automatique. Les utilisateurs qui éditaient doivent exporter leurs modifications éventuelles et recharger le tableau en cas de conflit. Aucun redémarrage du serveur n’est nécessaire.
 
@@ -62,4 +62,4 @@ Les navigateurs sans saisie en cours reçoivent les projets restaurés par l’a
 - Vérifier que la section Sauvegardes liste des copies après un redéploiement du service.
 - Tester une restauration sur une **base de test distincte** avant d’en avoir besoin en production.
 
-Les tests automatisés vérifient déjà les copies depuis WAL, leur rétention, la restauration, les fichiers invalides et l’accès réservé au propriétaire. Ils ne prouvent pas la configuration effective du volume Railway ; cette vérification doit être faite sur le service hébergé.
+Les tests automatisés vérifient déjà les copies depuis WAL, leur rétention, la restauration, les fichiers invalides et l’accès réservé à l’administrateur. Ils ne prouvent pas la configuration effective du volume Railway ; cette vérification doit être faite sur le service hébergé.

@@ -1,0 +1,16 @@
+import React, { useEffect, useState } from 'react';
+const labels = { 'project.created': 'a créé le projet', 'project.updated': 'a modifié le projet', 'project.deleted': 'a supprimé le projet', 'list.created': 'a créé une liste', 'list.updated': 'a modifié une liste', 'list.deleted': 'a supprimé une liste', 'card.created': 'a créé la carte', 'card.updated': 'a modifié la carte', 'card.deleted': 'a supprimé la carte', 'card.status_changed': 'a changé le statut', 'card.moved': 'a déplacé la carte', 'card.project_changed': 'a déplacé la carte vers un autre projet', 'comment.created': 'a ajouté un commentaire', 'comment.updated': 'a modifié un commentaire', 'comment.deleted': 'a supprimé un commentaire', 'workspace.restored': 'a restauré une sauvegarde', 'account.created': 'a créé son compte', 'account.invited': 'a invité un membre', 'account.activated': 'a activé son compte', 'account.disabled': 'a désactivé un membre', 'account.enabled': 'a réactivé un membre', 'account.password_changed': 'a changé son mot de passe' };
+export default function ActivityPanel({ projectId, cardId }) {
+  const [events, setEvents] = useState([]), [next, setNext] = useState(null), [error, setError] = useState(''), [busy, setBusy] = useState(false);
+  const path = projectId ? `projects/${projectId}/${cardId ? `cards/${cardId}/` : ''}activity` : 'activity';
+  const load = async before => {
+    setBusy(true); setError('');
+    try {
+      const response = await fetch(`/api/v1/${path}${before ? `?before=${before}` : ''}`, { credentials: 'same-origin' }); const result = await response.json();
+      if (!response.ok) throw new Error(result.error?.message || 'Historique indisponible.');
+      setEvents(previous => before ? [...previous, ...result.data] : result.data); setNext(result.meta.nextBefore);
+    } catch (cause) { setError(cause.message); } finally { setBusy(false); }
+  };
+  useEffect(() => { void load(); }, [path]);
+  return <section className="activity-panel"><h3>Historique des actions</h3><p>Les anciennes actions, antérieures aux comptes individuels, n’ont pas d’auteur identifié.</p>{error && <p role="alert" className="form-error">{error}</p>}<button className="secondary-button" disabled={busy} onClick={() => void load()}>Actualiser l’historique</button><ul className="activity-list">{events.map(event => <li key={event.id}><p><strong>{event.actor?.name || 'Administration'}</strong> {labels[event.action] || event.action}{event.cardTitle && <> · {event.cardTitle}</>}{!event.cardTitle && event.projectName && <> · {event.projectName}</>}</p><time>{new Date(event.date).toLocaleString('fr-FR')}</time></li>)}</ul>{!busy && !events.length && !error && <p>Aucune action enregistrée pour le moment.</p>}{next && <button className="secondary-button" disabled={busy} onClick={() => void load(next)}>Voir les actions précédentes</button>}</section>;
+}

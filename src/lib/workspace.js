@@ -15,6 +15,13 @@ export function validateWorkspace(projects) {
     ids.add(value);
     return value;
   };
+  const identity = value => {
+    if (value == null) return null;
+    object(value, 'auteur');
+    if (typeof value.id !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(value.id)) fail('Auteur invalide.');
+    return { id: value.id, name: text(value.name, 'auteur.name', 80, true) };
+  };
+  const date = value => { if (value == null) return null; if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) fail('Date invalide.'); return value; };
   const array = (value, path, max) => { if (!Array.isArray(value) || value.length > max) fail(`${path} : liste invalide (maximum ${max} éléments).`); return value; };
   return array(projects, 'projects', 100).map((p, i) => {
     const path = `projects[${i}]`;
@@ -33,6 +40,7 @@ export function validateWorkspace(projects) {
       if (!STATUSES.includes(c.status) || !priorities.includes(c.priority)) fail(`${path}.cards : statut ou priorité inconnus.`);
       return {
         id: id(c.id, `${path}.cards.id`), listId: c.listId,
+        createdBy: identity(c.createdBy), createdAt: date(c.createdAt), updatedBy: identity(c.updatedBy), updatedAt: date(c.updatedAt),
         title: text(c.title, `${path}.cards.title`, 140, true), description: text(c.description, `${path}.cards.description`, 20000),
         status: c.status, priority: c.priority,
         tags: array(c.tags, `${path}.cards.tags`, 50).map(tag => text(tag, 'tag', 140, true)),
@@ -44,7 +52,7 @@ export function validateWorkspace(projects) {
         comments: array(c.comments, `${path}.cards.comments`, 1000).map(comment => {
           object(comment, 'comment');
           if (typeof comment.date !== 'string' || !Number.isFinite(Date.parse(comment.date))) fail('comment.date : date invalide.');
-          return { id: id(comment.id, 'comment.id'), author: text(comment.author, 'comment.author', 140, true), text: text(comment.text, 'comment.text', 10000, true), date: comment.date };
+          return { id: id(comment.id, 'comment.id'), author: text(comment.author, 'comment.author', 140, true), authorId: comment.authorId == null ? null : text(comment.authorId, 'comment.authorId', 128, true), text: text(comment.text, 'comment.text', 10000, true), date: comment.date };
         }),
       };
     });

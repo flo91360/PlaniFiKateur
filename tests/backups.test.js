@@ -8,10 +8,12 @@ import { createStore } from '../server/store.js';
 import { createBackups, inspectBackup, restoreBackup } from '../server/backups.js';
 import { createAppServer } from '../server/index.js';
 import { readConfig } from '../server/config.js';
+import { seedAccount, testEmail, testPassword, loginRequest } from './helpers/accounts.mjs';
 
 function fixture(t, options = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'planifikateur-backups-'));
   const store = createStore(join(dir, 'active.sqlite'));
+  seedAccount(store);
   const backups = createBackups(store, { directory: join(dir, 'backups'), ...options });
   t.after(() => { backups.close(); store.close(); rmSync(dir, { recursive: true, force: true }); });
   return { store, backups, dir };
@@ -98,7 +100,7 @@ test('backup API is owner-only, downloads SQLite, and captures content before de
     assert.equal((await fetch(`${base}/backups`, { method: 'POST', headers })).status, 401);
     assert.equal((await fetch(`${base}/backups/${backups.list()[0].name}`, { headers })).status, 401);
   }
-  const login = await fetch(`${base}/session`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"token":"owner-test"}' });
+  const login = await fetch(`${base}/session`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: testEmail, password: testPassword }) });
   const Cookie = login.headers.get('set-cookie').split(';')[0];
   const headers = { Cookie };
   assert.equal((await fetch(`${base}/backups`, { method: 'POST', headers: { Cookie, Origin: 'https://other.test' } })).status, 403);
@@ -125,7 +127,7 @@ test('failed safety backup rejects a deletion without changing stored data', asy
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
   const base = `http://127.0.0.1:${server.address().port}/api/v1`;
-  const session = await fetch(`${base}/session`); const Cookie = session.headers.get('set-cookie').split(';')[0];
+  const session = await loginRequest(base.replace(/\/api\/v1$/, '')); const Cookie = session.headers.get('set-cookie').split(';')[0];
   const before = store.read();
   const response = await fetch(`${base}/workspace`, { method: 'PUT', headers: { Cookie, 'Content-Type': 'application/json', 'If-Match': '"1"' }, body: '{"projects":[]}' });
   assert.equal(response.status, 503);

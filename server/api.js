@@ -1,6 +1,7 @@
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { STATUSES, validateWorkspace } from '../src/lib/workspace.js';
 import { createReadStream } from 'node:fs';
+import { accountFields, hashPassword, verifyPassword, publicUser } from './accounts.js';
 
 const MAX_BODY = 4 * 1024 * 1024;
 const hash = value => createHash('sha256').update(value).digest();
@@ -23,7 +24,6 @@ async function body(req) {
 
 export function createApi(store, config = {}) {
   const { ownerToken = '', readToken = '', secureCookie = false } = config;
-  const sessions = new Map();
   const loginAttempts = new Map();
   const cookie = (token, maxAge) => `planifikateur_session=${token}; HttpOnly; SameSite=Strict; Path=/api; Max-Age=${maxAge}${secureCookie ? '; Secure' : ''}`;
   const send = (res, status, data) => { res.statusCode = status; res.setHeader('Content-Type', 'application/json; charset=utf-8'); res.end(JSON.stringify(data)); };
@@ -31,22 +31,29 @@ export function createApi(store, config = {}) {
     if (req.headers['sec-fetch-site'] === 'cross-site') return false;
     try { return !req.headers.origin || new URL(req.headers.origin).host === req.headers.host; } catch { return false; }
   };
-  const owner = req => {
-    const token = /(?:^|;\s*)planifikateur_session=([^;]+)/.exec(req.headers.cookie || '')?.[1];
-    const expires = sessions.get(token);
-    return !!expires && expires > Date.now();
-  };
-  const newSession = res => {
-    for (const [token, expires] of sessions) if (expires < Date.now()) sessions.delete(token);
-    if (sessions.size > 1000) sessions.delete(sessions.keys().next().value);
-    const token = randomBytes(32).toString('hex');
-    sessions.set(token, Date.now() + 12 * 60 * 60 * 1000);
-    res.setHeader('Set-Cookie', cookie(token, 43200));
-  };
-  const requireOwner = req => {
-    if (!owner(req)) throw httpError(401, 'unauthorized', 'Connectez-vous à l’interface.');
+  const sessionToken = req => /(?:^|;\s*)planifikateur_session=([^;]+)/.exec(req.headers.cookie || '')?.[1];
+  const currentUser = req => store.session(sessionToken(req));
+  const newSession = (res, user) => res.setHeader('Set-Cookie', cookie(store.createSession(user.id), 43200));
+  const requireAccount = req => {
+    const user = currentUser(req);
+    if (!user) throw httpError(401, 'unauthorized', 'Connectez-vous à votre compte.');
     if (!sameOrigin(req)) throw httpError(403, 'forbidden', 'Origine de la requête non autorisée.');
+    return user;
   };
+  const requireAdmin = req => {
+    const user = requireAccount(req);
+    if (user.role !== 'admin') throw httpError(403, 'admin_required', 'Cette action est réservée à l’administrateur.');
+    return user;
+  };
+  const rateLimit = req => {
+    const now = Date.now(), ip = req.socket.remoteAddress;
+    for (const [key, attempt] of loginAttempts) if (attempt.until < now) loginAttempts.delete(key);
+    const attempt = loginAttempts.get(ip) || { count: 0, until: now + 60000 };
+    if (++attempt.count > 20) throw httpError(429, 'too_many_attempts', 'Trop de tentatives. Réessayez dans une minute.');
+    loginAttempts.set(ip, attempt);
+  };
+  const fields = data => { try { return accountFields(data); } catch (error) { throw httpError(400, 'invalid_account', error.message); } };
+  const passwordHash = async password => { try { return await hashPassword(password); } catch (error) { throw httpError(400, 'invalid_password', error.message); } };
   return async (req, res, next) => {
     if (!req.url.startsWith('/api/') && req.url !== '/api') { next?.(); return false; }
     res.setHeader('Cache-Control', 'no-store');
@@ -57,28 +64,74 @@ export function createApi(store, config = {}) {
       if (path === '/api/v1/session') {
         if (!sameOrigin(req)) throw httpError(403, 'forbidden', 'Origine de la requête non autorisée.');
         if (req.method === 'GET') {
-          if (!ownerToken && !owner(req)) newSession(res);
-          send(res, 200, { authenticated: !ownerToken || owner(req), requiresLogin: !!ownerToken });
+          const user = currentUser(req);
+          send(res, 200, { authenticated: !!user, user, requiresLogin: true, needsSetup: !store.hasUsers() });
         } else if (req.method === 'POST') {
-          if (ownerToken) {
-            const now = Date.now(), ip = req.socket.remoteAddress;
-            for (const [key, attempt] of loginAttempts) if (attempt.until < now) loginAttempts.delete(key);
-            const attempt = loginAttempts.get(ip) || { count: 0, until: now + 60000 };
-            if (++attempt.count > 20) throw httpError(429, 'too_many_attempts', 'Trop de tentatives. Réessayez dans une minute.');
-            loginAttempts.set(ip, attempt);
-          }
+          rateLimit(req);
           const data = await body(req);
-          if (ownerToken && !equal(typeof data?.token === 'string' ? data.token : '', ownerToken)) throw httpError(401, 'unauthorized', 'Clé d’accès incorrecte.');
-          newSession(res); send(res, 200, { authenticated: true });
+          const email = typeof data?.email === 'string' ? data.email.trim().toLowerCase() : '';
+          const user = store.userByEmail(email);
+          const valid = await verifyPassword(data?.password, user?.password_hash);
+          if (!valid || !user?.active || !store.userById(user.id)?.active || store.userById(user.id).password_hash !== user.password_hash) throw httpError(401, 'unauthorized', 'Adresse e-mail ou mot de passe incorrect.');
+          const account = publicUser(user); newSession(res, account); send(res, 200, { authenticated: true, user: account });
         } else if (req.method === 'DELETE') {
-          requireOwner(req);
-          const token = /(?:^|;\s*)planifikateur_session=([^;]+)/.exec(req.headers.cookie || '')?.[1];
-          sessions.delete(token); res.setHeader('Set-Cookie', cookie('', 0)); send(res, 200, { authenticated: false });
+          requireAccount(req); store.deleteSession(sessionToken(req));
+          res.setHeader('Set-Cookie', cookie('', 0)); send(res, 200, { authenticated: false });
         } else throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
         return true;
       }
+      if (path === '/api/v1/accounts/setup' && req.method === 'POST') {
+        if (!sameOrigin(req)) throw httpError(403, 'forbidden', 'Origine de la requête non autorisée.');
+        rateLimit(req);
+        if (store.hasUsers()) throw httpError(409, 'already_initialized', 'Le compte administrateur a déjà été créé.');
+        const data = await body(req);
+        if (ownerToken && !equal(typeof data?.token === 'string' ? data.token : '', ownerToken)) throw httpError(401, 'unauthorized', 'Clé d’initialisation incorrecte.');
+        const user = store.bootstrapUser(fields(data), await passwordHash(data.password));
+        newSession(res, user); send(res, 201, { authenticated: true, user }); return true;
+      }
+      if (path === '/api/v1/accounts/accept' && req.method === 'POST') {
+        if (!sameOrigin(req)) throw httpError(403, 'forbidden', 'Origine de la requête non autorisée.');
+        rateLimit(req);
+        const data = await body(req);
+        if (typeof data?.token !== 'string' || data.token.length !== 64 || !store.invitation(data.token)) throw httpError(400, 'invalid_invitation', 'Invitation invalide, expirée ou déjà utilisée.');
+        const pending = store.invitation(data.token);
+        const account = fields({ email: pending.email, name: data.name });
+        const user = store.acceptInvitation(data.token, account.name, await passwordHash(data.password));
+        newSession(res, user); send(res, 200, { authenticated: true, user }); return true;
+      }
+      if (path === '/api/v1/accounts/password' && req.method === 'POST') {
+        const user = requireAccount(req); rateLimit(req);
+        const data = await body(req);
+        if (!await verifyPassword(data?.currentPassword, store.userById(user.id).password_hash)) throw httpError(401, 'unauthorized', 'Mot de passe actuel incorrect.');
+        const hashed = await passwordHash(data.password); requireAccount(req); store.changePassword(user.id, hashed, user); newSession(res, user); send(res, 200, { authenticated: true, user }); return true;
+      }
+      if (path === '/api/v1/users' || path.startsWith('/api/v1/users/')) {
+        const admin = requireAdmin(req);
+        if (path === '/api/v1/users' && req.method === 'GET') send(res, 200, { data: store.users() });
+        else if (path === '/api/v1/users' && req.method === 'POST') send(res, 201, { data: store.inviteUser(fields(await body(req)), admin) });
+        else {
+          const match = /^\/api\/v1\/users\/([a-zA-Z0-9_-]+)(\/invitation)?$/.exec(path);
+          if (!match) throw httpError(404, 'not_found', 'Route inexistante.');
+          if (match[2] && req.method === 'POST') send(res, 201, { data: store.inviteUser(null, admin, match[1]) });
+          else if (!match[2] && req.method === 'PATCH') {
+            const data = await body(req);
+            if (typeof data?.active !== 'boolean') throw httpError(400, 'invalid_account', 'active doit être un booléen.');
+            send(res, 200, { data: store.setActive(match[1], data.active, admin) });
+          } else throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
+        }
+        return true;
+      }
+      const history = /^\/api\/v1\/projects\/([a-zA-Z0-9_-]+)(?:\/cards\/([a-zA-Z0-9_-]+))?\/activity$/.exec(path);
+      if (path === '/api/v1/activity' || history) {
+        requireAccount(req);
+        if (req.method !== 'GET') throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
+        const limit = Number(url.searchParams.get('limit') || 50), before = Number(url.searchParams.get('before') || Number.MAX_SAFE_INTEGER);
+        if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isSafeInteger(before) || before < 1) throw httpError(400, 'invalid_pagination', 'Pagination invalide.');
+        const events = store.activity({ projectId: history?.[1], cardId: history?.[2], limit, before });
+        send(res, 200, { data: events, meta: { nextBefore: events.length === limit ? events.at(-1).id : null } }); return true;
+      }
       if (req.method === 'PUT' && path === '/api/v1/workspace') {
-        requireOwner(req);
+        requireAccount(req);
         const match = /^"(\d+)"$/.exec(req.headers['if-match'] || '');
         if (!match) throw httpError(428, 'precondition_required', 'Envoyez la révision obtenue à la lecture dans If-Match.');
         const data = await body(req);
@@ -97,13 +150,13 @@ export function createApi(store, config = {}) {
           }
         }
         let saved;
-        try { saved = store.write(clean, Number(match[1])); }
+        try { saved = store.write(clean, Number(match[1]), requireAccount(req)); }
         catch (error) { throw httpError(400, 'invalid_workspace', error.message); }
         if (!saved) throw httpError(409, 'revision_conflict', 'Le tableau a changé dans une autre session. Rechargez les données avant de réessayer.');
         res.setHeader('ETag', `"${saved.revision}"`); send(res, 200, saved); return true;
       }
       if (path === '/api/v1/backups' || path.startsWith('/api/v1/backups/')) {
-        requireOwner(req);
+        requireAdmin(req);
         if (!config.backups) throw httpError(503, 'backups_unavailable', 'Les sauvegardes ne sont pas configurées.');
         if (path === '/api/v1/backups' && req.method === 'GET') send(res, 200, config.backups.status());
         else if (path === '/api/v1/backups' && req.method === 'POST') {
@@ -120,10 +173,10 @@ export function createApi(store, config = {}) {
         return true;
       }
       const bearer = /^Bearer (.+)$/i.exec(req.headers.authorization || '')?.[1] || '';
-      if (!owner(req) && !(readToken && equal(bearer, readToken)) && (ownerToken || readToken)) throw httpError(401, 'unauthorized', 'Une clé de lecture Bearer est requise.');
+      if (!currentUser(req) && !(readToken && equal(bearer, readToken)) && (store.hasUsers() || ownerToken || readToken)) throw httpError(401, 'unauthorized', 'Une clé de lecture Bearer est requise.');
       if (req.method !== 'GET') throw httpError(405, 'method_not_allowed', 'Cette API de consultation accepte uniquement GET.');
       if (path === '/api/v1/workspace') {
-        requireOwner(req);
+        requireAccount(req);
         const etag = `"${store.getRevision()}"`;
         res.setHeader('ETag', etag);
         if (req.headers['if-none-match'] === etag) { res.statusCode = 304; res.end(); return true; }

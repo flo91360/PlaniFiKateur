@@ -194,3 +194,17 @@ input::placeholder, textarea::placeholder { color: #a1ac96; }
 .backup-list { max-height: 220px; overflow: auto; padding: 0; list-style: none; }
 .backup-list li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 0; font-size: 12px; border-top: 1px solid var(--border); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.account-form { display: grid; gap: 14px; margin: 18px 0; text-align: left; }
+.accounts-panel { padding: 24px; }
+.accounts-panel label { display: grid; gap: 8px; margin: 12px 0; }
+.member-list, .activity-list { list-style: none; padding: 0; }
+.member-list li { padding: 16px 0; border-top: 1px solid var(--border); }
+.member-list small { display: block; margin: 6px 0; color: #85907f; }
+.member-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.activity-panel { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 14px; }
+.activity-list { max-height: 350px; overflow: auto; text-align: left; }
+.activity-list li { border-bottom: 1px solid var(--border); padding: 10px 0; }
+.activity-list p { font-size: 12px; margin: 0 0 6px; }
+.activity-list time, .card-authorship { font-size: 11px; color: #718071; line-height: 1.6; }
+.header-avatar { border: 0; cursor: pointer; }

@@ -13,7 +13,9 @@ export function inspectBackup(filename) {
     if (db.prepare('PRAGMA integrity_check').get().integrity_check !== 'ok') throw new Error('Sauvegarde SQLite endommagée.');
     const row = db.prepare('SELECT revision, projects FROM workspace WHERE id = 1').get();
     if (!row || !Number.isSafeInteger(row.revision) || row.revision < 1) throw new Error('Sauvegarde incompatible.');
-    return { projects: validateWorkspace(JSON.parse(row.projects)), revision: row.revision };
+    const hasActivity = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'activity'").get();
+    const activityId = hasActivity ? db.prepare('SELECT COALESCE(MAX(id),0) AS id FROM activity').get().id : 0;
+    return { projects: validateWorkspace(JSON.parse(row.projects)), revision: row.revision, version: `${row.revision}:${activityId}` };
   } finally { db.close(); }
 }
 
@@ -23,7 +25,7 @@ export function restoreBackup(store, filename, createSafetyCopy) {
   createSafetyCopy();
   // Restore contents through the existing connection, keeping revisions increasing.
   // This preserves WAL correctness and rejects saves from browsers with old data.
-  const restored = store.write(snapshot.projects, revision);
+  const restored = store.write(snapshot.projects, revision, null, { restore: true });
   if (!restored) throw new Error('Les données ont changé pendant la restauration. Réessayez.');
   return restored;
 }
@@ -49,7 +51,7 @@ export function createBackups(store, { directory, intervalMs = 6 * 60 * 60 * 100
       renameSync(temporary, join(root, name));
       const files = list();
       for (const old of [files.find(file => file.name === name), ...files.filter(file => file.name !== name)].slice(keep)) rmSync(join(root, old.name));
-      lastRevision = snapshot.revision;
+      lastRevision = snapshot.version;
       error = '';
       return list().find(file => file.name === name);
     } catch (cause) {
@@ -60,7 +62,7 @@ export function createBackups(store, { directory, intervalMs = 6 * 60 * 60 * 100
     }
   };
   const automatic = () => {
-    try { if (store.getRevision() !== lastRevision) create(); } catch { /* Keep serving; status reports the failure. */ }
+    try { if (store.backupVersion() !== lastRevision) create(); } catch { /* Keep serving; status reports the failure. */ }
   };
   if (start) automatic();
   const timer = start ? setInterval(automatic, intervalMs) : null; timer?.unref();

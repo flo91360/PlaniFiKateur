@@ -6,14 +6,17 @@ import { join } from 'node:path';
 import { createStore } from '../server/store.js';
 import { createAppServer } from '../server/index.js';
 import { readConfig } from '../server/config.js';
+import { seedAccount, testEmail, testPassword, loginRequest } from './helpers/accounts.mjs';
 
 async function fixture(t, config = {}, filename = ':memory:') {
   const store = createStore(filename);
-  const server = createAppServer({ store, config });
+  seedAccount(store);
+  const actualConfig = { ...config, readToken: config.readToken || 'local-test-agent' };
+  const server = createAppServer({ store, config: actualConfig });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
   t.after(async () => { await new Promise(resolve => server.close(resolve)); store.close(); });
-  return { store, base, get: (path, headers = {}) => fetch(base + '/api/v1' + path, { headers }) };
+  return { store, base, get: (path, headers = {}) => path === '/session' && !config.ownerToken ? loginRequest(base) : fetch(base + '/api/v1' + path, { headers: { Authorization: `Bearer ${actualConfig.readToken}`, ...headers } }) };
 }
 
 test('consultation exposes persisted projects, lists and full card context', async t => {
@@ -54,7 +57,7 @@ test('invalid requests produce explicit JSON errors', async t => {
 
 test('agent bearer key permits reading, never writing or owner snapshots', async t => {
   const { get, base } = await fixture(t, { ownerToken: 'owner-test-key', readToken: 'agent-test-key' });
-  assert.equal((await get('/cards?projectId=planifikateur')).status, 401);
+  assert.equal((await fetch(base + '/api/v1/cards?projectId=planifikateur')).status, 401);
   assert.equal((await get('/cards?projectId=planifikateur', { Authorization: 'Bearer incorrect' })).status, 401);
   const headers = { Authorization: 'Bearer agent-test-key' };
   assert.equal((await get('/cards?projectId=planifikateur', headers)).status, 200);
@@ -66,10 +69,10 @@ test('agent bearer key permits reading, never writing or owner snapshots', async
 
 test('owner authentication saves UI data and makes it visible to the agent', async t => {
   const { base, get } = await fixture(t, { ownerToken: 'owner-test-key', readToken: 'agent-test-key' });
-  assert.deepEqual(await (await get('/session')).json(), { authenticated: false, requiresLogin: true });
+  const sessionState = await (await get('/session')).json(); assert.equal(sessionState.authenticated, false); assert.equal(sessionState.needsSetup, false);
   const bad = await fetch(base + '/api/v1/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: 'agent-test-key' }) });
   assert.equal(bad.status, 401);
-  const login = await fetch(base + '/api/v1/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: 'owner-test-key' }) });
+  const login = await fetch(base + '/api/v1/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: testEmail, password: testPassword }) });
   assert.equal(login.status, 200);
   assert.match(login.headers.get('set-cookie'), /HttpOnly; SameSite=Strict/);
   const Cookie = login.headers.get('set-cookie').split(';')[0];
@@ -137,10 +140,10 @@ test('oversized requests fail with JSON without preventing later reads', async t
 test('owner login attempts are rate limited', async t => {
   const { base } = await fixture(t, { ownerToken: 'owner-test-key', readToken: 'read-test-key' });
   for (let i = 0; i < 20; i++) {
-    const response = await fetch(base + '/api/v1/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"token":"wrong"}' });
+    const response = await fetch(base + '/api/v1/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"email":"owner@example.test","password":"wrong"}' });
     assert.equal(response.status, 401);
   }
-  const response = await fetch(base + '/api/v1/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"token":"wrong"}' });
+  const response = await fetch(base + '/api/v1/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"email":"owner@example.test","password":"wrong"}' });
   assert.equal(response.status, 429);
 });
 

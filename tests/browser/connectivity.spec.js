@@ -6,12 +6,15 @@ import { createBackups } from '../../server/backups.js';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { seedAccount, testEmail, testPassword } from '../helpers/accounts.mjs';
 
 const ownerToken = 'owner-browser-test-key';
 const readToken = 'agent-browser-test-key';
 const test = base.extend({
-  appServer: async ({}, use) => {
+  initialAccounts: [true, { option: true }],
+  appServer: async ({ initialAccounts }, use) => {
     const store = createStore(':memory:');
+    if (initialAccounts) seedAccount(store);
     const dir = mkdtempSync(join(tmpdir(), 'planifikateur-browser-backups-'));
     const backups = createBackups(store, { directory: dir });
     const server = createAppServer({ store, config: { ownerToken, readToken, backups } });
@@ -23,9 +26,10 @@ const test = base.extend({
 });
 const login = async (page, url) => {
   await page.goto(url);
-  await page.getByLabel('Clé d’accès propriétaire').fill(ownerToken);
+  await page.getByLabel('Adresse e-mail', { exact: true }).fill(testEmail);
+  await page.getByLabel('Mot de passe', { exact: true }).fill(testPassword);
   await page.getByRole('button', { name: 'Se connecter', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'PlaniFiKateur', exact: true })).toBeVisible();
+  await expect(page.locator('.project-heading h1')).toHaveText('PlaniFiKateur');
 };
 const newProject = async (page, name) => {
   const menu = page.getByRole('button', { name: 'Ouvrir les projets', exact: true });
@@ -37,9 +41,10 @@ const newProject = async (page, name) => {
 
 test('a UI-created card is readable by an agent and another browser', async ({ page, request, browser, appServer }) => {
   await page.goto(appServer);
-  await page.getByLabel('Clé d’accès propriétaire').fill('wrong');
+  await page.getByLabel('Adresse e-mail', { exact: true }).fill(testEmail);
+  await page.getByLabel('Mot de passe', { exact: true }).fill('wrong');
   await page.getByRole('button', { name: 'Se connecter', exact: true }).click();
-  await expect(page.getByRole('alert')).toHaveText('Clé d’accès incorrecte.');
+  await expect(page.getByRole('alert')).toHaveText('Adresse e-mail ou mot de passe incorrect.');
   await login(page, appServer);
   await newProject(page, 'Projet connecté');
   await page.getByRole('button', { name: 'Ajouter une carte dans Bugs', exact: true }).click();
@@ -253,4 +258,72 @@ test('closing an unchanged card does not save stale data and resumes refresh', a
   expect(writes).toBe(0);
   await expect(page.getByRole('alert')).toHaveCount(0);
   await context.close();
+});
+
+test('administrator invites a member whose cards, comments and actions carry their own identity', async ({ page, browser, appServer }) => {
+  await login(page, appServer);
+  await page.getByRole('button', { name: 'Mon compte', exact: true }).click();
+  await page.getByLabel('Nom du membre', { exact: true }).fill('Bob');
+  await page.getByLabel('E-mail du membre', { exact: true }).fill('bob@example.test');
+  await page.getByRole('button', { name: 'Créer une invitation', exact: true }).click();
+  await expect(page.getByLabel('Lien d’invitation')).toHaveValue(/#invitation=[a-f0-9]{64}$/);
+  const invitation = await page.getByLabel('Lien d’invitation').inputValue();
+  const context = await browser.newContext(); const member = await context.newPage();
+  await member.goto(invitation);
+  await member.getByLabel('Votre nom', { exact: true }).fill('Bob');
+  await member.getByLabel('Mot de passe', { exact: true }).fill('bob-browser-password-123');
+  await member.getByRole('button', { name: 'Activer mon compte', exact: true }).click();
+  await expect(member.locator('.project-heading h1')).toHaveText('PlaniFiKateur');
+  await newProject(member, 'Projet de Bob');
+  await member.getByRole('button', { name: 'Ajouter une carte dans Bugs', exact: true }).click();
+  await member.getByLabel('Titre de la carte', { exact: true }).fill('Carte créée par Bob');
+  await member.getByLabel('Votre commentaire').fill('Précision de Bob');
+  await member.getByRole('button', { name: 'Créer la carte', exact: true }).click();
+  await expect(member.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+  await member.getByRole('heading', { name: 'Carte créée par Bob', exact: true }).click();
+  await expect(member.locator('.card-authorship')).toContainText('Créée par Bob');
+  await expect(member.locator('.comment strong')).toContainText('Bob');
+  await expect(member.locator('.activity-list')).toContainText('Bob a créé la carte');
+  await member.getByRole('button', { name: 'Terminé', exact: true }).click();
+  await member.getByRole('button', { name: 'Mon compte', exact: true }).click();
+  await expect(member.getByRole('heading', { name: 'Membres de l’espace', exact: true })).toHaveCount(0);
+  await member.getByRole('button', { name: 'Fermer', exact: true }).click();
+  await member.getByRole('button', { name: 'Informations sur le prototype', exact: true }).click();
+  await expect(member.getByRole('button', { name: 'Créer et télécharger une sauvegarde SQLite', exact: true })).toHaveCount(0);
+  const memberRow = page.locator('.member-list li').filter({ hasText: 'bob@example.test' });
+  await memberRow.getByRole('button', { name: 'Désactiver', exact: true }).click();
+  await expect(memberRow).toContainText('Désactivé');
+  expect((await context.request.get(`${appServer}/api/v1/workspace`)).status()).toBe(401);
+  await context.close();
+});
+
+test('personal password change and logout lead back to individual login', async ({ page, appServer }) => {
+  await login(page, appServer);
+  await page.getByRole('button', { name: 'Mon compte', exact: true }).click();
+  await page.getByLabel('Mot de passe actuel', { exact: true }).fill(testPassword);
+  await page.getByLabel('Nouveau mot de passe', { exact: true }).fill('changed-browser-password-123');
+  await page.getByRole('button', { name: 'Modifier mon mot de passe', exact: true }).click();
+  await expect(page.getByRole('dialog')).toContainText('Mot de passe modifié');
+  await page.getByRole('button', { name: 'Se déconnecter', exact: true }).click();
+  await expect(page.getByLabel('Adresse e-mail', { exact: true })).toBeVisible();
+  await page.getByLabel('Adresse e-mail', { exact: true }).fill(testEmail);
+  await page.getByLabel('Mot de passe', { exact: true }).fill('changed-browser-password-123');
+  await page.getByRole('button', { name: 'Se connecter', exact: true }).click();
+  await expect(page.locator('.project-heading h1')).toHaveText('PlaniFiKateur');
+});
+
+test.describe('first account setup', () => {
+  test.use({ initialAccounts: false });
+  test('initializes the administrator and preserves existing projects', async ({ page, appServer }) => {
+    await page.goto(appServer);
+    await expect(page.getByRole('heading', { name: 'Créer le compte administrateur', exact: true })).toBeVisible();
+    await page.getByLabel('Votre nom', { exact: true }).fill('Alice');
+    await page.getByLabel('Adresse e-mail', { exact: true }).fill(testEmail);
+    await page.getByLabel('Mot de passe', { exact: true }).fill(testPassword);
+    await page.getByLabel('Clé d’initialisation', { exact: true }).fill(ownerToken);
+    await page.getByRole('button', { name: 'Créer mon compte', exact: true }).click();
+    await expect(page.getByRole('heading', { name: seed[0].name, exact: true })).toBeVisible();
+    await page.getByRole('heading', { name: seed[0].cards[0].title, exact: true }).click();
+    await expect(page.locator('.card-authorship')).toContainText('Auteur inconnu');
+  });
 });

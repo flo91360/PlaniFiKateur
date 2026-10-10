@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "PlaniFiKateur — API de consultation",
-    "version": "0.1.6",
+    "version": "0.1.7",
     "description": "Accès en lecture aux cartes stockées sur le serveur. La clé agent ne permet aucune modification. En développement local sans clés, la lecture est ouverte uniquement sur la machine locale."
   },
   "servers": [
@@ -705,7 +705,7 @@
         "type": "apiKey",
         "in": "cookie",
         "name": "planifikateur_session",
-        "description": "Session de l’interface propriétaire."
+        "description": "Session personnelle d’un compte actif ; seuls les administrateurs accèdent aux sauvegardes et à la gestion des comptes."
       }
     },
     "schemas": {
@@ -837,6 +837,26 @@
             "items": {
               "$ref": "#/components/schemas/Comment"
             }
+          },
+          "createdBy": {
+            "$ref": "#/components/schemas/Author"
+          },
+          "updatedBy": {
+            "$ref": "#/components/schemas/Author"
+          },
+          "createdAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
           }
         }
       },
@@ -880,6 +900,12 @@
           "date": {
             "type": "string",
             "format": "date-time"
+          },
+          "authorId": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -944,6 +970,20 @@
                 "type": "string"
               }
             }
+          }
+        }
+      },
+      "Author": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
           }
         }
       }

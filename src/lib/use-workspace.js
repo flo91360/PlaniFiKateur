@@ -19,6 +19,7 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
   const [projects, setState] = useState(() => offlineMode ? readLocal() : seed);
   const [ready, setReady] = useState(offlineMode);
   const [needsLogin, setNeedsLogin] = useState(false);
+  const [needsSetup, setNeedsSetup] = useState(false), [user, setUser] = useState(null);
   const [loadError, setLoadError] = useState('');
   const [saveStatus, setSaveStatus] = useState('saved');
   const [saveError, setSaveError] = useState('');
@@ -30,6 +31,7 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
     setLoadError(''); setReady(false);
     try {
       const session = await request('session');
+      setUser(session.user || null); setNeedsSetup(session.needsSetup);
       if (!session.authenticated) { setNeedsLogin(true); return; }
       const workspace = await request('workspace');
       const clean = validateWorkspace(workspace.projects);
@@ -78,7 +80,18 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
       while (current.current !== saved.current) {
         const snapshot = current.current;
         const data = await request('workspace', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'If-Match': `"${revision.current}"` }, body: JSON.stringify({ projects: snapshot }) });
-        saved.current = snapshot; revision.current = data.revision;
+        const canonical = validateWorkspace(data.projects);
+        revision.current = data.revision; saved.current = canonical;
+        if (current.current === snapshot) current.current = canonical;
+        else current.current = current.current.map(p => ({ ...p, cards: p.cards.map(c => {
+          const remote = canonical.find(project => project.id === p.id)?.cards.find(card => card.id === c.id);
+          if (!remote) return c;
+          return { ...c, createdBy: remote.createdBy, createdAt: remote.createdAt, updatedBy: remote.updatedBy, updatedAt: remote.updatedAt, comments: c.comments.map(comment => {
+            const stamped = remote.comments.find(item => item.id === comment.id);
+            return stamped ? { ...comment, author: stamped.author, authorId: stamped.authorId, date: stamped.date } : comment;
+          }) };
+        }) }));
+        setState(current.current);
       }
       setSaveStatus('saved');
     } catch (error) {
@@ -100,8 +113,12 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
   }, []);
-  const login = async token => { await request('session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) }); await load(); };
-  return { projects, setProjects, ready, needsLogin, loadError, saveStatus, saveError, syncError, refresh, retrySave: flush, reload: load, login };
+  const authenticate = async (path, data) => { await request(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }); await load(); };
+  const login = data => authenticate('session', data);
+  const setup = data => authenticate('accounts/setup', data);
+  const accept = data => authenticate('accounts/accept', data);
+  const logout = async () => { if (current.current !== saved.current) throw new Error('Sauvegardez ou exportez vos modifications avant de vous déconnecter.'); await request('session', { method: 'DELETE' }); initialized.current = false; setUser(null); setNeedsLogin(true); setReady(false); };
+  return { projects, setProjects, ready, needsLogin, needsSetup, user, loadError, saveStatus, saveError, syncError, refresh, retrySave: flush, reload: load, login, setup, accept, logout };
 }
 
 export function exportWorkspace(projects) {
