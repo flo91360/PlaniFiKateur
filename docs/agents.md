@@ -158,3 +158,7 @@ les prises en charge concurrentes sur deux connexions SQLite, l’expiration et 
 reprise, la révocation, les restrictions par projet, les réservations obsolètes,
 la modification du contenu et la restauration. Le navigateur vérifie aussi le
 parcours sur ordinateur et mobile.
+
+## Livraisons GitHub — v0.1.11
+
+Pour une exécution préparée avec `delivery: "github"`, la soumission inclut `pullRequest: {url, headSha}`. Le résultat passe `merging` et ne demande aucune validation humaine ; il sera terminé après fusion GitHub confirmée par webhook signé. Les contrôles échoués remettent le travail en file. Voir [le parcours GitHub](github.md) pour la configuration et l’action `revise`. Les exécutions sans PR conservent le parcours décrit ci-dessus.

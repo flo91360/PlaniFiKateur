@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "PlaniFiKateur — API de consultation et travail agent",
-    "version": "0.1.10",
+    "version": "0.1.11",
     "description": "Consultation par clé de lecture ou session personnelle. Un agent actif possède une clé distincte, limitée à ses projets, pour réserver, poser des questions et soumettre un résultat. Seuls les comptes humains peuvent préparer et valider le travail. Voir docs/agents.md."
   },
   "servers": [
@@ -910,6 +910,14 @@
                   "context": {
                     "type": "string",
                     "maxLength": 20000
+                  },
+                  "delivery": {
+                    "type": "string",
+                    "enum": [
+                      "manual",
+                      "github"
+                    ],
+                    "default": "manual"
                   }
                 },
                 "required": [
@@ -1423,6 +1431,9 @@
                       "pattern": "^https?://",
                       "maxLength": 2048
                     }
+                  },
+                  "pullRequest": {
+                    "$ref": "#/components/schemas/PullRequestDelivery"
                   }
                 },
                 "required": [
@@ -1435,7 +1446,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Le mode github exige pullRequest et attend la fusion confirmée ; le mode manual reste à valider."
       }
     },
     "/api/v1/projects/{projectId}/cards/{cardId}/work/{executionId}/interrupt": {
@@ -2233,6 +2245,274 @@
           }
         }
       }
+    },
+    "/api/v1/projects/{projectId}/cards/{cardId}/work/{executionId}/revise": {
+      "post": {
+        "summary": "Reprendre une livraison GitHub en attente pour correction ou mise à jour de branche",
+        "security": [
+          {
+            "agentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          },
+          {
+            "name": "cardId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          },
+          {
+            "name": "executionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Action réussie.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/Execution"
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "leaseToken": {
+                              "type": "string",
+                              "pattern": "^[a-f0-9]{64}$"
+                            }
+                          },
+                          "required": [
+                            "leaseToken"
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Identité requise."
+          },
+          "403": {
+            "description": "Projet ou action non autorisé."
+          },
+          "404": {
+            "description": "Projet, carte ou exécution absent."
+          },
+          "409": {
+            "description": "Version périmée, réservation invalide ou transition interdite."
+          },
+          "400": {
+            "description": "Corps invalide."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": [
+                  "version"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/github": {
+      "get": {
+        "summary": "Configuration GitHub du projet sans secret",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dépôt, branche main et indicateur webhookConfigured."
+          }
+        }
+      },
+      "put": {
+        "summary": "Administrateur : associer le dépôt au projet",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dépôt associé."
+          },
+          "403": {
+            "description": "Administrateur requis."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "repository"
+                ],
+                "properties": {
+                  "repository": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/github/webhook": {
+      "post": {
+        "summary": "Confirmation signée des contrôles et fusions par GitHub",
+        "security": [],
+        "parameters": [
+          {
+            "name": "X-Hub-Signature-256",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-GitHub-Event",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Événement traité ou ignoré."
+          },
+          "401": {
+            "description": "Signature absente ou invalide."
+          },
+          "503": {
+            "description": "Secret non configuré."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/github/merge-eligibility": {
+      "get": {
+        "summary": "Autoriser la fusion uniquement pour une livraison courante de l’agent",
+        "security": [
+          {
+            "agentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "repository",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "number",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sha",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "data.eligible indique si la tâche attend ce commit de cette PR."
+          },
+          "401": {
+            "description": "Agent actif requis."
+          },
+          "403": {
+            "description": "Projet non autorisé."
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2567,7 +2847,8 @@
               "review",
               "interrupted",
               "done",
-              "cancelled"
+              "cancelled",
+              "merging"
             ]
           },
           "version": {
@@ -2623,6 +2904,19 @@
             "items": {
               "type": "object"
             }
+          },
+          "delivery": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "github"
+            ]
+          },
+          "repository": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -2649,6 +2943,23 @@
           },
           "active": {
             "type": "boolean"
+          }
+        }
+      },
+      "PullRequestDelivery": {
+        "type": "object",
+        "required": [
+          "url",
+          "headSha"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "headSha": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{40}$"
           }
         }
       }

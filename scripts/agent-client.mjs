@@ -2,7 +2,7 @@
 const [action, projectId, cardId, executionId] = process.argv.slice(2);
 const id = value => typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(value);
 try {
-  const allowed = ['queue','history','claim','heartbeat','progress','question','submit','interrupt'];
+  const allowed = ['queue','history','claim','revise','heartbeat','progress','question','submit','interrupt'];
   if (!allowed.includes(action) || !id(projectId) || (action !== 'queue' && !id(cardId)) || (!['queue','history'].includes(action) && !id(executionId))) throw new Error('Usage : node scripts/agent-client.mjs queue PROJET | history PROJET CARTE | ACTION PROJET CARTE EXECUTION (JSON sur stdin).');
   if (!process.env.PLANIFIKATEUR_AGENT_TOKEN) throw new Error('PLANIFIKATEUR_AGENT_TOKEN est requis.');
   const base = new URL(process.env.PLANIFIKATEUR_URL || 'http://127.0.0.1:3000');

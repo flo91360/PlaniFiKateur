@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { test as base, expect } from '@playwright/test';
 import { createAppServer } from '../../server/index.js';
 import { createStore } from '../../server/store.js';
@@ -11,13 +12,14 @@ import { seedAccount, testEmail, testPassword } from '../helpers/accounts.mjs';
 const ownerToken = 'owner-browser-test-key';
 const readToken = 'agent-browser-test-key';
 const test = base.extend({
+  githubEnabled: [false, { option: true }],
   initialAccounts: [true, { option: true }],
-  appServer: async ({ initialAccounts }, use) => {
+  appServer: async ({ initialAccounts, githubEnabled }, use) => {
     const store = createStore(':memory:');
     if (initialAccounts) seedAccount(store);
     const dir = mkdtempSync(join(tmpdir(), 'planifikateur-browser-backups-'));
     const backups = createBackups(store, { directory: dir });
-    const server = createAppServer({ store, config: { ownerToken, readToken, backups } });
+    const server = createAppServer({ store, config: { ownerToken, readToken, backups, githubWebhookSecret: githubEnabled ? 'browser-github-secret' : '' } });
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     await use(`http://127.0.0.1:${server.address().port}`);
     server.closeAllConnections();
@@ -448,4 +450,40 @@ test('administrator cancels then confirms account deletion and immediately revok
     expect((await context.request.get(`${appServer}/api/v1/workspace`)).status()).toBe(401);
     await member.reload(); await expect(member.getByLabel('Adresse e-mail', { exact: true })).toBeVisible();
   } finally { await context.close(); }
+});
+
+
+test.describe('automatic GitHub delivery', () => {
+  test.use({ githubEnabled: true });
+  test('shows the linked PR and finishes only after a signed merge notification', async ({ page, request, appServer }) => {
+    await login(page, appServer); const project = seed[0], card = project.cards[0];
+    await page.getByRole('heading', { name: card.title, exact: true }).click();
+    const panel = page.locator('.work-panel');
+    await panel.getByText('Dépôt GitHub et fusion automatique', { exact: true }).click();
+    await panel.getByLabel('Dépôt du projet', { exact: true }).fill('flo91360/PlaniFiKateur');
+    await panel.getByRole('button', { name: 'Enregistrer le dépôt', exact: true }).click();
+    await expect(panel.getByLabel('Livraison', { exact: true })).toHaveValue('github');
+    await panel.getByLabel('Objectif pour l’agent', { exact: true }).fill('Corriger le menu');
+    await panel.getByLabel('Critères d’acceptation', { exact: true }).fill('Tests serveur et navigateur réussis');
+    await panel.getByRole('button', { name: 'Prête pour un agent', exact: true }).click();
+    await expect(panel.locator('.work-state')).toHaveText('Prête pour l’agent');
+    const credentials = await page.request.post(`${appServer}/api/v1/agents`, { data: { name: 'GitHub agent', projectIds: [project.id] } });
+    const token = (await credentials.json()).data.token;
+    const queue = await request.get(`${appServer}/api/v1/projects/${project.id}/work`, { headers: { Authorization: `Bearer ${token}` } });
+    let run = (await queue.json()).data[0]; const base = `${appServer}/api/v1/projects/${project.id}/cards/${card.id}/work/${run.id}`;
+    const claimed = await request.post(`${base}/claim`, { headers: { Authorization: `Bearer ${token}` }, data: { version: run.version } });
+    run = (await claimed.json()).data; const sha = 'a'.repeat(40);
+    const submitted = await request.post(`${base}/submit`, { headers: { Authorization: `Bearer ${token}` }, data: { version: run.version, leaseToken: run.leaseToken, summary: 'Menu corrigé', checks: 'Contrôles GitHub attendus', links: [], pullRequest: { url: 'https://github.com/flo91360/PlaniFiKateur/pull/7', headSha: sha } } });
+    expect(submitted.status()).toBe(200);
+    await expect(panel.locator('.work-state')).toHaveText('Tests et fusion GitHub en attente', { timeout: 10000 });
+    await expect(panel.getByRole('button', { name: 'Valider le résultat', exact: true })).toHaveCount(0);
+    await expect(panel.getByRole('link', { name: 'PR #7', exact: true })).toBeVisible();
+    const event = { action: 'closed', repository: { full_name: 'flo91360/PlaniFiKateur' }, pull_request: { number: 7, merged: true, merged_at: new Date().toISOString(), merge_commit_sha: 'b'.repeat(40), head: { sha, repo: { full_name: 'flo91360/PlaniFiKateur' } }, base: { ref: 'main' } } };
+    const raw = JSON.stringify(event);
+    const response = await request.post(`${appServer}/api/v1/github/webhook`, { headers: { 'Content-Type': 'application/json', 'X-GitHub-Event': 'pull_request', 'X-Hub-Signature-256': 'sha256=' + createHmac('sha256', 'browser-github-secret').update(raw).digest('hex') }, data: raw });
+    expect(response.status()).toBe(200);
+    await expect(panel.locator('.work-state')).toHaveText('Terminée — PR fusionnée', { timeout: 10000 });
+    await expect(panel).toContainText('Fusion confirmée par GitHub');
+    await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('done');
+  });
 });

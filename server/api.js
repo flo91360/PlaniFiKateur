@@ -1,3 +1,4 @@
+import { githubEvent } from './github.js';
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { STATUSES, validateWorkspace } from '../src/lib/workspace.js';
 import { createReadStream } from 'node:fs';
@@ -61,6 +62,21 @@ export function createApi(store, config = {}) {
     try {
       const url = new URL(req.url, 'http://localhost');
       const path = url.pathname;
+      if (path === '/api/v1/github/webhook') {
+        if (req.method !== 'POST') throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
+        const { event, data } = await githubEvent(req, config.githubWebhookSecret);
+        send(res, 200, { data: event === 'pull_request' ? store.workflows.githubMerged(data) : event === 'workflow_run' ? store.workflows.githubChecks(data) : { updated: false } }); return true;
+      }
+      const githubProject = /^\/api\/v1\/projects\/([a-zA-Z0-9_-]+)\/github$/.exec(path);
+      if (githubProject) {
+        requireAccount(req);
+        if (req.method === 'GET') send(res, 200, { data: { repository: store.workflows.githubProject(githubProject[1]), branch: 'main', webhookConfigured: !!config.githubWebhookSecret } });
+        else if (req.method === 'PUT') {
+          requireAdmin(req); const data = await body(req);
+          send(res, 200, { data: store.workflows.configureGithub(githubProject[1], data?.repository, requireAdmin(req)) });
+        } else throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
+        return true;
+      }
       if (path === '/api/v1/session') {
         if (!sameOrigin(req)) throw httpError(403, 'forbidden', 'Origine de la requête non autorisée.');
         if (req.method === 'GET') {
@@ -128,6 +144,12 @@ export function createApi(store, config = {}) {
         if (!agent) throw httpError(401, 'agent_unauthorized', 'Une clé d’agent actif est requise.');
         return agent;
       };
+      if (path === '/api/v1/github/merge-eligibility') {
+        if (req.method !== 'GET') throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
+        const repository = url.searchParams.get('repository') || '', number = Number(url.searchParams.get('number')), sha = url.searchParams.get('sha') || '';
+        if (!/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(repository) || !Number.isSafeInteger(number) || number < 1 || !/^[a-f0-9]{40}$/.test(sha)) throw httpError(400, 'invalid_pull_request', 'PR invalide.');
+        send(res, 200, { data: store.workflows.mergeEligible(repository, number, sha, authenticatedAgent()) }); return true;
+      }
       const agentRoute = /^\/api\/v1\/agents(?:\/([a-zA-Z0-9_-]+))?$/.exec(path);
       if (agentRoute) {
         const user = requireAdmin(req), id = agentRoute[1];
@@ -143,7 +165,7 @@ export function createApi(store, config = {}) {
         if (req.method !== 'GET') throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
         send(res, 200, { data: store.workflows.queue(queueRoute[1], authenticatedAgent()) }); return true;
       }
-      const workRoute = /^\/api\/v1\/projects\/([a-zA-Z0-9_-]+)\/cards\/([a-zA-Z0-9_-]+)\/work(?:\/([a-zA-Z0-9_-]+)\/(claim|heartbeat|progress|question|submit|interrupt|answer|accept|reject|cancel))?$/.exec(path);
+      const workRoute = /^\/api\/v1\/projects\/([a-zA-Z0-9_-]+)\/cards\/([a-zA-Z0-9_-]+)\/work(?:\/([a-zA-Z0-9_-]+)\/(claim|revise|heartbeat|progress|question|submit|interrupt|answer|accept|reject|cancel))?$/.exec(path);
       if (workRoute) {
         const [, projectId, cardId, id, action] = workRoute;
         if (!id && req.method === 'GET') {
@@ -151,6 +173,7 @@ export function createApi(store, config = {}) {
           send(res, 200, { data: store.workflows.list(projectId, cardId, agent) });
         } else if (!id && req.method === 'POST') {
           requireAccount(req); const data = await body(req);
+          if (data?.delivery === 'github' && !config.githubWebhookSecret) throw httpError(503, 'github_not_configured', 'Configurez le secret du webhook GitHub sur le serveur.');
           send(res, 201, { data: store.workflows.prepare(projectId, cardId, data, requireAccount(req)) });
         } else if (id && req.method === 'POST') {
           const human = ['answer','accept','reject','cancel'].includes(action);

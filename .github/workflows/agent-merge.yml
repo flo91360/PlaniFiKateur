@@ -1,0 +1,33 @@
+name: Fusion des PR agent
+on:
+  workflow_run:
+    workflows: [Tests]
+    types: [completed]
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+concurrency:
+  group: agent-merge
+  cancel-in-progress: false
+jobs:
+  merge:
+    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Trusted main branch only: never execute a PR's code with this token.
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node scripts/merge-agent-pr.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          TEST_RUN_ID: ${{ github.event.workflow_run.id }}
+          PLANIFIKATEUR_URL: ${{ secrets.PLANIFIKATEUR_URL }}
+          PLANIFIKATEUR_AGENT_TOKEN: ${{ secrets.PLANIFIKATEUR_AGENT_TOKEN }}

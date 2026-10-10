@@ -107,3 +107,5 @@ Le suivi personnel des cartes utilise les routes de souscription documentées da
 ## Travail des agents
 
 La consultation reste disponible avec la clé de lecture. Les transitions de travail utilisent une identité d’agent distincte, limitée aux projets autorisés, et des réservations exclusives. Voir [le parcours et le contrat API](agents.md). La validation des résultats exige toujours une session humaine.
+
+Les livraisons GitHub utilisent le mode `delivery: "github"` et l’état `merging`. Voir [la fusion automatique et les webhooks](github.md).
