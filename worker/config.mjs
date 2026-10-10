@@ -1,0 +1,32 @@
+import { resolve } from 'node:path';
+
+export const validId = value => typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(value);
+export const validRepository = value => typeof value === 'string' && /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(value) && value.length <= 200;
+
+export function readWorkerConfig(env = process.env) {
+  const required = name => { if (!env[name]?.trim()) throw new Error(`${name} est requis.`); return env[name].trim(); };
+  const origin = new URL(required('PLANIFIKATEUR_URL'));
+  if (origin.username || origin.password || origin.search || origin.hash || origin.pathname !== '/' || !['https:', 'http:'].includes(origin.protocol) || (origin.protocol === 'http:' && !['localhost', '127.0.0.1', '[::1]'].includes(origin.hostname))) throw new Error('PLANIFIKATEUR_URL : origine HTTPS requise (HTTP accepté uniquement en local).');
+  const projectIds = [...new Set(required('PLANIFIKATEUR_WORKER_PROJECTS').split(',').map(s => s.trim()))];
+  const repositories = [...new Set(required('PLANIFIKATEUR_WORKER_REPOSITORIES').split(',').map(s => s.trim().toLowerCase()))];
+  if (projectIds.length > 100 || projectIds.some(id => !validId(id))) throw new Error('PLANIFIKATEUR_WORKER_PROJECTS : identifiants de projets séparés par des virgules.');
+  if (repositories.some(repo => !validRepository(repo))) throw new Error('PLANIFIKATEUR_WORKER_REPOSITORIES : propriétaire/dépôt, séparés par des virgules.');
+  const number = (name, fallback, min, max) => { const n = env[name] === undefined ? fallback : Number(env[name]); if (!Number.isSafeInteger(n) || n < min || n > max) throw new Error(`${name} invalide.`); return n; };
+  const commands = (name, fallback) => {
+    let value; try { value = env[name] ? JSON.parse(env[name]) : fallback; } catch { throw new Error(`${name} : tableau JSON de commandes requis.`); }
+    if (!Array.isArray(value) || !value.length || value.some(c => !Array.isArray(c) || !c.length || c.some(a => typeof a !== 'string' || !a || a.includes('\0')))) throw new Error(`${name} : utilisez [["npm","test"],…].`);
+    return value;
+  };
+  const stateRoot = resolve(env.PLANIFIKATEUR_WORKER_STATE_DIR || '.data/worker');
+  return {
+    origin: origin.origin, token: required('PLANIFIKATEUR_AGENT_TOKEN'), githubToken: required('PLANIFIKATEUR_GITHUB_TOKEN'),
+    apiKey: env.OPENAI_API_KEY || env.CODEX_API_KEY, projectIds, repositories, stateRoot,
+    codexHome: resolve(env.CODEX_HOME || `${stateRoot}/codex`), model: env.PLANIFIKATEUR_CODEX_MODEL || undefined,
+    pollMs: number('PLANIFIKATEUR_WORKER_POLL_MS', 10000, 1000, 60000),
+    heartbeatMs: number('PLANIFIKATEUR_WORKER_HEARTBEAT_MS', 60000, 1000, 120000),
+    taskTimeoutMs: number('PLANIFIKATEUR_WORKER_TIMEOUT_MS', 20 * 60000, 1000, 2 * 60 * 60000),
+    maxAttempts: number('PLANIFIKATEUR_WORKER_MAX_ATTEMPTS', 3, 1, 10),
+    installCommands: commands('PLANIFIKATEUR_WORKER_INSTALL_COMMANDS', [['npm', 'ci']]),
+    testCommands: commands('PLANIFIKATEUR_WORKER_TEST_COMMANDS', [['npm', 'test'], ['npm', 'run', 'test:browser']]),
+  };
+}

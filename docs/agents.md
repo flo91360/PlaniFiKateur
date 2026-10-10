@@ -1,8 +1,8 @@
 # Premier parcours agent — v0.1.9
 
 Un seul agent actif, sans délégation. Le site pilote les demandes et la validation ;
-l’agent s’exécute dans un service externe. Aucun modèle IA, outil de développement
-ou service GitHub n’est lancé automatiquement par cette version.
+l’agent s’exécute dans un service externe. Le [worker Codex](worker.md) fournit ce
+service : il doit être installé, connecté puis lancé séparément du site.
 
 ## Utilisation dans le site
 
@@ -132,8 +132,8 @@ sa sortie. Le client renvoie un code de sortie non nul en cas d’erreur.
 
 Ce client ne génère pas de réponses et n’exécute pas un modèle IA. Il fournit le
 contrat de connexion pour le service choisi ; un moteur IA et ses outils doivent
-être configurés séparément. La création de branches et de PR GitHub fera partie
-de l’étape suivante.
+être configurés séparément. La création de branches et de PR GitHub est assurée par le
+[worker Codex](worker.md).
 
 ## Modifications, restauration et notifications
 

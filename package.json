@@ -1,7 +1,7 @@
 {
   "name": "planifikateur",
   "private": true,
-  "version": "0.1.13",
+  "version": "0.1.14",
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.js",
@@ -12,7 +12,9 @@
     "export:preview": "npm run build && node scripts/export-preview.mjs",
     "preview": "node server/index.js",
     "db:backup": "node scripts/database.mjs backup",
-    "db:restore": "node scripts/database.mjs restore"
+    "db:restore": "node scripts/database.mjs restore",
+    "worker": "node worker/index.mjs",
+    "worker:once": "node worker/index.mjs --once"
   },
   "dependencies": {
     "@fontsource/dm-sans": "^5.3.0",

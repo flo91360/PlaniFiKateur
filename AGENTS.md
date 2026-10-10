@@ -2,6 +2,16 @@
 
 ## Livraison automatique
 
+Lorsqu’un worker traite une carte (`PLANIFIKATEUR_WORKER=1`), il utilise une
+branche `planifikateur/<identifiant-exécution>` et une PR vers `main`. Dans ce
+parcours, Codex prépare les modifications et laisse le worker exécuter les tests,
+créer le commit, pousser la branche et ouvrir la PR. Ne pas pousser directement
+sur `main`, ne pas fusionner soi-même et ne pas déléguer à d’autres agents.
+La fusion est assurée par GitHub après réussite des contrôles et vérification
+de la demande sur le site.
+
+Pour les interventions directes hors worker, la consigne ci-dessous s’applique.
+
 Après chaque modification ou fonctionnalité terminée et vérifiée, créer un commit
 avec un message explicite puis pousser sur la branche GitHub `main`, sans demander
 une nouvelle confirmation. Cette consigne est autorisée par le propriétaire du
