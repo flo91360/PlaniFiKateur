@@ -122,3 +122,22 @@ présentes et retire celles des cartes supprimées.
 
 L’envoi de notifications reste une prochaine étape : cette version mémorise les
 abonnements et prépare les destinataires, sans envoyer d’e-mail ni d’alerte.
+
+## Supprimer un compte — v0.1.10
+
+Depuis **Mon compte → Membres de l’espace**, l’administrateur peut cliquer
+**Supprimer le compte**, puis confirmer ou annuler. Les comptes actifs,
+désactivés et encore invités peuvent être supprimés. Le compte administrateur
+est protégé contre la suppression.
+
+`DELETE /api/v1/users/{id}` exige une session administrateur et renvoie
+`{ "data": { "deleted": true } }`. Les membres et les clés d’agents ne peuvent
+pas utiliser cette action. La suppression retire le compte, ses sessions,
+ses invitations et ses abonnements ; ses cartes, commentaires et actions sont
+conservés avec l’identité historique de leur auteur. Une nouvelle invitation
+à la même adresse crée une nouvelle identité, sans récupérer les anciens droits
+ou abonnements. L’historique consigne l’auteur de la suppression.
+
+Les anciennes sauvegardes SQLite peuvent toujours contenir les données du
+compte supprimé ; la restauration du contenu par l’outil du site ne recrée pas
+les comptes supprimés.

@@ -134,6 +134,18 @@ export function createStore(filename) {
         audit(actor, active ? 'account.enabled' : 'account.disabled', { userId: id }); return publicUser(userById(id));
       });
     },
+    deleteUser(id, actor) {
+      return transaction(() => {
+        const user = userById(id);
+        if (!user) fail(404, 'user_not_found', 'Compte inexistant.');
+        if (id === actor.id || user.role === 'admin') fail(400, 'protected_admin', 'Le compte administrateur ne peut pas être supprimé.');
+        db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
+        db.prepare('DELETE FROM card_subscriptions WHERE user_id = ?').run(id);
+        db.prepare('DELETE FROM users WHERE id = ?').run(id);
+        audit(actor, 'account.deleted', { userId: id, userName: user.name });
+        return { deleted: true };
+      });
+    },
     changePassword(id, passwordHash, actor) {
       transaction(() => { db.prepare('UPDATE users SET password_hash = ?, invite_hash = NULL, invite_expires = NULL WHERE id = ?').run(passwordHash, id); db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id); audit(actor, 'account.password_changed', { userId: id }); });
     },

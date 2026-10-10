@@ -417,3 +417,35 @@ test('interruption and recovery remain visible without replacing a local title d
   await action('claim');
   await expect(page.locator('.work-state')).toHaveText('En cours', { timeout: 10000 });
 });
+
+test('administrator cancels then confirms account deletion and immediately revokes member access', async ({ page, browser, appServer }) => {
+  await login(page, appServer);
+  await page.getByRole('button', { name: 'Mon compte', exact: true }).click();
+  await page.getByLabel('Nom du membre', { exact: true }).fill('Bob');
+  await page.getByLabel('E-mail du membre', { exact: true }).fill('bob@example.test');
+  await page.getByRole('button', { name: 'Créer une invitation', exact: true }).click();
+  await expect(page.getByLabel('Lien d’invitation')).toHaveValue(/#invitation=[a-f0-9]{64}$/);
+  const context = await browser.newContext(); const member = await context.newPage();
+  try {
+    await member.goto(await page.getByLabel('Lien d’invitation').inputValue());
+    await member.getByLabel('Votre nom', { exact: true }).fill('Bob');
+    await member.getByLabel('Mot de passe', { exact: true }).fill('bob-browser-password-123');
+    await member.getByRole('button', { name: 'Activer mon compte', exact: true }).click();
+    await expect(member.locator('.project-heading h1')).toHaveText('PlaniFiKateur');
+    await member.getByRole('button', { name: 'Mon compte', exact: true }).click();
+    await expect(member.getByRole('button', { name: 'Supprimer le compte', exact: true })).toHaveCount(0);
+    const row = page.locator('.member-list li').filter({ hasText: 'bob@example.test' });
+    await row.getByRole('button', { name: 'Supprimer le compte', exact: true }).click();
+    await expect(row.locator('.account-delete-confirm')).toContainText('Supprimer définitivement le compte de Bob');
+    await row.getByRole('button', { name: 'Annuler la suppression', exact: true }).click();
+    await expect(row.locator('.account-delete-confirm')).toHaveCount(0);
+    expect((await context.request.get(`${appServer}/api/v1/workspace`)).status()).toBe(200);
+    await row.getByRole('button', { name: 'Supprimer le compte', exact: true }).click();
+    await row.getByRole('button', { name: 'Confirmer la suppression du compte', exact: true }).click();
+    await expect(row).toHaveCount(0);
+    await expect(page.getByRole('dialog')).toContainText('Le compte de Bob a été supprimé.');
+    await expect(page.locator('.member-list li').getByRole('button', { name: 'Supprimer le compte', exact: true })).toHaveCount(0);
+    expect((await context.request.get(`${appServer}/api/v1/workspace`)).status()).toBe(401);
+    await member.reload(); await expect(member.getByLabel('Adresse e-mail', { exact: true })).toBeVisible();
+  } finally { await context.close(); }
+});

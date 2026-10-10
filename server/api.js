@@ -102,7 +102,7 @@ export function createApi(store, config = {}) {
       if (path === '/api/v1/accounts/password' && req.method === 'POST') {
         const user = requireAccount(req); rateLimit(req);
         const data = await body(req);
-        if (!await verifyPassword(data?.currentPassword, store.userById(user.id).password_hash)) throw httpError(401, 'unauthorized', 'Mot de passe actuel incorrect.');
+        if (!await verifyPassword(data?.currentPassword, store.userById(user.id)?.password_hash)) throw httpError(401, 'unauthorized', 'Mot de passe actuel incorrect.');
         const hashed = await passwordHash(data.password); requireAccount(req); store.changePassword(user.id, hashed, user); newSession(res, user); send(res, 200, { authenticated: true, user }); return true;
       }
       if (path === '/api/v1/users' || path.startsWith('/api/v1/users/')) {
@@ -117,7 +117,8 @@ export function createApi(store, config = {}) {
             const data = await body(req);
             if (typeof data?.active !== 'boolean') throw httpError(400, 'invalid_account', 'active doit être un booléen.');
             send(res, 200, { data: store.setActive(match[1], data.active, admin) });
-          } else throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
+          } else if (!match[2] && req.method === 'DELETE') send(res, 200, { data: store.deleteUser(match[1], admin) });
+          else throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
         }
         return true;
       }

@@ -221,3 +221,65 @@ test('SQLite snapshots include subscriptions while content restoration preserves
   restoreBackup(f.store, file, () => {});
   assert.equal(f.store.subscription(project.id, card.id, alice.id).following, false);
 });
+
+test('only administrators can delete members; sessions and invitations are revoked while authorship stays intact', async t => {
+  const f = await fixture(t), admin = await f.login(), member = await inviteMember(f, admin);
+  const alice = f.store.userByEmail(testEmail), bob = member.user;
+  const snapshot = f.store.read(), card = structuredClone(snapshot.projects[0].cards[0]);
+  card.id = 'bob-preserved-card'; card.comments = [{ id: 'bob-preserved-comment', text: 'Commentaire conservé', author: 'ignored', date: new Date().toISOString() }]; card.checklist = [];
+  snapshot.projects[0].cards.push(card); f.store.write(snapshot.projects, snapshot.revision, bob);
+  f.store.setSubscription(snapshot.projects[0].id, card.id, bob, true);
+  const invitation = f.store.inviteUser(null, alice, bob.id);
+  const path = `/users/${bob.id}`;
+  assert.equal((await f.request(path, { method: 'DELETE' })).status, 401);
+  assert.equal((await f.request(path, { method: 'DELETE', cookie: member.cookie })).status, 403);
+  assert.equal((await f.request(path, { method: 'DELETE', headers: { Authorization: 'Bearer agent-test-key' } })).status, 401);
+  assert.equal((await f.request(`/users/${alice.id}`, { method: 'DELETE', cookie: admin })).status, 400);
+  const version = f.store.backupVersion(), revision = f.store.getRevision();
+  assert.equal((await f.request(path, { method: 'DELETE', cookie: admin, headers: { Origin: 'https://foreign.example' } })).status, 403);
+  const deleted = await f.request(path, { method: 'DELETE', cookie: admin });
+  assert.equal(deleted.status, 200); assert.equal((await deleted.json()).data.deleted, true);
+  assert.equal(f.store.userById(bob.id), undefined); assert.equal(f.store.invitation(invitation.token), undefined);
+  assert.equal((await f.request('/workspace', { cookie: member.cookie })).status, 401);
+  assert.equal((await f.request('/session', { method: 'POST', data: { email: bob.email, password: 'bob-personal-password-123' } })).status, 401);
+  assert.equal((await f.request('/accounts/accept', { method: 'POST', data: { token: invitation.token, name: 'Bob', password: 'another-password-123' } })).status, 400);
+  assert.notEqual(f.store.backupVersion(), version); assert.equal(f.store.getRevision(), revision);
+  assert.equal((await f.request(path, { method: 'DELETE', cookie: admin })).status, 404);
+  const preserved = f.store.read().projects[0].cards.find(c => c.id === card.id);
+  assert.equal(preserved.createdBy.name, 'Bob'); assert.equal(preserved.comments[0].authorId, bob.id);
+  assert.equal(f.store.activity({ cardId: card.id }).find(e => e.action === 'card.created').actor.name, 'Bob');
+  const db = new DatabaseSync(f.filename); t.after(() => db.close());
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE user_id=?').get(bob.id).n, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM card_subscriptions WHERE user_id=?').get(bob.id).n, 0);
+  const replacement = f.store.inviteUser({ name: 'Nouveau Bob', email: bob.email }, alice);
+  assert.notEqual(replacement.user.id, bob.id);
+  const next = f.store.read(); next.projects[0].cards.find(c => c.id === card.id).description += ' changed'; f.store.write(next.projects, next.revision, alice);
+  assert.deepEqual(f.store.activity({ cardId: card.id }).find(e => e.action === 'card.updated').recipientIds, []);
+});
+
+test('administrators can delete pending and deactivated accounts', async t => {
+  const f = await fixture(t), admin = await f.login(), alice = f.store.userByEmail(testEmail);
+  const pending = f.store.inviteUser({ name: 'Invité', email: 'pending@example.test' }, alice);
+  assert.equal((await f.request(`/users/${pending.user.id}`, { method: 'DELETE', cookie: admin })).status, 200);
+  assert.equal(f.store.invitation(pending.token), undefined);
+  const member = await inviteMember(f, admin); f.store.setActive(member.user.id, false, alice);
+  assert.equal((await f.request(`/users/${member.user.id}`, { method: 'DELETE', cookie: admin })).status, 200);
+  assert.equal(f.store.users().length, 1);
+});
+
+test('deleting a member during a password request revokes the request without a server error', async t => {
+  const f = await fixture(t), admin = await f.login(), member = await inviteMember(f, admin);
+  const { request: httpRequest } = await import('node:http');
+  let signalAuthenticated;
+  const authenticated = new Promise(resolve => { signalAuthenticated = resolve; });
+  const session = f.store.session;
+  f.store.session = token => { const user = session(token); if (user?.id === member.user.id) signalAuthenticated(); return user; };
+  const pending = httpRequest(f.base + '/accounts/password', { method: 'POST', headers: { Cookie: member.cookie, 'Content-Type': 'application/json' } });
+  t.after(() => pending.destroy());
+  const result = new Promise((resolve, reject) => { pending.on('response', response => { response.resume(); resolve(response.statusCode); }); pending.on('error', reject); });
+  pending.write('{"currentPassword":');
+  await authenticated;
+  assert.equal((await f.request(`/users/${member.user.id}`, { method: 'DELETE', cookie: admin })).status, 200);
+  pending.end('"bob-personal-password-123","password":"another-password-123"}');
+  assert.equal(await result, 401);
+});
