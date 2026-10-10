@@ -6,6 +6,7 @@ import { seed } from '../src/data/demo.js';
 import { validateWorkspace } from '../src/lib/workspace.js';
 import { publicUser, tokenHash } from './accounts.js';
 import { attributeChanges } from './activity.js';
+import { createWorkflows } from './workflows.js';
 
 const fail = (status, code, message) => { throw Object.assign(new Error(message), { status, code }); };
 export function createStore(filename) {
@@ -36,7 +37,9 @@ export function createStore(filename) {
     const preference = preferences(card.id).find(row => row.user_id === userId);
     return preference ? !!preference.following : participants(card).includes(userId);
   };
+  const workflows = createWorkflows(db, { transaction, audit, findCard });
   return {
+    workflows,
     subscription(projectId, cardId, userId) {
       const { card } = findCard(projectId, cardId);
       return { following: following(card, userId) };
@@ -61,6 +64,7 @@ export function createStore(filename) {
         const before = this.read();
         if (before.revision !== revision) return null;
         const clean = validateWorkspace(projects), date = new Date().toISOString();
+        workflows.reconcile(before.projects, clean, actor, restore);
         const events = restore ? [{ action: 'workspace.restored' }] : attributeChanges(validateWorkspace(before.projects), clean, actor, date);
         db.prepare('UPDATE workspace SET projects = ?, revision = revision + 1, updated_at = ? WHERE id = 1').run(JSON.stringify(clean), date);
         const activeUsers = new Set(db.prepare('SELECT id FROM users WHERE active = 1 AND password_hash IS NOT NULL').all().map(user => user.id));

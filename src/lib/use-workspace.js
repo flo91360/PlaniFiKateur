@@ -39,14 +39,14 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
       setState(clean); setNeedsLogin(false); setSaveError(''); setSyncError(''); setSaveStatus('saved'); setReady(true);
     } catch (error) { setLoadError(error.message); }
   }, []);
-  const refresh = useCallback(async () => {
-    if (offlineMode || !initialized.current || paused.current || saving.current || refreshing.current || current.current !== saved.current || document.visibilityState === 'hidden') return;
+  const refresh = useCallback(async ({ whileEditing = false } = {}) => {
+    if (offlineMode || !initialized.current || (!whileEditing && paused.current) || saving.current || refreshing.current || current.current !== saved.current || document.visibilityState === 'hidden') return;
     const baseRevision = revision.current;
     refreshing.current = true;
     try {
       const remote = await request('workspace', { headers: { 'If-None-Match': `"${baseRevision}"` }, signal: AbortSignal.timeout(10000) });
       // A read may complete after the user begins editing or after a newer save.
-      if (paused.current || saving.current || current.current !== saved.current || revision.current !== baseRevision) return;
+      if ((!whileEditing && paused.current) || saving.current || current.current !== saved.current || revision.current !== baseRevision) return;
       if (remote && remote.revision > baseRevision) {
         const clean = validateWorkspace(remote.projects);
         current.current = clean; saved.current = clean; revision.current = remote.revision;

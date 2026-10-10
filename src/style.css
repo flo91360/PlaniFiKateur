@@ -211,3 +211,17 @@ input::placeholder, textarea::placeholder { color: #a1ac96; }
 
 .card-subscription p { font-size: 12px; line-height: 1.6; color: var(--muted); }
 .card-subscription button { width: 100%; }
+
+.work-panel { border-top: 1px solid var(--border); margin-top: 24px; padding-top: 20px; }
+.work-panel label, .agent-setup label { display: grid; gap: 8px; margin: 14px 0; font-size: 13px; }
+.work-panel textarea, .agent-setup input { width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font: inherit; min-height: 44px; }
+.work-panel textarea { min-height: 80px; resize: vertical; }
+.work-panel h4 { margin: 14px 0 8px; font-size: 14px; }
+.work-panel p, .work-panel li { font-size: 13px; line-height: 1.7; }
+.work-panel button { margin: 6px 8px 6px 0; }
+.work-panel details { margin: 16px 0; }
+.work-panel summary { cursor: pointer; font-size: 13px; }
+.work-state { font-weight: 700; color: var(--green); }
+.work-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.work-result, .work-exchange { padding: 12px 16px; margin: 12px 0; background: #f4f7f3; border-radius: 8px; }
+.work-result a { overflow-wrap: anywhere; }

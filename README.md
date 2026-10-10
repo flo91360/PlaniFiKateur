@@ -39,7 +39,7 @@ npm start
 
 Le site et l’API écoutent sur `127.0.0.1:3000` par défaut. La base persistante `.data/planifikateur.sqlite` est ignorée par Git. Aucune clé d’environnement n’est nécessaire pour un développement local, mais le premier compte doit être créé depuis le site. Toute exposition réseau ou exécution avec `NODE_ENV=production` exige des clés d’initialisation et agent différentes. Les paramètres, les routes et des exemples de consultation sont décrits dans [la documentation API](docs/api.md).
 
-Après le déploiement de la v0.1.8, créer le compte administrateur avec l’ancienne clé `PLANIFIKATEUR_OWNER_TOKEN`, puis inviter les membres depuis « Mon compte ». Les projets existants sont conservés. Voir [les comptes et l’historique](docs/accounts.md) pour la migration et les droits.
+Après le déploiement de la v0.1.9, créer le compte administrateur avec l’ancienne clé `PLANIFIKATEUR_OWNER_TOKEN`, puis inviter les membres depuis « Mon compte ». Les projets existants sont conservés. Voir [les comptes et l’historique](docs/accounts.md) pour la migration et les droits.
 
 La spécification OpenAPI est disponible dans [public/openapi.json](public/openapi.json), servie par le site à `/openapi.json`.
 
@@ -68,12 +68,14 @@ Conserver également des copies hors du volume Railway.
 npm run export:preview
 ```
 
-`dist/PlaniFiKateur-apercu-v0.1.8.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
+`dist/PlaniFiKateur-apercu-v0.1.9.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 
 ## Évolutions suivantes
 
-Héberger le serveur sur une origine HTTPS avec un volume de données persistant. Ajouter ensuite les droits par projet, les notifications, les routes de travail des agents et l’orchestration. La première API expose uniquement la consultation aux agents ; les écritures du site sont réservées aux comptes actifs.
+Héberger le serveur sur une origine HTTPS avec un volume de données persistant. Le parcours d’un seul agent est disponible : préparation, réservation exclusive, questions, résultats et validation humaine. Connecter un service agent externe avec sa clé dédiée ; voir [le guide agent](docs/agents.md). Les droits des membres par projet, les notifications, le travail GitHub et la délégation restent à ajouter.
 
 Les comptes peuvent suivre ou ne plus suivre une carte depuis son détail, même sans en être auteurs. Les abonnements persistants alimentent les destinataires des futures notifications ; aucun envoi de notification n’est encore actif. Voir [la documentation des comptes](docs/accounts.md#suivre-une-carte).
+
+Le détail des cartes comprend **Travail IA** : objectif, critères, échanges, livrables et validation. Le serveur conserve les exécutions ; aucun moteur IA n’est lancé automatiquement. Le client de référence est `scripts/agent-client.mjs`.

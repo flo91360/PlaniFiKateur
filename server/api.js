@@ -121,6 +121,45 @@ export function createApi(store, config = {}) {
         }
         return true;
       }
+      const agentToken = /^Bearer (.+)$/i.exec(req.headers.authorization || '')?.[1] || '';
+      const authenticatedAgent = () => {
+        const agent = store.workflows.agent(agentToken);
+        if (!agent) throw httpError(401, 'agent_unauthorized', 'Une clé d’agent actif est requise.');
+        return agent;
+      };
+      const agentRoute = /^\/api\/v1\/agents(?:\/([a-zA-Z0-9_-]+))?$/.exec(path);
+      if (agentRoute) {
+        const user = requireAdmin(req), id = agentRoute[1];
+        if (req.method === 'GET' && !id) send(res, 200, { data: store.workflows.agents() });
+        else if (req.method === 'POST' && !id) send(res, 201, { data: store.workflows.configureAgent(await body(req), requireAdmin(req)) });
+        else if (req.method === 'PUT' && id) send(res, 200, { data: store.workflows.configureAgent(await body(req), requireAdmin(req), id) });
+        else if (req.method === 'DELETE' && id) send(res, 200, { data: store.workflows.revokeAgent(id, user) });
+        else throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
+        return true;
+      }
+      const queueRoute = /^\/api\/v1\/projects\/([a-zA-Z0-9_-]+)\/work$/.exec(path);
+      if (queueRoute) {
+        if (req.method !== 'GET') throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
+        send(res, 200, { data: store.workflows.queue(queueRoute[1], authenticatedAgent()) }); return true;
+      }
+      const workRoute = /^\/api\/v1\/projects\/([a-zA-Z0-9_-]+)\/cards\/([a-zA-Z0-9_-]+)\/work(?:\/([a-zA-Z0-9_-]+)\/(claim|heartbeat|progress|question|submit|interrupt|answer|accept|reject|cancel))?$/.exec(path);
+      if (workRoute) {
+        const [, projectId, cardId, id, action] = workRoute;
+        if (!id && req.method === 'GET') {
+          const agent = currentUser(req) ? (requireAccount(req), null) : authenticatedAgent();
+          send(res, 200, { data: store.workflows.list(projectId, cardId, agent) });
+        } else if (!id && req.method === 'POST') {
+          requireAccount(req); const data = await body(req);
+          send(res, 201, { data: store.workflows.prepare(projectId, cardId, data, requireAccount(req)) });
+        } else if (id && req.method === 'POST') {
+          const human = ['answer','accept','reject','cancel'].includes(action);
+          if (human) requireAccount(req); else authenticatedAgent();
+          const data = await body(req);
+          const result = human ? store.workflows.human(projectId, cardId, id, action, data, requireAccount(req)) : store.workflows.agentAction(projectId, cardId, id, action, data, authenticatedAgent());
+          send(res, 200, { data: result });
+        } else throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
+        return true;
+      }
       const subscription = /^\/api\/v1\/projects\/([a-zA-Z0-9_-]+)\/cards\/([a-zA-Z0-9_-]+)\/subscription$/.exec(path);
       if (subscription) {
         const user = requireAccount(req);
@@ -162,7 +201,7 @@ export function createApi(store, config = {}) {
         }
         let saved;
         try { saved = store.write(clean, Number(match[1]), requireAccount(req)); }
-        catch (error) { throw httpError(400, 'invalid_workspace', error.message); }
+        catch (error) { throw httpError(error.status || 400, error.code || 'invalid_workspace', error.message); }
         if (!saved) throw httpError(409, 'revision_conflict', 'Le tableau a changé dans une autre session. Rechargez les données avant de réessayer.');
         res.setHeader('ETag', `"${saved.revision}"`); send(res, 200, saved); return true;
       }
@@ -184,7 +223,8 @@ export function createApi(store, config = {}) {
         return true;
       }
       const bearer = /^Bearer (.+)$/i.exec(req.headers.authorization || '')?.[1] || '';
-      if (!currentUser(req) && !(readToken && equal(bearer, readToken)) && (store.hasUsers() || ownerToken || readToken)) throw httpError(401, 'unauthorized', 'Une clé de lecture Bearer est requise.');
+      const readingAgent = store.workflows.agent(bearer);
+      if (!currentUser(req) && !readingAgent && !(readToken && equal(bearer, readToken)) && (store.hasUsers() || ownerToken || readToken)) throw httpError(401, 'unauthorized', 'Une clé de lecture Bearer est requise.');
       if (req.method !== 'GET') throw httpError(405, 'method_not_allowed', 'Cette API de consultation accepte uniquement GET.');
       if (path === '/api/v1/workspace') {
         requireAccount(req);
@@ -204,6 +244,7 @@ export function createApi(store, config = {}) {
           throw httpError(400, 'invalid_project_scope', 'Indiquez un seul projet, identique à celui du chemin.');
         }
         const projectId = pathId || values[0];
+        if (readingAgent && !readingAgent.projectIds.includes(projectId)) throw httpError(403, 'agent_scope', 'Projet non autorisé pour cet agent.');
         if (!projectId) throw httpError(400, 'project_required', 'Précisez le projet dans le chemin ou avec projectId.');
         const project = projects.find(p => p.id === projectId);
         if (!project) throw httpError(404, 'project_not_found', 'Projet inexistant.');
@@ -211,7 +252,7 @@ export function createApi(store, config = {}) {
       };
       const cardContext = (p, c) => ({ ...c, projectId: p.id, projectName: p.name, listName: p.lists.find(l => l.id === c.listId)?.name });
       let data;
-      if (path === '/api/v1/projects') data = projects.map(projectSummary);
+      if (path === '/api/v1/projects') data = projects.filter(p => !readingAgent || readingAgent.projectIds.includes(p.id)).map(projectSummary);
       else if (path === '/api/v1/cards' || (segments[2] === 'projects' && segments[4] === 'cards' && segments.length === 5)) {
         const project = scopedProject(segments[2] === 'projects' ? segments[3] : undefined);
         const status = url.searchParams.get('status'), listId = url.searchParams.get('listId'), q = (url.searchParams.get('q') || '').trim().toLocaleLowerCase('fr');
@@ -235,6 +276,7 @@ export function createApi(store, config = {}) {
         data = cardContext(project, card);
       } else if (segments[2] === 'projects' && (segments.length === 4 || (segments.length === 5 && segments[4] === 'lists'))) {
         const p = projects.find(p => p.id === segments[3]);
+        if (readingAgent && !readingAgent.projectIds.includes(segments[3])) throw httpError(403, 'agent_scope', 'Projet non autorisé pour cet agent.');
         if (!p) throw httpError(404, 'project_not_found', 'Projet inexistant.');
         data = segments.length === 4 ? projectSummary(p) : p.lists.map(l => ({ ...l, cardCount: p.cards.filter(c => c.listId === l.id).length }));
       } else throw httpError(404, 'not_found', 'Route inexistante.');

@@ -344,3 +344,76 @@ test('follows an existing card without being its author and keeps the setting af
   await page.getByRole('button', { name: 'Actualiser l’historique', exact: true }).click();
   await expect(page.locator('.activity-list')).toContainText('Alice ne suit plus la carte');
 });
+
+test('one agent workflow asks questions, receives corrections and finishes only after human validation', async ({ page, request, appServer }) => {
+  await login(page, appServer);
+  const project = seed[0], card = project.cards[0];
+  await page.getByRole('heading', { name: card.title, exact: true }).click();
+  const panel = page.locator('.work-panel');
+  await panel.getByText('Connexion de l’agent (administrateur)', { exact: true }).click();
+  await panel.getByRole('button', { name: 'Créer la clé de l’agent', exact: true }).click();
+  await expect(panel.getByLabel('Clé de l’agent', { exact: true })).toHaveValue(/^[a-f0-9]{64}$/);
+  const token = await panel.getByLabel('Clé de l’agent', { exact: true }).inputValue();
+  await panel.getByLabel('Objectif pour l’agent', { exact: true }).fill('Améliorer le menu mobile');
+  await panel.getByLabel('Critères d’acceptation', { exact: true }).fill('Raccourcis conservés et boutons lisibles');
+  await panel.getByRole('button', { name: 'Prête pour un agent', exact: true }).click();
+  await expect(panel.locator('.work-state')).toHaveText('Prête pour l’agent');
+  const queue = await request.get(`${appServer}/api/v1/projects/${project.id}/work`, { headers: { Authorization: `Bearer ${token}` } });
+  expect(queue.status()).toBe(200); let run = (await queue.json()).data[0];
+  const base = `${appServer}/api/v1/projects/${project.id}/cards/${card.id}/work`;
+  let leaseToken;
+  const action = async (name, data = {}) => {
+    const response = await request.post(`${base}/${run.id}/${name}`, { headers: { Authorization: `Bearer ${token}` }, data: { version: run.version, leaseToken, ...data } });
+    expect(response.status()).toBe(200); run = (await response.json()).data; if (run.leaseToken) leaseToken = run.leaseToken;
+  };
+  await action('claim');
+  await action('question', { message: 'Dois-je conserver les raccourcis ?' });
+  await expect(panel.locator('.work-state')).toHaveText('À préciser', { timeout: 10000 });
+  await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('clarify');
+  await expect(page.getByLabel('Statut', { exact: true })).toBeDisabled();
+  await panel.getByLabel('Réponse à l’agent', { exact: true }).fill('Oui, conserver tous les raccourcis.');
+  await panel.getByRole('button', { name: 'Répondre et reprendre', exact: true }).click();
+  await expect(panel.locator('.work-state')).toHaveText('Prête pour l’agent');
+  run = (await (await request.get(`${appServer}/api/v1/projects/${project.id}/work`, { headers: { Authorization: `Bearer ${token}` } })).json()).data[0];
+  await action('claim'); await action('submit', { summary: 'Menu réalisé.', checks: 'Navigation mobile testée.', links: ['https://example.test/result'] });
+  await expect(panel.locator('.work-state')).toHaveText('À valider', { timeout: 10000 });
+  await panel.getByLabel('Corrections demandées', { exact: true }).fill('Renforcer le contraste.');
+  await panel.getByRole('button', { name: 'Demander des corrections', exact: true }).click();
+  await expect(panel.locator('.work-state')).toHaveText('Prête pour l’agent');
+  await expect(panel).toContainText('Corrections demandées par Alice');
+  run = (await (await request.get(`${appServer}/api/v1/projects/${project.id}/work`, { headers: { Authorization: `Bearer ${token}` } })).json()).data[0];
+  await action('claim'); await action('submit', { summary: 'Contraste renforcé.', checks: 'Contraste et navigation vérifiés.', links: [] });
+  await expect(panel.locator('.work-state')).toHaveText('À valider', { timeout: 10000 });
+  await panel.getByRole('button', { name: 'Valider le résultat', exact: true }).click();
+  await expect(panel.locator('.work-state')).toHaveText('Terminée — résultat validé');
+  await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('done');
+  await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+  await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+  await page.reload(); await page.getByRole('heading', { name: card.title, exact: true }).click();
+  await expect(page.locator('.work-panel .work-state')).toHaveText('Terminée — résultat validé');
+  await expect(page.locator('.work-result')).toHaveCount(2);
+});
+
+test('interruption and recovery remain visible without replacing a local title draft', async ({ page, request, appServer }) => {
+  await login(page, appServer);
+  const project = seed[0], card = project.cards[0];
+  const credentials = await page.request.post(`${appServer}/api/v1/agents`, { data: { name: 'Recovery agent', projectIds: [project.id] } });
+  expect(credentials.status()).toBe(201); const token = (await credentials.json()).data.token;
+  const base = `${appServer}/api/v1/projects/${project.id}/cards/${card.id}/work`;
+  const prepared = await page.request.post(base, { data: { objective: 'Tester la reprise', criteria: 'Conserver le brouillon' } });
+  expect(prepared.status()).toBe(201); let run = (await prepared.json()).data;
+  const action = async (name, data = {}) => {
+    const response = await request.post(`${base}/${run.id}/${name}`, { headers: { Authorization: `Bearer ${token}` }, data: { version: run.version, leaseToken: run.leaseToken, ...data } });
+    expect(response.status()).toBe(200); run = (await response.json()).data;
+  };
+  await action('claim');
+  await page.getByRole('heading', { name: card.title, exact: true }).click();
+  await expect(page.locator('.work-state')).toHaveText('En cours', { timeout: 10000 });
+  await page.getByLabel('Titre de la carte', { exact: true }).fill('Brouillon local conservé');
+  await action('interrupt', { message: 'Connexion à l’outil interrompue.' });
+  await expect(page.locator('.work-state')).toHaveText('Interrompue — reprise possible', { timeout: 10000 });
+  await expect(page.getByLabel('Titre de la carte', { exact: true })).toHaveValue('Brouillon local conservé');
+  await page.getByLabel('Titre de la carte', { exact: true }).fill(card.title);
+  await action('claim');
+  await expect(page.locator('.work-state')).toHaveText('En cours', { timeout: 10000 });
+});

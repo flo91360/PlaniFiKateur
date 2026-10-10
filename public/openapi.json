@@ -1,9 +1,9 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "PlaniFiKateur — API de consultation",
-    "version": "0.1.8",
-    "description": "Accès en lecture aux cartes stockées sur le serveur. La clé agent ne permet aucune modification. En développement local sans clés, la lecture est ouverte uniquement sur la machine locale."
+    "title": "PlaniFiKateur — API de consultation et travail agent",
+    "version": "0.1.9",
+    "description": "Consultation par clé de lecture ou session personnelle. Un agent actif possède une clé distincte, limitée à ses projets, pour réserver, poser des questions et soumettre un résultat. Seuls les comptes humains peuvent préparer et valider le travail. Voir docs/agents.md."
   },
   "servers": [
     {
@@ -20,6 +20,9 @@
           },
           {
             "ownerSession": []
+          },
+          {
+            "agentAuth": []
           }
         ],
         "parameters": [],
@@ -91,6 +94,9 @@
           },
           {
             "ownerSession": []
+          },
+          {
+            "agentAuth": []
           }
         ],
         "parameters": [
@@ -168,6 +174,9 @@
           },
           {
             "ownerSession": []
+          },
+          {
+            "agentAuth": []
           }
         ],
         "parameters": [
@@ -248,6 +257,9 @@
           },
           {
             "ownerSession": []
+          },
+          {
+            "agentAuth": []
           }
         ],
         "parameters": [
@@ -387,6 +399,9 @@
           },
           {
             "ownerSession": []
+          },
+          {
+            "agentAuth": []
           }
         ],
         "parameters": [
@@ -527,6 +542,9 @@
           },
           {
             "ownerSession": []
+          },
+          {
+            "agentAuth": []
           }
         ],
         "parameters": [
@@ -614,6 +632,9 @@
           },
           {
             "ownerSession": []
+          },
+          {
+            "agentAuth": []
           }
         ],
         "parameters": [
@@ -692,6 +713,1471 @@
         },
         "description": "Le projet est identifié par son id. Une carte d’un autre projet renvoie 404. Un projectId en query contradictoire ou répété renvoie 400."
       }
+    },
+    "/api/v1/projects/{projectId}/work": {
+      "get": {
+        "summary": "File des tâches prêtes ou interrompues",
+        "security": [
+          {
+            "agentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Action réussie.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Execution"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Identité requise."
+          },
+          "403": {
+            "description": "Projet ou action non autorisé."
+          },
+          "404": {
+            "description": "Projet, carte ou exécution absent."
+          },
+          "409": {
+            "description": "Version périmée, réservation invalide ou transition interdite."
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/cards/{cardId}/work": {
+      "get": {
+        "summary": "Historique des exécutions de cette carte",
+        "security": [
+          {
+            "ownerSession": []
+          },
+          {
+            "agentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          },
+          {
+            "name": "cardId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Action réussie.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Execution"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Identité requise."
+          },
+          "403": {
+            "description": "Projet ou action non autorisé."
+          },
+          "404": {
+            "description": "Projet, carte ou exécution absent."
+          },
+          "409": {
+            "description": "Version périmée, réservation invalide ou transition interdite."
+          }
+        }
+      },
+      "post": {
+        "summary": "Préparer une carte pour l’agent",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          },
+          {
+            "name": "cardId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Action réussie.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Execution"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Identité requise."
+          },
+          "403": {
+            "description": "Projet ou action non autorisé."
+          },
+          "404": {
+            "description": "Projet, carte ou exécution absent."
+          },
+          "409": {
+            "description": "Version périmée, réservation invalide ou transition interdite."
+          },
+          "400": {
+            "description": "Corps invalide."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "objective": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000
+                  },
+                  "criteria": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000
+                  },
+                  "context": {
+                    "type": "string",
+                    "maxLength": 20000
+                  }
+                },
+                "required": [
+                  "objective",
+                  "criteria"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/cards/{cardId}/work/{executionId}/claim": {
+      "post": {
+        "summary": "Prise en charge exclusive ; leaseToken renvoyé une seule fois",
+        "security": [
+          {
+            "agentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          },
+          {
+            "name": "cardId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          },
+          {
+            "name": "executionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Action réussie.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/Execution"
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "leaseToken": {
+                              "type": "string",
+                              "pattern": "^[a-f0-9]{64}$"
+                            }
+                          },
+                          "required": [
+                            "leaseToken"
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Identité requise."
+          },
+          "403": {
+            "description": "Projet ou action non autorisé."
+          },
+          "404": {
+            "description": "Projet, carte ou exécution absent."
+          },
+          "409": {
+            "description": "Version périmée, réservation invalide ou transition interdite."
+          },
+          "400": {
+            "description": "Corps invalide."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": [
+                  "version"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/cards/{cardId}/work/{executionId}/heartbeat": {
+      "post": {
+        "summary": "Prolonger la réservation de cinq minutes",
+        "security": [
+          {
+            "agentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          },
+          {
+            "name": "cardId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          },
+          {
+            "name": "executionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Action réussie.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Execution"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Identité requise."
+          },
+          "403": {
+            "description": "Projet ou action non autorisé."
+          },
+          "404": {
+            "description": "Projet, carte ou exécution absent."
+          },
+          "409": {
+            "description": "Version périmée, réservation invalide ou transition interdite."
+          },
+          "400": {
+            "description": "Corps invalide."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "leaseToken": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  }
+                },
+                "required": [
+                  "leaseToken"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/cards/{cardId}/work/{executionId}/progress": {
+      "post": {
+        "summary": "Signaler l’avancement",
+        "security": [
+          {
+            "agentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          },
+          {
+            "name": "cardId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          },
+          {
+            "name": "executionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Action réussie.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Execution"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Identité requise."
+          },
+          "403": {
+            "description": "Projet ou action non autorisé."
+          },
+          "404": {
+            "description": "Projet, carte ou exécution absent."
+          },
+          "409": {
+            "description": "Version périmée, réservation invalide ou transition interdite."
+          },
+          "400": {
+            "description": "Corps invalide."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "leaseToken": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  "message": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000
+                  }
+                },
+                "required": [
+                  "version",
+                  "leaseToken",
+                  "message"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/cards/{cardId}/work/{executionId}/question": {
+      "post": {
+        "summary": "Demander des précisions et suspendre le travail",
+        "security": [
+          {
+            "agentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          },
+          {
+            "name": "cardId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          },
+          {
+            "name": "executionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Action réussie.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Execution"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Identité requise."
+          },
+          "403": {
+            "description": "Projet ou action non autorisé."
+          },
+          "404": {
+            "description": "Projet, carte ou exécution absent."
+          },
+          "409": {
+            "description": "Version périmée, réservation invalide ou transition interdite."
+          },
+          "400": {
+            "description": "Corps invalide."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "leaseToken": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  "message": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000
+                  }
+                },
+                "required": [
+                  "version",
+                  "leaseToken",
+                  "message"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/cards/{cardId}/work/{executionId}/submit": {
+      "post": {
+        "summary": "Soumettre le résultat pour validation humaine",
+        "security": [
+          {
+            "agentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          },
+          {
+            "name": "cardId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          },
+          {
+            "name": "executionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Action réussie.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Execution"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Identité requise."
+          },
+          "403": {
+            "description": "Projet ou action non autorisé."
+          },
+          "404": {
+            "description": "Projet, carte ou exécution absent."
+          },
+          "409": {
+            "description": "Version périmée, réservation invalide ou transition interdite."
+          },
+          "400": {
+            "description": "Corps invalide."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "leaseToken": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  "summary": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000
+                  },
+                  "checks": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000
+                  },
+                  "links": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {
+                      "type": "string",
+                      "format": "uri",
+                      "pattern": "^https?://",
+                      "maxLength": 2048
+                    }
+                  }
+                },
+                "required": [
+                  "version",
+                  "leaseToken",
+                  "summary",
+                  "checks",
+                  "links"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/cards/{cardId}/work/{executionId}/interrupt": {
+      "post": {
+        "summary": "Interrompre et rendre la tâche reprenable",
+        "security": [
+          {
+            "agentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          },
+          {
+            "name": "cardId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          },
+          {
+            "name": "executionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Action réussie.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Execution"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Identité requise."
+          },
+          "403": {
+            "description": "Projet ou action non autorisé."
+          },
+          "404": {
+            "description": "Projet, carte ou exécution absent."
+          },
+          "409": {
+            "description": "Version périmée, réservation invalide ou transition interdite."
+          },
+          "400": {
+            "description": "Corps invalide."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "leaseToken": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  "message": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000
+                  }
+                },
+                "required": [
+                  "version",
+                  "leaseToken",
+                  "message"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/cards/{cardId}/work/{executionId}/answer": {
+      "post": {
+        "summary": "Répondre et remettre la tâche en file",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          },
+          {
+            "name": "cardId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          },
+          {
+            "name": "executionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Action réussie.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Execution"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Identité requise."
+          },
+          "403": {
+            "description": "Projet ou action non autorisé."
+          },
+          "404": {
+            "description": "Projet, carte ou exécution absent."
+          },
+          "409": {
+            "description": "Version périmée, réservation invalide ou transition interdite."
+          },
+          "400": {
+            "description": "Corps invalide."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "message": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000
+                  }
+                },
+                "required": [
+                  "version",
+                  "message"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/cards/{cardId}/work/{executionId}/accept": {
+      "post": {
+        "summary": "Valider le dernier résultat",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          },
+          {
+            "name": "cardId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          },
+          {
+            "name": "executionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Action réussie.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Execution"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Identité requise."
+          },
+          "403": {
+            "description": "Projet ou action non autorisé."
+          },
+          "404": {
+            "description": "Projet, carte ou exécution absent."
+          },
+          "409": {
+            "description": "Version périmée, réservation invalide ou transition interdite."
+          },
+          "400": {
+            "description": "Corps invalide."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": [
+                  "version"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/cards/{cardId}/work/{executionId}/reject": {
+      "post": {
+        "summary": "Demander des corrections",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          },
+          {
+            "name": "cardId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          },
+          {
+            "name": "executionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Action réussie.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Execution"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Identité requise."
+          },
+          "403": {
+            "description": "Projet ou action non autorisé."
+          },
+          "404": {
+            "description": "Projet, carte ou exécution absent."
+          },
+          "409": {
+            "description": "Version périmée, réservation invalide ou transition interdite."
+          },
+          "400": {
+            "description": "Corps invalide."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "message": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000
+                  }
+                },
+                "required": [
+                  "version",
+                  "message"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/cards/{cardId}/work/{executionId}/cancel": {
+      "post": {
+        "summary": "Annuler cette exécution",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          },
+          {
+            "name": "cardId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          },
+          {
+            "name": "executionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Action réussie.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Execution"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Identité requise."
+          },
+          "403": {
+            "description": "Projet ou action non autorisé."
+          },
+          "404": {
+            "description": "Projet, carte ou exécution absent."
+          },
+          "409": {
+            "description": "Version périmée, réservation invalide ou transition interdite."
+          },
+          "400": {
+            "description": "Corps invalide."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "message": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000
+                  }
+                },
+                "required": [
+                  "version",
+                  "message"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agents": {
+      "get": {
+        "summary": "Administrateur : consulter les identités agent",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Action réussie.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Agent"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Identité requise."
+          },
+          "403": {
+            "description": "Projet ou action non autorisé."
+          },
+          "404": {
+            "description": "Projet, carte ou exécution absent."
+          },
+          "409": {
+            "description": "Version périmée, réservation invalide ou transition interdite."
+          }
+        }
+      },
+      "post": {
+        "summary": "Administrateur : créer le seul agent actif et sa clé",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Action réussie.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "agent": {
+                          "$ref": "#/components/schemas/Agent"
+                        },
+                        "token": {
+                          "type": "string",
+                          "pattern": "^[a-f0-9]{64}$"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Identité requise."
+          },
+          "403": {
+            "description": "Projet ou action non autorisé."
+          },
+          "404": {
+            "description": "Projet, carte ou exécution absent."
+          },
+          "409": {
+            "description": "Version périmée, réservation invalide ou transition interdite."
+          },
+          "400": {
+            "description": "Corps invalide."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "projectIds": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 100,
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "name",
+                  "projectIds"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agents/{agentId}": {
+      "put": {
+        "summary": "Administrateur : modifier les projets autorisés",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "agentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Action réussie.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "agent": {
+                          "$ref": "#/components/schemas/Agent"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Identité requise."
+          },
+          "403": {
+            "description": "Projet ou action non autorisé."
+          },
+          "404": {
+            "description": "Projet, carte ou exécution absent."
+          },
+          "409": {
+            "description": "Version périmée, réservation invalide ou transition interdite."
+          },
+          "400": {
+            "description": "Corps invalide."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "projectIds": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 100,
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "name",
+                  "projectIds"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Administrateur : révoquer la clé",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "agentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Action réussie.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "revoked": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Identité requise."
+          },
+          "403": {
+            "description": "Projet ou action non autorisé."
+          },
+          "404": {
+            "description": "Projet, carte ou exécution absent."
+          },
+          "409": {
+            "description": "Version périmée, réservation invalide ou transition interdite."
+          }
+        }
+      }
     }
   },
   "components": {
@@ -706,6 +2192,11 @@
         "in": "cookie",
         "name": "planifikateur_session",
         "description": "Session personnelle d’un compte actif ; seuls les administrateurs accèdent aux sauvegardes et à la gestion des comptes."
+      },
+      "agentAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Clé d’identité agent créée par un administrateur, distincte de PLANIFIKATEUR_READ_TOKEN, limitée aux projets autorisés."
       }
     },
     "schemas": {
@@ -984,6 +2475,125 @@
           },
           "name": {
             "type": "string"
+          }
+        }
+      },
+      "Execution": {
+        "type": "object",
+        "required": [
+          "id",
+          "projectId",
+          "cardId",
+          "state",
+          "version",
+          "objective",
+          "criteria",
+          "requestedBy",
+          "updates",
+          "exchanges",
+          "submissions"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "cardId": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "running",
+              "waiting",
+              "review",
+              "interrupted",
+              "done",
+              "cancelled"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "objective": {
+            "type": "string"
+          },
+          "criteria": {
+            "type": "string"
+          },
+          "context": {
+            "type": "string"
+          },
+          "requestedBy": {
+            "$ref": "#/components/schemas/Author"
+          },
+          "agent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Author"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cardSnapshot": {
+            "$ref": "#/components/schemas/Card"
+          },
+          "leaseExpiresAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "updates": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "exchanges": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "submissions": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "Agent": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "projectIds",
+          "active"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "projectIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "active": {
+            "type": "boolean"
           }
         }
       }

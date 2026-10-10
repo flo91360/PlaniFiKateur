@@ -63,3 +63,5 @@ Les navigateurs sans saisie en cours reçoivent les projets restaurés par l’a
 - Tester une restauration sur une **base de test distincte** avant d’en avoir besoin en production.
 
 Les tests automatisés vérifient déjà les copies depuis WAL, leur rétention, la restauration, les fichiers invalides et l’accès réservé à l’administrateur. Ils ne prouvent pas la configuration effective du volume Railway ; cette vérification doit être faite sur le service hébergé.
+
+Les sauvegardes comprennent également les identités d’agents et les exécutions. La restauration du contenu conserve leur historique actuel, mais annule les exécutions actives et leurs réservations pour éviter une validation sur une demande restaurée. Voir [le guide agent](agents.md).
