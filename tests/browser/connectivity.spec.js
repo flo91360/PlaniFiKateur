@@ -327,3 +327,20 @@ test.describe('first account setup', () => {
     await expect(page.locator('.card-authorship')).toContainText('Auteur inconnu');
   });
 });
+
+test('follows an existing card without being its author and keeps the setting after reload', async ({ page, appServer }) => {
+  await login(page, appServer);
+  const card = seed[0].cards[0];
+  await page.getByRole('heading', { name: card.title, exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Suivre la carte', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Suivre la carte', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Ne plus suivre', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.reload();
+  await expect(page.locator('.project-heading h1')).toHaveText('PlaniFiKateur');
+  await page.getByRole('heading', { name: card.title, exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Ne plus suivre', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Ne plus suivre', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Suivre la carte', exact: true })).toHaveAttribute('aria-pressed', 'false');
+  await page.getByRole('button', { name: 'Actualiser l’historique', exact: true }).click();
+  await expect(page.locator('.activity-list')).toContainText('Alice ne suit plus la carte');
+});

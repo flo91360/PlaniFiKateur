@@ -121,6 +121,17 @@ export function createApi(store, config = {}) {
         }
         return true;
       }
+      const subscription = /^\/api\/v1\/projects\/([a-zA-Z0-9_-]+)\/cards\/([a-zA-Z0-9_-]+)\/subscription$/.exec(path);
+      if (subscription) {
+        const user = requireAccount(req);
+        if (req.method === 'GET') send(res, 200, { data: store.subscription(subscription[1], subscription[2], user.id) });
+        else if (req.method === 'PUT') {
+          const data = await body(req);
+          if (typeof data?.following !== 'boolean') throw httpError(400, 'invalid_subscription', 'following doit être un booléen.');
+          send(res, 200, { data: store.setSubscription(subscription[1], subscription[2], requireAccount(req), data.following) });
+        } else throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
+        return true;
+      }
       const history = /^\/api\/v1\/projects\/([a-zA-Z0-9_-]+)(?:\/cards\/([a-zA-Z0-9_-]+))?\/activity$/.exec(path);
       if (path === '/api/v1/activity' || history) {
         requireAccount(req);

@@ -1,4 +1,4 @@
-# Comptes individuels et historique — v0.1.7
+# Comptes individuels et historique — v0.1.8
 
 ## Migration sur Railway
 
@@ -63,9 +63,9 @@ Les événements comprennent l’acteur, la date, le projet et la carte concern�
 
 ## Préparation des notifications
 
-Les événements de cartes conservent `recipientIds`, calculés à partir du créateur et des auteurs identifiés des commentaires, en excluant la personne qui effectue l’action. Les destinataires sont des identifiants de comptes stables ; leurs adresses restent dans la table des comptes, sans être exposées par l’API de cartes.
+Les événements de cartes conservent `recipientIds`, calculés à partir du créateur, des auteurs identifiés des commentaires et des abonnés explicites, en excluant les désabonnés, les comptes inactifs et la personne qui effectue l’action. Les destinataires sont des identifiants de comptes stables ; leurs adresses restent dans la table des comptes, sans être exposées par l’API de cartes.
 
-Cela prépare les futures notifications. **Aucune notification n’est envoyée** dans cette version : canal, préférences, mentions, assignation et traitement des événements restent à ajouter. Une notification future devra vérifier que le destinataire est encore actif et respecte ses préférences.
+Cela prépare les futures notifications. **Aucune notification n’est envoyée** dans cette version : canal, mentions, assignation et traitement des événements restent à ajouter. Une notification future devra vérifier que le destinataire est encore actif et respecte ses préférences.
 
 ## Sauvegardes
 
@@ -92,3 +92,33 @@ La commande `db:restore` restaure **le contenu des projets**, conserve les compt
 | `GET /api/v1/projects/{projectId}/cards/{cardId}/activity` | Historique d’une carte, même supprimée |
 
 Les routes d’historique acceptent `limit` (1 à 100, défaut 50) et `before` (id d’événement exclusif). `meta.nextBefore` permet de charger la page suivante. Les routes de consultation des cartes conservent le projet obligatoire et la clé de lecture agent.
+
+## Suivre une carte
+
+Chaque compte peut utiliser « Suivre la carte » dans son détail, même sans être
+son auteur. Le créateur et les auteurs de commentaires suivent automatiquement
+la carte, sauf désabonnement explicite. « Ne plus suivre » désactive également
+ce suivi automatique. Le choix est personnel et persiste après reconnexion ou
+redémarrage du serveur ; il apparaît dans l’historique.
+
+La préférence est conservée dans SQLite séparément du contenu : une sauvegarde
+de carte concurrente ne l’écrase pas. Les comptes désactivés et l’auteur de
+l’action sont exclus des `recipientIds`. Les événements de modification,
+commentaire, statut et suppression incluent les abonnés actifs. Les changements
+d’abonnement eux-mêmes ne génèrent pas de destinataires.
+
+Routes réservées aux sessions personnelles, toujours avec le projet :
+
+- `GET /api/v1/projects/{projectId}/cards/{cardId}/subscription` renvoie
+  `{ "data": { "following": true } }` (ou `false`).
+- `PUT` sur la même route avec `{ "following": true }` ou `false` définit
+  uniquement le choix du compte connecté. Répéter le même choix est sans effet.
+
+Ces routes sont inaccessibles à la clé de consultation des agents. Une carte
+absente du projet demandé renvoie 404. Elles ne modifient pas la révision du
+contenu. Les préférences sont incluses dans les sauvegardes SQLite ; la
+restauration du contenu conserve les préférences actuelles des cartes encore
+présentes et retire celles des cartes supprimées.
+
+L’envoi de notifications reste une prochaine étape : cette version mémorise les
+abonnements et prépare les destinataires, sans envoyer d’e-mail ni d’alerte.

@@ -14,6 +14,7 @@ export function createStore(filename) {
   db.exec(`PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;
     CREATE TABLE IF NOT EXISTS workspace (id INTEGER PRIMARY KEY CHECK(id = 1), revision INTEGER NOT NULL, projects TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, name TEXT NOT NULL, password_hash TEXT, role TEXT NOT NULL CHECK(role IN ('admin','member')), active INTEGER NOT NULL DEFAULT 1, invite_hash TEXT, invite_expires INTEGER, created_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS card_subscriptions (card_id TEXT NOT NULL, user_id TEXT NOT NULL, following INTEGER NOT NULL CHECK(following IN (0,1)), PRIMARY KEY(card_id,user_id));
     CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS activity (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, actor_id TEXT, actor_name TEXT NOT NULL, action TEXT NOT NULL, project_id TEXT, card_id TEXT, revision INTEGER, payload TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS activity_project ON activity(project_id, id);
@@ -22,7 +23,35 @@ export function createStore(filename) {
   const transaction = fn => { db.exec('BEGIN IMMEDIATE'); try { const result = fn(); db.exec('COMMIT'); return result; } catch (error) { db.exec('ROLLBACK'); throw error; } };
   const audit = (actor, action, payload = {}, revision = null) => db.prepare('INSERT INTO activity(date,actor_id,actor_name,action,project_id,card_id,revision,payload) VALUES(?,?,?,?,?,?,?,?)').run(new Date().toISOString(), actor?.id || null, actor?.name || 'Administration', action, payload.projectId || null, payload.cardId || null, revision, JSON.stringify(payload));
   const userById = id => db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  const findCard = (projectId, cardId) => {
+    const row = db.prepare('SELECT projects FROM workspace WHERE id = 1').get();
+    const project = JSON.parse(row.projects).find(p => p.id === projectId);
+    const card = project?.cards.find(c => c.id === cardId);
+    if (!card) fail(404, 'card_not_found', 'Carte inexistante dans ce projet.');
+    return { project, card };
+  };
+  const preferences = cardId => db.prepare('SELECT user_id,following FROM card_subscriptions WHERE card_id = ?').all(cardId);
+  const participants = card => [card.createdBy?.id, ...card.comments.map(c => c.authorId)].filter(Boolean);
+  const following = (card, userId) => {
+    const preference = preferences(card.id).find(row => row.user_id === userId);
+    return preference ? !!preference.following : participants(card).includes(userId);
+  };
   return {
+    subscription(projectId, cardId, userId) {
+      const { card } = findCard(projectId, cardId);
+      return { following: following(card, userId) };
+    },
+    setSubscription(projectId, cardId, actor, enabled) {
+      return transaction(() => {
+        const { project, card } = findCard(projectId, cardId);
+        const previous = preferences(cardId).find(row => row.user_id === actor.id);
+        if (!previous || !!previous.following !== enabled) {
+          db.prepare('INSERT INTO card_subscriptions VALUES(?,?,?) ON CONFLICT(card_id,user_id) DO UPDATE SET following = excluded.following').run(cardId, actor.id, enabled ? 1 : 0);
+          audit(actor, enabled ? 'card.followed' : 'card.unfollowed', { projectId, projectName: project.name, cardId, cardTitle: card.title, recipientIds: [] });
+        }
+        return { following: enabled };
+      });
+    },
     backupVersion() { return `${this.getRevision()}:${db.prepare('SELECT COALESCE(MAX(id),0) AS id FROM activity').get().id}`; },
     getRevision() { return db.prepare('SELECT revision FROM workspace WHERE id = 1').get().revision; },
     snapshot(target) { db.prepare('VACUUM INTO ?').run(target); },
@@ -34,7 +63,19 @@ export function createStore(filename) {
         const clean = validateWorkspace(projects), date = new Date().toISOString();
         const events = restore ? [{ action: 'workspace.restored' }] : attributeChanges(validateWorkspace(before.projects), clean, actor, date);
         db.prepare('UPDATE workspace SET projects = ?, revision = revision + 1, updated_at = ? WHERE id = 1').run(JSON.stringify(clean), date);
-        for (const event of events) audit(actor, event.action, event, revision + 1);
+        const activeUsers = new Set(db.prepare('SELECT id FROM users WHERE active = 1 AND password_hash IS NOT NULL').all().map(user => user.id));
+        for (const event of events) {
+          if (event.cardId) {
+            const prefs = preferences(event.cardId);
+            const optedOut = new Set(prefs.filter(p => !p.following).map(p => p.user_id));
+            event.recipientIds = [...new Set([...(event.recipientIds || []), ...prefs.filter(p => p.following).map(p => p.user_id)])].filter(id => id !== actor?.id && activeUsers.has(id) && !optedOut.has(id));
+          }
+          audit(actor, event.action, event, revision + 1);
+        }
+        const survivingCards = new Set(clean.flatMap(p => p.cards.map(c => c.id)));
+        for (const { card_id } of db.prepare('SELECT DISTINCT card_id FROM card_subscriptions').all()) {
+          if (!survivingCards.has(card_id)) db.prepare('DELETE FROM card_subscriptions WHERE card_id = ?').run(card_id);
+        }
         return this.read();
       });
     },

@@ -208,3 +208,6 @@ input::placeholder, textarea::placeholder { color: #a1ac96; }
 .activity-list p { font-size: 12px; margin: 0 0 6px; }
 .activity-list time, .card-authorship { font-size: 11px; color: #718071; line-height: 1.6; }
 .header-avatar { border: 0; cursor: pointer; }
+
+.card-subscription p { font-size: 12px; line-height: 1.6; color: var(--muted); }
+.card-subscription button { width: 100%; }

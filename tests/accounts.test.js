@@ -154,3 +154,70 @@ test('a change committed during snapshot creation is still captured by the next 
   await new Promise(resolve => setTimeout(resolve, 40));
   assert.equal(backups.list().length, 2);
 });
+
+test('personal card subscriptions are scoped, persistent, independent of workspace saves and used for recipients', async t => {
+  const f = await fixture(t), admin = await f.login(), member = await inviteMember(f, admin);
+  const alice = f.store.userByEmail(testEmail), bob = member.user;
+  const project = f.store.read().projects[0], card = project.cards[0];
+  const path = `/projects/${project.id}/cards/${card.id}/subscription`;
+  assert.equal((await f.request(path)).status, 401);
+  assert.equal((await f.request(path, { headers: { Authorization: 'Bearer agent-test-key' } })).status, 401);
+  assert.equal((await f.request(`/projects/wrong/cards/${card.id}/subscription`, { cookie: member.cookie })).status, 404);
+  assert.equal((await f.request(path, { method: 'PUT', cookie: member.cookie, data: { following: 'yes' } })).status, 400);
+  const stale = f.store.read(), version = f.store.backupVersion();
+  assert.equal((await (await f.request(path, { cookie: member.cookie })).json()).data.following, false);
+  await f.request(path, { method: 'PUT', cookie: member.cookie, data: { following: true, userId: alice.id } });
+  assert.notEqual(f.store.backupVersion(), version);
+  assert.equal(f.store.getRevision(), stale.revision);
+  assert.equal(f.store.subscription(project.id, card.id, alice.id).following, false);
+  const followedVersion = f.store.backupVersion();
+  await f.request(path, { method: 'PUT', cookie: member.cookie, data: { following: true } });
+  assert.equal(f.store.backupVersion(), followedVersion);
+  stale.projects[0].cards[0].description += ' changed';
+  f.store.write(stale.projects, stale.revision, alice);
+  assert.equal(f.store.subscription(project.id, card.id, bob.id).following, true);
+  assert.deepEqual(f.store.activity({ cardId: card.id }).find(e => e.action === 'card.updated').recipientIds, [bob.id]);
+  const restarted = await f.restart();
+  assert.equal((await (await fetch(restarted + path, { headers: { Cookie: member.cookie } })).json()).data.following, true);
+  f.store.setSubscription(project.id, card.id, bob, false);
+  let snapshot = f.store.read(); snapshot.projects[0].cards[0].title += ' again'; f.store.write(snapshot.projects, snapshot.revision, alice);
+  assert.deepEqual(f.store.activity({ cardId: card.id }).find(e => e.action === 'card.updated').recipientIds, []);
+  f.store.setSubscription(project.id, card.id, bob, true);
+  f.store.setActive(bob.id, false, alice);
+  snapshot = f.store.read(); snapshot.projects[0].cards[0].title += ' disabled'; f.store.write(snapshot.projects, snapshot.revision, alice);
+  assert.deepEqual(f.store.activity({ cardId: card.id }).find(e => e.action === 'card.updated').recipientIds, []);
+  f.store.setActive(bob.id, true, alice);
+  snapshot = f.store.read(); snapshot.projects[0].cards = snapshot.projects[0].cards.filter(c => c.id !== card.id); f.store.write(snapshot.projects, snapshot.revision, alice);
+  assert.deepEqual(f.store.activity({ cardId: card.id }).find(e => e.action === 'card.deleted').recipientIds, [bob.id]);
+  snapshot = f.store.read(); snapshot.projects[0].cards.push(card); f.store.write(snapshot.projects, snapshot.revision, alice, { restore: true });
+  assert.equal(f.store.subscription(project.id, card.id, bob.id).following, false);
+});
+
+test('authors can opt out of automatic following and subscribers never receive their own actions', async t => {
+  const f = await fixture(t), admin = await f.login(), member = await inviteMember(f, admin);
+  const alice = f.store.userByEmail(testEmail), bob = member.user;
+  let snapshot = f.store.read();
+  const project = snapshot.projects[0];
+  const card = structuredClone(project.cards[0]); card.id = 'new-followed-card'; card.comments = []; card.checklist = [];
+  project.cards.push(card); f.store.write(snapshot.projects, snapshot.revision, alice);
+  assert.equal(f.store.subscription(project.id, card.id, alice.id).following, true);
+  f.store.setSubscription(project.id, card.id, alice, false);
+  snapshot = f.store.read(); snapshot.projects[0].cards.find(c => c.id === card.id).title += ' Bob'; f.store.write(snapshot.projects, snapshot.revision, bob);
+  assert.deepEqual(f.store.activity({ cardId: card.id }).find(e => e.action === 'card.updated').recipientIds, []);
+  f.store.setSubscription(project.id, card.id, bob, true);
+  snapshot = f.store.read(); snapshot.projects[0].cards.find(c => c.id === card.id).title += ' Bob again'; f.store.write(snapshot.projects, snapshot.revision, bob);
+  assert.deepEqual(f.store.activity({ cardId: card.id }).find(e => e.action === 'card.updated').recipientIds, []);
+});
+
+test('SQLite snapshots include subscriptions while content restoration preserves current preferences', async t => {
+  const f = await fixture(t), alice = f.store.userByEmail(testEmail);
+  const project = f.store.read().projects[0], card = project.cards[0];
+  f.store.setSubscription(project.id, card.id, alice, true);
+  const file = join(f.dir, 'subscription-backup.sqlite'); f.store.snapshot(file);
+  const reopened = createStore(file);
+  assert.equal(reopened.subscription(project.id, card.id, alice.id).following, true);
+  reopened.close();
+  f.store.setSubscription(project.id, card.id, alice, false);
+  restoreBackup(f.store, file, () => {});
+  assert.equal(f.store.subscription(project.id, card.id, alice.id).following, false);
+});
