@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "PlaniFiKateur — API de consultation et travail agent",
-    "version": "0.1.11",
+    "version": "0.1.12",
     "description": "Consultation par clé de lecture ou session personnelle. Un agent actif possède une clé distincte, limitée à ses projets, pour réserver, poser des questions et soumettre un résultat. Seuls les comptes humains peuvent préparer et valider le travail. Voir docs/agents.md."
   },
   "servers": [
@@ -832,7 +832,7 @@
         }
       },
       "post": {
-        "summary": "Préparer une carte pour l’agent",
+        "summary": "Préparer l’exécution à partir de la description et des critères enregistrés dans la carte",
         "security": [
           {
             "ownerSession": []
@@ -897,20 +897,6 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "objective": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 20000
-                  },
-                  "criteria": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 20000
-                  },
-                  "context": {
-                    "type": "string",
-                    "maxLength": 20000
-                  },
                   "delivery": {
                     "type": "string",
                     "enum": [
@@ -920,14 +906,12 @@
                     "default": "manual"
                   }
                 },
-                "required": [
-                  "objective",
-                  "criteria"
-                ]
+                "required": []
               }
             }
           }
-        }
+        },
+        "description": "Description non vide et au moins un critère dans card.checklist requis. objective, criteria et context sont calculés depuis la carte, sans champs supplémentaires à saisir."
       }
     },
     "/api/v1/projects/{projectId}/cards/{cardId}/work/{executionId}/claim": {
@@ -2917,6 +2901,13 @@
               "string",
               "null"
             ]
+          },
+          "requestSource": {
+            "type": "string",
+            "enum": [
+              "card"
+            ],
+            "description": "Présent pour les nouvelles exécutions dont la demande vient de la carte. Les exécutions historiques peuvent ne pas avoir ce champ."
           }
         }
       },

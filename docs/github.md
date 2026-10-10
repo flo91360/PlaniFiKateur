@@ -44,7 +44,8 @@ les interfaces GitHub et Railway. Aucune fusion réelle n’a été vérifiée.
 
 ## Parcours de l’agent
 
-1. Préparer une carte avec **Livraison → PR GitHub · fusion automatique**.
+1. Renseigner la description et les critères d’acceptation de la carte, puis
+   préparer le travail avec **Livraison → PR GitHub · fusion automatique**.
    Le serveur exige un dépôt et un secret de webhook configurés. L’API utilise
    `delivery: "github"` ; les anciennes exécutions restent inchangées.
 2. Réserver l’exécution et travailler sur une branche issue de `main` à jour.

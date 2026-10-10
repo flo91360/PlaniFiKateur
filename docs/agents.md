@@ -6,8 +6,9 @@ ou service GitHub n’est lancé automatiquement par cette version.
 
 ## Utilisation dans le site
 
-1. Ouvrir une carte. Dans **Travail IA**, renseigner l’objectif, les critères
-   d’acceptation et, si nécessaire, le contexte et les contraintes.
+1. Ouvrir une carte. Renseigner sa **Description** avec la demande, le résultat
+   attendu et les contraintes, puis compléter sa liste de **Critères d’acceptation**.
+   Ces informations sont les seules sources de la demande transmise à l’agent.
 2. Cliquer **Prête pour un agent**. Cette action crée une exécution persistante.
 3. L’agent prend la tâche et signale son avancement. Une question fait apparaître
    **À préciser**. Répondre puis cliquer **Répondre et reprendre**.
@@ -60,7 +61,7 @@ utilisent `{ "data": ... }`, les erreurs `{ "error": { "code", "message" } }`.
 | `DELETE /api/v1/agents/{id}` | Administrateur | Révoquer la clé |
 | `GET /api/v1/projects/{projet}/work` | Agent | File des exécutions prêtes ou interrompues |
 | `GET /api/v1/projects/{projet}/cards/{carte}/work` | Membre ou agent autorisé | Historique des exécutions, sans réservation secrète |
-| `POST` sur cette dernière route | Membre | Préparer avec `{objective, criteria, context}` |
+| `POST` sur cette dernière route | Membre | Préparer avec `{delivery}` ou `{}` ; demande issue de la carte |
 | `POST .../work/{execution}/{action}` | Selon l’action ci-dessous | Transition contrôlée |
 
 Les actions d’agent :
@@ -162,3 +163,22 @@ parcours sur ordinateur et mobile.
 ## Livraisons GitHub — v0.1.11
 
 Pour une exécution préparée avec `delivery: "github"`, la soumission inclut `pullRequest: {url, headSha}`. Le résultat passe `merging` et ne demande aucune validation humaine ; il sera terminé après fusion GitHub confirmée par webhook signé. Les contrôles échoués remettent le travail en file. Voir [le parcours GitHub](github.md) pour la configuration et l’action `revise`. Les exécutions sans PR conservent le parcours décrit ci-dessus.
+
+## Une seule demande par carte — v0.1.12
+
+La description tient lieu d’objectif pour l’agent, et les critères sont ceux de
+`card.checklist`. Aucun champ séparé d’objectif, critères ou contexte n’est demandé
+pour lancer le travail. La description doit être non vide et au moins un critère
+doit être enregistré avant de préparer la carte.
+
+`POST .../cards/{carte}/work` reçoit `{}` ou `{ "delivery": "github" }`.
+Le serveur calcule `objective` à partir de la description et `criteria` à partir
+des textes de la liste, pour conserver le contrat de lecture des agents.
+`cardSnapshot` garde la demande et les critères structurés au démarrage ;
+`requestSource: "card"` identifie ces nouvelles exécutions. D’anciens paramètres
+`objective`, `criteria` ou `context` envoyés à cette route ne remplacent pas le
+contenu de la carte.
+
+Les anciennes exécutions conservent leurs demandes et contraintes historiques.
+Elles restent consultables dans une section repliée, sans créer de nouveaux
+champs de saisie. Les exécutions précédentes gardent leur demande au démarrage.

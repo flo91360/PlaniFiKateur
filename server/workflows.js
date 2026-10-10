@@ -163,12 +163,12 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
       return transaction(() => {
         const { card } = findCard(projectId, cardId);
         if (db.prepare("SELECT id FROM executions WHERE card_id=? AND state NOT IN ('done','cancelled')").get(cardId)) fail(409, 'active_execution', 'Une exécution existe déjà. Annulez-la avant de préparer une nouvelle demande.');
-        if (data?.context != null && (typeof data.context !== 'string' || data.context.length > 20000)) fail(400, 'invalid_work', 'Contexte invalide (maximum 20000 caractères).');
         const delivery = data?.delivery || 'manual';
         if (!['manual','github'].includes(delivery)) fail(400, 'invalid_delivery', 'Mode de livraison invalide.');
         const repository = delivery === 'github' ? githubProject(projectId) : null;
         if (delivery === 'github' && !repository) fail(400, 'github_not_configured', 'Configurez le dépôt GitHub du projet.');
-        const run = { delivery, repository, id: randomUUID(), projectId, cardId, state: 'ready', version: 0, objective: text(data?.objective, 'Objectif'), criteria: text(data?.criteria, 'Critères d’acceptation'), context: typeof data?.context === 'string' && data.context.length <= 20000 ? data.context : '', requestedBy: { id: actor.id, name: actor.name }, createdAt: new Date().toISOString(), source: source(card), cardSnapshot: card, agent: null, updates: [], exchanges: [], submissions: [] };
+        if (!card.checklist.length) fail(400, 'missing_criteria', 'Ajoutez au moins un critère d’acceptation à la carte.');
+        const run = { delivery, repository, id: randomUUID(), projectId, cardId, state: 'ready', version: 0, requestSource: 'card', objective: text(card.description, 'Description de la carte'), criteria: card.checklist.map(item => item.text).join('\n'), context: '', requestedBy: { id: actor.id, name: actor.name }, createdAt: new Date().toISOString(), source: source(card), cardSnapshot: card, agent: null, updates: [], exchanges: [], submissions: [] };
         db.prepare('INSERT INTO executions(id,project_id,card_id,state,version,data) VALUES(?,?,?,?,0,?)').run(run.id, projectId, cardId, run.state, JSON.stringify(run));
         return save(run, actor, 'prepared');
       });

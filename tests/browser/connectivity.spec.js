@@ -352,16 +352,23 @@ test('one agent workflow asks questions, receives corrections and finishes only 
   const project = seed[0], card = project.cards[0];
   await page.getByRole('heading', { name: card.title, exact: true }).click();
   const panel = page.locator('.work-panel');
+  await expect(page.getByRole('heading', { name: /^Critères d’acceptation/ })).toHaveCount(1);
+  await expect(panel.getByRole('textbox', { name: 'Objectif pour l’agent', exact: true })).toHaveCount(0);
+  await expect(panel.getByRole('textbox', { name: 'Critères d’acceptation', exact: true })).toHaveCount(0);
   await panel.getByText('Connexion de l’agent (administrateur)', { exact: true }).click();
   await panel.getByRole('button', { name: 'Créer la clé de l’agent', exact: true }).click();
   await expect(panel.getByLabel('Clé de l’agent', { exact: true })).toHaveValue(/^[a-f0-9]{64}$/);
   const token = await panel.getByLabel('Clé de l’agent', { exact: true }).inputValue();
-  await panel.getByLabel('Objectif pour l’agent', { exact: true }).fill('Améliorer le menu mobile');
-  await panel.getByLabel('Critères d’acceptation', { exact: true }).fill('Raccourcis conservés et boutons lisibles');
+  await page.getByLabel('Description', { exact: true }).fill('Améliorer le menu mobile');
+  await page.getByLabel('Nouveau critère d’acceptation', { exact: true }).fill('Raccourcis conservés et boutons lisibles');
+  await page.getByRole('button', { name: 'Ajouter le critère', exact: true }).click();
+  await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
   await panel.getByRole('button', { name: 'Prête pour un agent', exact: true }).click();
   await expect(panel.locator('.work-state')).toHaveText('Prête pour l’agent');
   const queue = await request.get(`${appServer}/api/v1/projects/${project.id}/work`, { headers: { Authorization: `Bearer ${token}` } });
   expect(queue.status()).toBe(200); let run = (await queue.json()).data[0];
+  expect(run.objective).toBe('Améliorer le menu mobile');
+  expect(run.criteria).toContain('Raccourcis conservés et boutons lisibles');
   const base = `${appServer}/api/v1/projects/${project.id}/cards/${card.id}/work`;
   let leaseToken;
   const action = async (name, data = {}) => {
@@ -402,7 +409,7 @@ test('interruption and recovery remain visible without replacing a local title d
   const credentials = await page.request.post(`${appServer}/api/v1/agents`, { data: { name: 'Recovery agent', projectIds: [project.id] } });
   expect(credentials.status()).toBe(201); const token = (await credentials.json()).data.token;
   const base = `${appServer}/api/v1/projects/${project.id}/cards/${card.id}/work`;
-  const prepared = await page.request.post(base, { data: { objective: 'Tester la reprise', criteria: 'Conserver le brouillon' } });
+  const prepared = await page.request.post(base, { data: {} });
   expect(prepared.status()).toBe(201); let run = (await prepared.json()).data;
   const action = async (name, data = {}) => {
     const response = await request.post(`${base}/${run.id}/${name}`, { headers: { Authorization: `Bearer ${token}` }, data: { version: run.version, leaseToken: run.leaseToken, ...data } });
@@ -463,8 +470,10 @@ test.describe('automatic GitHub delivery', () => {
     await panel.getByLabel('Dépôt du projet', { exact: true }).fill('flo91360/PlaniFiKateur');
     await panel.getByRole('button', { name: 'Enregistrer le dépôt', exact: true }).click();
     await expect(panel.getByLabel('Livraison', { exact: true })).toHaveValue('github');
-    await panel.getByLabel('Objectif pour l’agent', { exact: true }).fill('Corriger le menu');
-    await panel.getByLabel('Critères d’acceptation', { exact: true }).fill('Tests serveur et navigateur réussis');
+    await page.getByLabel('Description', { exact: true }).fill('Corriger le menu');
+    await page.getByLabel('Nouveau critère d’acceptation', { exact: true }).fill('Tests serveur et navigateur réussis');
+    await page.getByRole('button', { name: 'Ajouter le critère', exact: true }).click();
+    await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
     await panel.getByRole('button', { name: 'Prête pour un agent', exact: true }).click();
     await expect(panel.locator('.work-state')).toHaveText('Prête pour l’agent');
     const credentials = await page.request.post(`${appServer}/api/v1/agents`, { data: { name: 'GitHub agent', projectIds: [project.id] } });

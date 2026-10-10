@@ -24,7 +24,7 @@ async function fixture(t) {
   t.after(async () => { for (const s of servers) { s.closeAllConnections(); await new Promise(resolve => s.close(resolve)); } second.close(); store.close(); rmSync(dir, { recursive: true, force: true }); });
   const path = `/projects/${project.id}/cards/${card.id}/work`;
   const request = (route, { method = 'GET', data, token, human = false, base = bases[0], headers = {} } = {}) => fetch(`${base}/api/v1${route}`, { method, headers: { ...(human ? { Cookie: cookie } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(data ? { 'Content-Type': 'application/json' } : {}), ...headers }, ...(data ? { body: JSON.stringify(data) } : {}) });
-  const prepare = async () => { const r = await request(path, { method: 'POST', human: true, data: { objective: 'Améliorer le menu', criteria: 'Utilisable sur mobile', context: 'Fournir un résumé et un livrable' } }); assert.equal(r.status, 201); return (await r.json()).data; };
+  const prepare = async () => { const r = await request(path, { method: 'POST', human: true, data: {} }); assert.equal(r.status, 201); return (await r.json()).data; };
   const action = (run, name, data = {}, options = {}) => request(`${path}/${run.id}/${name}`, { method: 'POST', token: credentials.token, data: { version: run.version, leaseToken: run.leaseToken, ...data }, ...options });
   const agentAction = async (run, name, data) => { const r = await action(run, name, data); assert.equal(r.status, 200, JSON.stringify(await r.clone().json())); return { ...(await r.json()).data, leaseToken: run.leaseToken }; };
   const claim = async run => { const r = await action(run, 'claim'); assert.equal(r.status, 200); return (await r.json()).data; };
@@ -148,4 +148,36 @@ test('reference client connects to the API and propagates unauthorized failures'
   const history = await execute(process.execPath, ['scripts/agent-client.mjs', 'history', f.project.id, f.card.id], { env });
   assert.equal(JSON.parse(history.stdout).data[0].state, 'ready');
   await assert.rejects(execute(process.execPath, ['scripts/agent-client.mjs', 'queue', f.project.id], { env: { ...env, PLANIFIKATEUR_AGENT_TOKEN: 'invalid-token' } }), error => error.code === 1 && error.stderr.includes('401') && !error.stderr.includes('invalid-token'));
+});
+
+test('preparation derives the complete request from the saved card and cannot override it with duplicate fields', async t => {
+  const f = await fixture(t), current = f.store.read().projects[0].cards[0];
+  const response = await f.request(f.path, { method: 'POST', human: true, data: { objective: 'Injected objective', criteria: 'Injected criteria', context: 'Injected context' } });
+  assert.equal(response.status, 201); const run = (await response.json()).data;
+  assert.equal(run.requestSource, 'card'); assert.equal(run.objective, current.description);
+  assert.equal(run.criteria, current.checklist.map(c => c.text).join('\n'));
+  assert.equal(run.context, ''); assert.deepEqual(run.cardSnapshot.checklist, current.checklist);
+  assert.equal(f.store.read().projects[0].cards[0].description, current.description);
+});
+
+test('preparation requires a saved description and criteria in the card itself', async t => {
+  const f = await fixture(t); let snapshot = f.store.read();
+  snapshot.projects[0].cards[0].description = ''; f.store.write(snapshot.projects, snapshot.revision, f.user);
+  const data = { objective: 'Duplicate cannot replace the description', criteria: 'Duplicate cannot replace criteria' };
+  assert.equal((await f.request(f.path, { method: 'POST', human: true, data })).status, 400);
+  snapshot = f.store.read(); snapshot.projects[0].cards[0].description = 'Actual request'; snapshot.projects[0].cards[0].checklist = []; f.store.write(snapshot.projects, snapshot.revision, f.user);
+  const response = await f.request(f.path, { method: 'POST', human: true, data });
+  assert.equal(response.status, 400); assert.equal((await response.json()).error.code, 'missing_criteria');
+  assert.equal(f.store.workflows.list(f.project.id, f.card.id).length, 0);
+});
+
+test('legacy execution requests remain intact when opening an existing database', async t => {
+  const f = await fixture(t), prepared = await f.prepare(), db = new DatabaseSync(f.file);
+  t.after(() => db.close());
+  const legacy = JSON.parse(db.prepare('SELECT data FROM executions WHERE id=?').get(prepared.id).data);
+  delete legacy.requestSource; legacy.objective = 'Objectif historique'; legacy.criteria = 'Critères historiques'; legacy.context = 'Contraintes historiques';
+  db.prepare('UPDATE executions SET data=? WHERE id=?').run(JSON.stringify(legacy), prepared.id);
+  const reopened = createStore(f.file); t.after(() => reopened.close());
+  const run = reopened.workflows.list(f.project.id, f.card.id)[0];
+  assert.equal(run.objective, 'Objectif historique'); assert.equal(run.criteria, 'Critères historiques'); assert.equal(run.context, 'Contraintes historiques');
 });
