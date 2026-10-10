@@ -10,6 +10,11 @@ export function createStore(filename) {
   db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000; CREATE TABLE IF NOT EXISTS workspace (id INTEGER PRIMARY KEY CHECK(id = 1), revision INTEGER NOT NULL, projects TEXT NOT NULL, updated_at TEXT NOT NULL)');
   db.prepare('INSERT OR IGNORE INTO workspace VALUES (1, 1, ?, ?)').run(JSON.stringify(validateWorkspace(seed)), new Date().toISOString());
   return {
+    getRevision() { return db.prepare('SELECT revision FROM workspace WHERE id = 1').get().revision; },
+    snapshot(target) {
+      // VACUUM INTO includes committed WAL data in a standalone, consistent database.
+      db.prepare('VACUUM INTO ?').run(target);
+    },
     read() {
       const row = db.prepare('SELECT * FROM workspace WHERE id = 1').get();
       return { projects: JSON.parse(row.projects), revision: row.revision, updatedAt: row.updated_at };

@@ -1,0 +1,65 @@
+# Sauvegardes et restauration
+
+À partir de la v0.1.6, le serveur crée une sauvegarde au démarrage, puis toutes les **6 heures lorsque la révision a changé**. Il crée aussi une copie avant une suppression de projet, de liste ou de carte. Une suppression n’est pas enregistrée si cette copie de sécurité échoue.
+
+Les copies utilisent `VACUUM INTO` : chaque fichier SQLite est autonome et inclut les modifications validées, même si elles étaient dans le journal WAL. Les copies sont vérifiées avant publication ; un fichier partiel n’est jamais proposé au téléchargement. Les **28 dernières copies** sont conservées, y compris celles prises au démarrage et avant suppression ; cela ne garantit pas 7 jours d’historique si vous redéployez ou supprimez souvent.
+
+## Railway
+
+Avec `PLANIFIKATEUR_DB_PATH=/data/planifikateur.sqlite` et le volume monté à `/data`, les copies vont automatiquement dans **`/data/backups`**, sur le même volume. Aucun service supplémentaire ni clé supplémentaire n’est nécessaire.
+
+Paramètres facultatifs dans les variables du service :
+
+| Variable | Défaut | Valeurs |
+| --- | --- | --- |
+| `PLANIFIKATEUR_BACKUP_DIR` | `backups` à côté de la base | Répertoire sur un volume persistant, hors du répertoire web `dist` |
+| `PLANIFIKATEUR_BACKUP_INTERVAL_HOURS` | `6` | 1 à 168 heures |
+| `PLANIFIKATEUR_BACKUP_KEEP` | `28` | 1 à 100 fichiers |
+
+Le volume doit pouvoir contenir la base et ses copies. Vous pouvez réduire le nombre de copies si l’espace est limité. Utiliser une seule instance du serveur.
+
+## Conserver une copie en dehors de Railway
+
+Dans le site connecté, ouvrir le bouton d’information puis la section **Sauvegardes**. « Créer et télécharger une sauvegarde SQLite » capture les données déjà enregistrées sur le serveur. Attendre « Sauvegardé sur le serveur » avant cette opération. Les anciennes copies sont également téléchargeables ; leurs dates sont affichées dans votre fuseau horaire.
+
+La consultation et le téléchargement des sauvegardes exigent la session propriétaire. La clé de lecture agent ne donne pas accès aux sauvegardes, qui contiennent tous les projets.
+
+**Les copies sur le même volume ne protègent pas contre la perte ou la suppression de ce volume.** Télécharger régulièrement une copie et la conserver dans un emplacement privé distinct. L’envoi automatique vers un stockage externe n’est pas configuré dans cette version. Le fichier contient les projets, cartes et commentaires ; il ne contient pas les clés d’accès configurées dans Railway.
+
+Les échecs de sauvegarde sont affichés dans cette section et dans les logs. Le serveur continue de servir les données ; la prochaine sauvegarde programmée réessaiera.
+
+## Sauvegarde depuis le serveur
+
+Dans un terminal du conteneur disposant réellement du volume Railway, ou sur votre installation locale :
+
+```sh
+npm run db:backup
+```
+
+Le chemin de la copie créée est affiché. Une commande lancée sur votre ordinateur ou dans Codex agit sur sa propre base, pas sur la base Railway. Les variables d’environnement du service doivent être présentes dans le terminal utilisé.
+
+## Restaurer une sauvegarde
+
+Cette commande remplace **tous les projets** par ceux de la sauvegarde. Avant de l’utiliser, prévenir les autres utilisateurs et leur demander de fermer leurs cartes en cours d’édition.
+
+1. Mettre le fichier de sauvegarde dans le conteneur ou choisir une copie existante dans `/data/backups`.
+2. Vérifier que `PLANIFIKATEUR_DB_PATH` désigne bien la base à restaurer et que le fichier source est distinct.
+3. Exécuter dans le terminal du serveur :
+
+```sh
+npm run db:restore -- /data/backups/nom-de-la-sauvegarde.sqlite --confirm
+```
+
+Le fichier est vérifié avant toute écriture. Une copie de l’état actuel est créée avant la restauration. Si la validation ou cette copie échoue, les projets ne sont pas remplacés. La restauration utilise la connexion SQLite et une écriture transactionnelle ; il ne faut ni remplacer à la main un fichier ouvert, ni supprimer ses fichiers WAL/SHM.
+
+Les identifiants, listes, cartes, commentaires et critères de la sauvegarde sont conservés. La révision du serveur **augmente**, pour que les anciennes sessions ne puissent pas écraser les données restaurées. Si une écriture concurrente a lieu entre la lecture et la restauration, la commande refuse l’écrasement.
+
+Les navigateurs sans saisie en cours reçoivent les projets restaurés par l’actualisation automatique. Les utilisateurs qui éditaient doivent exporter leurs modifications éventuelles et recharger le tableau en cas de conflit. Aucun redémarrage du serveur n’est nécessaire.
+
+## Vérifier après déploiement
+
+- Créer une carte, attendre sa sauvegarde et télécharger une copie SQLite.
+- Vérifier que la section Sauvegardes liste des copies après un redéploiement du service.
+- Tester une restauration sur une **base de test distincte** avant d’en avoir besoin en production.
+
+Les tests automatisés vérifient déjà les copies depuis WAL, leur rétention, la restauration, les fichiers invalides et l’accès réservé au propriétaire. Ils ne prouvent pas la configuration effective du volume Railway ; cette vérification doit être faite sur le service hébergé.

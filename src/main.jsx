@@ -11,6 +11,7 @@ import './style.css';
 import { createId as uid } from './lib/id.js';
 import { useWorkspace, offlineMode, exportWorkspace } from './lib/use-workspace.js';
 import { validateWorkspace } from './lib/workspace.js';
+import BackupsPanel from './components/BackupsPanel.jsx';
 
 const statuses = { draft: { label: 'À explorer', icon: Circle }, ready: { label: 'Prête à démarrer', icon: ArrowRight }, progress: { label: 'En cours', icon: Clock3 }, clarify: { label: 'À préciser', icon: CircleHelp }, review: { label: 'À valider', icon: CheckCheck }, done: { label: 'Terminée', icon: Check } };
 const priorities = { low: 'Basse', normal: 'Normale', high: 'Haute' };
@@ -64,24 +65,35 @@ function ConnectionScreen({ needsLogin, error, onLogin, onRetry }) {
 }
 
 function App() {
-  const workspace = useWorkspace();
+  const [modal, setModal] = useState(null);
+  const [selectedId, setSelectedId] = useState(null);
+  const [dragging, setDragging] = useState(null);
+  const workspace = useWorkspace({ pauseRefresh: !!modal || !!selectedId || !!dragging });
   const { projects, setProjects, ready, needsLogin, loadError, saveStatus, saveError } = workspace;
   const [projectId, setProjectId] = useState(projects[0]?.id ?? null);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [modal, setModal] = useState(null);
-  const [selectedId, setSelectedId] = useState(null);
   const [sidebar, setSidebar] = useState(false);
   const storageError = offlineMode && saveStatus === 'error';
   const [importError, setImportError] = useState('');
-  const [dragging, setDragging] = useState(null);
   const [dropList, setDropList] = useState(null);
   const [notice, setNotice] = useState('');
   const project = projects.find(p => p.id === projectId) || projects[0];
   const selected = project?.cards.find(c => c.id === selectedId);
   useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(''), 3500); return () => clearTimeout(timer); }, [notice]);
-  const updateProject = transform => setProjects(ps => ps.map(p => p.id === project.id ? transform(p) : p));
-  const updateCard = (id, patch) => updateProject(p => ({ ...p, cards: p.cards.map(c => c.id === id ? { ...c, ...patch } : c) }));
+  const updateProject = transform => setProjects(ps => {
+    let changed = false;
+    const next = ps.map(p => {
+      if (p.id !== project.id) return p;
+      const updated = transform(p); changed ||= updated !== p; return updated;
+    });
+    return changed ? next : ps;
+  });
+  const updateCard = (id, patch) => updateProject(p => {
+    const card = p.cards.find(c => c.id === id);
+    if (!card || Object.entries(patch).every(([key, value]) => JSON.stringify(card[key]) === JSON.stringify(value))) return p;
+    return { ...p, cards: p.cards.map(c => c.id === id ? { ...c, ...patch } : c) };
+  });
   const chooseProject = id => { setProjectId(id); setQuery(''); setStatusFilter('all'); setSelectedId(null); setSidebar(false); };
   const matches = c => (statusFilter === 'all' || c.status === statusFilter) && `${c.title} ${c.description} ${c.tags.join(' ')}`.toLocaleLowerCase('fr').includes(query.toLocaleLowerCase('fr').trim());
   const done = (project?.cards || []).filter(c => c.status === 'done').length;
@@ -101,11 +113,12 @@ function App() {
       <nav aria-label="Projets">{projects.map(p => <button key={p.id} className={`project-link ${project?.id === p.id ? 'active' : ''}`} onClick={() => chooseProject(p.id)}><span className="project-symbol" style={{ color: p.color }}>{p.emoji}</span><span>{p.name}</span><span className="project-count">{p.cards.length}</span></button>)}</nav>
       <button className="new-project" onClick={() => setModal('project')}><Plus size={16} />Nouveau projet</button>
       <div className="sidebar-tip"><span className="tip-icon"><Sparkles size={19} /></span><h3>Les idées d’abord.<br />Les agents, bientôt.</h3><p>Préparez vos demandes aujourd’hui. Vos agents pourront prendre le relais demain.</p><span className="coming-soon">EN PRÉPARATION</span></div>
-      <div className="sidebar-footer"><span className="user-avatar">V</span><div>Votre espace<small>v0.1.5 · {offlineMode ? 'données locales' : 'connecté au serveur'}</small></div><span className="online-dot" /></div>
+      <div className="sidebar-footer"><span className="user-avatar">V</span><div>Votre espace<small>v0.1.6 · {offlineMode ? 'données locales' : 'connecté au serveur'}</small></div><span className="online-dot" /></div>
     </aside>
     <main>
       <header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" aria-label="Ouvrir les projets" onClick={() => setSidebar(true)}><Menu size={20} /></button><FolderKanban size={17} /><span>Mes projets</span><ChevronRight size={14} /><strong>{project?.name || 'Votre espace'}</strong></div><div className="topbar-right"><span className="save-indicator"><span className={saveStatus === 'error' || saveStatus === 'conflict' ? 'error-dot' : 'online-dot'} />{saveStatus === 'saving' ? 'Enregistrement…' : saveStatus !== 'saved' ? 'Sauvegarde indisponible' : offlineMode ? 'Sauvegardé sur cet appareil' : 'Sauvegardé sur le serveur'}</span><button className="icon-button" aria-label="Informations sur le prototype" onClick={() => setModal('info')}><CircleHelp size={19} /></button><span className="header-avatar">V</span></div></header>
       <div className="page-content">
+        {!offlineMode && workspace.syncError && <div className="sync-warning" role="status"><p>{workspace.syncError}</p><button className="secondary-button" onClick={workspace.refresh}>Réessayer l’actualisation</button></div>}
         {!offlineMode && saveStatus !== 'saved' && saveStatus !== 'saving' && <div className="sync-warning" role="alert"><p>{saveError} Vos modifications restent dans cette page.</p><button className="secondary-button" onClick={() => exportWorkspace(projects)}>Exporter mes modifications</button>{saveStatus === 'conflict' ? <button className="secondary-button" onClick={() => setModal('reload')}>Recharger le tableau</button> : <button className="secondary-button" onClick={workspace.retrySave}>Réessayer la sauvegarde</button>}</div>}
         {project ? <><div className="project-heading"><div className="project-title"><span className="large-symbol" style={{ background: project.color }}>{project.emoji}</span><div><div className="eyebrow">DE L’IDÉE À LA RÉALISATION</div><h1>{project.name}</h1><p>{project.description}</p></div></div><button className="delete-button project-delete" onClick={() => setModal({ type: 'delete-project', projectId: project.id })}><Trash2 size={16} />Supprimer le projet</button></div>
         <div className="stats"><div className="stat"><span className="stat-icon neutral"><Lightbulb size={18} /></span><div><strong>{total}<small>idées au total</small></strong><span>Toutes vos pistes, au même endroit</span></div></div><div className="stat"><span className="stat-icon blue"><Clock3 size={18} /></span><div><strong>{progress}<small>en cours</small></strong><span>Des idées qui prennent forme</span></div></div><div className="stat"><span className="stat-icon amber"><CircleHelp size={18} /></span><div><strong>{clarify}<small>à préciser</small></strong><span>Un peu de contexte pour avancer</span></div></div><div className="stat"><span className="stat-icon green"><CheckCheck size={18} /></span><div><strong>{done}<small>terminées</small></strong><span>{total ? Math.round(done / total * 100) : 0} % des idées concrétisées</span></div></div></div>
@@ -126,7 +139,7 @@ function App() {
       }} /> : modal.type === 'delete-project' ? <div className="project-delete-confirm"><p>Supprimer définitivement le projet <strong>{projects.find(p => p.id === modal.projectId)?.name}</strong> ?</p><p>Ses listes, cartes, commentaires et critères seront également supprimés. Cette action est irréversible.</p><div className="transfer-actions"><button className="secondary-button" onClick={() => setModal(null)}>Annuler</button><button className="danger-button" onClick={() => {
         const remaining = projects.filter(p => p.id !== modal.projectId);
         setProjects(remaining); chooseProject(remaining[0]?.id ?? null); setDragging(null); setDropList(null); setModal(null); setNotice('Projet supprimé');
-      }}>Confirmer la suppression</button></div></div> : <div className="info-content">{modal === 'reload' ? <><h2>Reprendre les données du serveur ?</h2><p>Les modifications non sauvegardées de cette page seront abandonnées. Exportez-les avant de continuer si vous souhaitez les conserver.</p><button className="secondary-button" onClick={() => exportWorkspace(projects)}>Exporter mes modifications</button><button className="primary-button" onClick={() => { setModal(null); void workspace.reload(); }}>Recharger depuis le serveur</button></> : modal === 'overview' ? <><span className="info-illustration"><FolderKanban size={30} /></span><h2>Toutes vos idées ont leur place.</h2><p>Votre espace rassemble {projects.length} projets et {projects.reduce((sum, p) => sum + p.cards.length, 0)} cartes. Sélectionnez un projet dans le menu pour retrouver son tableau.</p></> : <><span className="info-illustration"><Sparkles size={30} /></span><h2>Les fondations de vos futurs projets.</h2><p>Créez des projets, organisez vos cartes et suivez leur avancement. Les exemples présents au départ sont des données de démonstration.</p><div className="info-note"><strong>{offlineMode ? 'Sauvegarde locale' : 'Sauvegarde serveur'}</strong><p>{offlineMode ? 'Cette copie HTML conserve vos données dans ce navigateur. Exportez vos projets pour les importer dans la version connectée au serveur.' : 'Les cartes enregistrées sont consultables par l’API. Si le serveur refuse une modification, elle reste dans cette page et un message vous permet de la conserver.'}</p></div><div className="info-note"><strong>Les agents IA arrivent ensuite</strong><p>Les statuts sont modifiables manuellement. Aucun agent n’est connecté et aucune tâche n’est déléguée automatiquement.</p></div></>}<div className="transfer-actions"><button className="secondary-button" onClick={() => exportWorkspace(projects)}>Exporter les projets (JSON)</button><label className="secondary-button import-button">Importer des projets<input type="file" accept=".json,application/json" aria-label="Importer des projets JSON" onChange={async e => {
+      }}>Confirmer la suppression</button></div></div> : <div className="info-content">{modal === 'reload' ? <><h2>Reprendre les données du serveur ?</h2><p>Les modifications non sauvegardées de cette page seront abandonnées. Exportez-les avant de continuer si vous souhaitez les conserver.</p><button className="secondary-button" onClick={() => exportWorkspace(projects)}>Exporter mes modifications</button><button className="primary-button" onClick={() => { setModal(null); void workspace.reload(); }}>Recharger depuis le serveur</button></> : modal === 'overview' ? <><span className="info-illustration"><FolderKanban size={30} /></span><h2>Toutes vos idées ont leur place.</h2><p>Votre espace rassemble {projects.length} projets et {projects.reduce((sum, p) => sum + p.cards.length, 0)} cartes. Sélectionnez un projet dans le menu pour retrouver son tableau.</p></> : <><span className="info-illustration"><Sparkles size={30} /></span><h2>Les fondations de vos futurs projets.</h2><p>Créez des projets, organisez vos cartes et suivez leur avancement. Les exemples présents au départ sont des données de démonstration.</p><div className="info-note"><strong>{offlineMode ? 'Sauvegarde locale' : 'Sauvegarde serveur'}</strong><p>{offlineMode ? 'Cette copie HTML conserve vos données dans ce navigateur. Exportez vos projets pour les importer dans la version connectée au serveur.' : 'Les cartes enregistrées sont consultables par l’API. Si le serveur refuse une modification, elle reste dans cette page et un message vous permet de la conserver.'}</p></div><div className="info-note"><strong>Les agents IA arrivent ensuite</strong><p>Les statuts sont modifiables manuellement. Aucun agent n’est connecté et aucune tâche n’est déléguée automatiquement.</p></div></>}{!offlineMode && modal !== 'reload' && <BackupsPanel />}<div className="transfer-actions"><button className="secondary-button" onClick={() => exportWorkspace(projects)}>Exporter les projets (JSON)</button><label className="secondary-button import-button">Importer des projets<input type="file" accept=".json,application/json" aria-label="Importer des projets JSON" onChange={async e => {
         const file = e.target.files?.[0]; e.target.value = ''; if (!file) return;
         try {
           if (file.size > 4 * 1024 * 1024) throw new Error('Le fichier dépasse 4 Mo.');

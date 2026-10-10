@@ -1,5 +1,6 @@
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
-import { STATUSES } from '../src/lib/workspace.js';
+import { STATUSES, validateWorkspace } from '../src/lib/workspace.js';
+import { createReadStream } from 'node:fs';
 
 const MAX_BODY = 4 * 1024 * 1024;
 const hash = value => createHash('sha256').update(value).digest();
@@ -81,17 +82,51 @@ export function createApi(store, config = {}) {
         const match = /^"(\d+)"$/.exec(req.headers['if-match'] || '');
         if (!match) throw httpError(428, 'precondition_required', 'Envoyez la révision obtenue à la lecture dans If-Match.');
         const data = await body(req);
+        let clean;
+        try { clean = validateWorkspace(data?.projects); }
+        catch (error) { throw httpError(400, 'invalid_workspace', error.message); }
+        if (config.backups && store.getRevision() === Number(match[1])) {
+          const before = store.read().projects;
+          const removesContent = before.some(p => {
+            const after = clean.find(next => next.id === p.id);
+            return !after || p.cards.some(c => !after.cards.some(next => next.id === c.id)) || p.lists.some(l => !after.lists.some(next => next.id === l.id));
+          });
+          if (removesContent) {
+            try { config.backups.create(); }
+            catch { throw httpError(503, 'backup_failed', 'La sauvegarde de sécurité a échoué. La suppression n’a pas été enregistrée.'); }
+          }
+        }
         let saved;
-        try { saved = store.write(data?.projects, Number(match[1])); }
+        try { saved = store.write(clean, Number(match[1])); }
         catch (error) { throw httpError(400, 'invalid_workspace', error.message); }
         if (!saved) throw httpError(409, 'revision_conflict', 'Le tableau a changé dans une autre session. Rechargez les données avant de réessayer.');
         res.setHeader('ETag', `"${saved.revision}"`); send(res, 200, saved); return true;
+      }
+      if (path === '/api/v1/backups' || path.startsWith('/api/v1/backups/')) {
+        requireOwner(req);
+        if (!config.backups) throw httpError(503, 'backups_unavailable', 'Les sauvegardes ne sont pas configurées.');
+        if (path === '/api/v1/backups' && req.method === 'GET') send(res, 200, config.backups.status());
+        else if (path === '/api/v1/backups' && req.method === 'POST') {
+          try { send(res, 201, { data: config.backups.create() }); }
+          catch { throw httpError(503, 'backup_failed', 'Impossible de créer la sauvegarde. Vérifiez le stockage et les logs.'); }
+        } else if (req.method === 'GET' && path.startsWith('/api/v1/backups/')) {
+          const name = path.slice('/api/v1/backups/'.length);
+          const file = config.backups.file(name);
+          if (!file) throw httpError(404, 'backup_not_found', 'Sauvegarde inexistante.');
+          res.setHeader('Content-Type', 'application/vnd.sqlite3');
+          res.setHeader('Content-Disposition', `attachment; filename="${name}"`);
+          createReadStream(file).on('error', () => res.destroy()).pipe(res);
+        } else throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
+        return true;
       }
       const bearer = /^Bearer (.+)$/i.exec(req.headers.authorization || '')?.[1] || '';
       if (!owner(req) && !(readToken && equal(bearer, readToken)) && (ownerToken || readToken)) throw httpError(401, 'unauthorized', 'Une clé de lecture Bearer est requise.');
       if (req.method !== 'GET') throw httpError(405, 'method_not_allowed', 'Cette API de consultation accepte uniquement GET.');
       if (path === '/api/v1/workspace') {
         requireOwner(req);
+        const etag = `"${store.getRevision()}"`;
+        res.setHeader('ETag', etag);
+        if (req.headers['if-none-match'] === etag) { res.statusCode = 304; res.end(); return true; }
         const workspace = store.read(); res.setHeader('ETag', `"${workspace.revision}"`); send(res, 200, workspace); return true;
       }
       const { projects, revision } = store.read();

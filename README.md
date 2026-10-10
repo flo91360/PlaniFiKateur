@@ -11,7 +11,9 @@ Un tableau de projets inspiré de Trello, conçu pour préparer des demandes con
 - Mode connecté : données SQLite partagées entre le site et l’API de consultation.
 - Accès agent en lecture seule et connexion propriétaire pour l’interface.
 - Consultation des cartes avec projet obligatoire, pour éviter de mélanger des titres identiques entre projets.
+- Actualisation automatique toutes les 5 secondes et au retour sur l’onglet, suspendue pendant l’édition et les sauvegardes.
 - Détection des modifications concurrentes et messages de sauvegarde fiables.
+- Sauvegardes SQLite automatiques, copies avant suppression, téléchargement propriétaire et restauration avec copie de sécurité.
 - Import/export JSON pour transférer des projets locaux sans remplacer les projets existants.
 
 Les données initiales sont des exemples. Aucun agent n’est exécuté ni aucune tâche déléguée automatiquement.
@@ -50,13 +52,19 @@ Les tests navigateur couvrent les parcours sur ordinateur et mobile, la créatio
 
 Les tests utilisent Chromium installé sur la machine. S’il est absent, exécuter `npx playwright install chromium` ou définir `PLAYWRIGHT_CHROMIUM_EXECUTABLE` vers le navigateur de test.
 
+## Sauvegardes
+
+Les copies sont automatiquement créées à côté de la base, sur le volume persistant. Depuis le site, le bouton d’information permet de les consulter et de les télécharger. Voir [la procédure de sauvegarde et restauration](docs/backups.md) pour Railway, les paramètres et les commandes `npm run db:backup` / `npm run db:restore`.
+
+Conserver également des copies hors du volume Railway.
+
 ## Copie HTML autonome
 
 ```sh
 npm run export:preview
 ```
 
-`dist/PlaniFiKateur-apercu-v0.1.5.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
+`dist/PlaniFiKateur-apercu-v0.1.6.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 

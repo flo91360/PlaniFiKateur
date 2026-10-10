@@ -201,3 +201,19 @@ test('identical card titles in different projects never mix results', async t =>
     assert.equal((await get(`/projects/${p.id}/cards/${other.cards[0].id}`)).status, 404);
   }
 });
+
+test('conditional workspace reads return 304 only for authenticated unchanged revisions', async t => {
+  const { get, store } = await fixture(t);
+  const Cookie = (await get('/session')).headers.get('set-cookie').split(';')[0];
+  const initial = await get('/workspace', { Cookie });
+  const etag = initial.headers.get('etag');
+  assert.equal((await get('/workspace', { 'If-None-Match': etag })).status, 401);
+  const unchanged = await get('/workspace', { Cookie, 'If-None-Match': etag });
+  assert.equal(unchanged.status, 304);
+  assert.equal(await unchanged.text(), '');
+  store.write([], 1);
+  const changed = await get('/workspace', { Cookie, 'If-None-Match': etag });
+  assert.equal(changed.status, 200);
+  assert.equal(changed.headers.get('etag'), '"2"');
+  assert.deepEqual((await changed.json()).projects, []);
+});

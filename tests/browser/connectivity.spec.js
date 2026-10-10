@@ -2,17 +2,23 @@ import { test as base, expect } from '@playwright/test';
 import { createAppServer } from '../../server/index.js';
 import { createStore } from '../../server/store.js';
 import { seed } from '../../src/data/demo.js';
+import { createBackups } from '../../server/backups.js';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const ownerToken = 'owner-browser-test-key';
 const readToken = 'agent-browser-test-key';
 const test = base.extend({
   appServer: async ({}, use) => {
     const store = createStore(':memory:');
-    const server = createAppServer({ store, config: { ownerToken, readToken } });
+    const dir = mkdtempSync(join(tmpdir(), 'planifikateur-browser-backups-'));
+    const backups = createBackups(store, { directory: dir });
+    const server = createAppServer({ store, config: { ownerToken, readToken, backups } });
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     await use(`http://127.0.0.1:${server.address().port}`);
     server.closeAllConnections();
-    await new Promise(resolve => server.close(resolve)); store.close();
+    await new Promise(resolve => server.close(resolve)); backups.close(); store.close(); rmSync(dir, { recursive: true, force: true });
   },
 });
 const login = async (page, url) => {
@@ -64,6 +70,7 @@ test('a UI-created card is readable by an agent and another browser', async ({ p
 test('a stale browser cannot overwrite another browser; reload is explicit', async ({ page, browser, request, appServer }) => {
   await login(page, appServer);
   const context = await browser.newContext(); const other = await context.newPage(); await login(other, appServer);
+  await other.route('**/api/v1/workspace', route => route.request().method() === 'GET' ? route.abort() : route.continue());
   await newProject(page, 'Premier éditeur');
   await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
   await newProject(other, 'Second éditeur');
@@ -75,6 +82,7 @@ test('a stale browser cannot overwrite another browser; reload is explicit', asy
   expect(data.some(p => p.name === 'Second éditeur')).toBe(false);
   await other.getByRole('button', { name: 'Recharger le tableau', exact: true }).click();
   await expect(other.getByRole('dialog')).toContainText('seront abandonnées');
+  await other.unroute('**/api/v1/workspace');
   await other.getByRole('button', { name: 'Recharger depuis le serveur', exact: true }).click();
   await expect(other.getByRole('heading', { name: 'PlaniFiKateur', exact: true })).toBeVisible();
   await expect(other.getByRole('alert')).toHaveCount(0);
@@ -136,4 +144,113 @@ test('project deletion requires confirmation, removes cards and permits an empty
   await page.getByRole('button', { name: 'Créer le projet', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Nouveau départ', exact: true })).toBeVisible();
   await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+});
+
+test('another browser receives changes automatically and unchanged polls do not save', async ({ page, browser, appServer }) => {
+  await page.clock.install();
+  await login(page, appServer);
+  const context = await browser.newContext(); const other = await context.newPage(); await login(other, appServer);
+  let writes = 0;
+  page.on('request', req => { if (req.url().endsWith('/api/v1/workspace') && req.method() === 'PUT') writes++; });
+  await newProject(other, 'Projet partagé en direct');
+  await expect(other.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+  await page.clock.runFor(5100);
+  await expect(page.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /Projet partagé en direct/ })).toHaveCount(1);
+  await other.getByRole('button', { name: 'Supprimer le projet', exact: true }).click();
+  await other.getByRole('button', { name: 'Confirmer la suppression', exact: true }).click();
+  await expect(other.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+  await page.clock.runFor(5100);
+  await expect(page.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /Projet partagé en direct/ })).toHaveCount(0);
+  await page.clock.runFor(5100);
+  expect(writes).toBe(0);
+  await context.close();
+});
+
+test('automatic refresh pauses while editing and preserves a draft during a concurrent change', async ({ page, browser, appServer }) => {
+  await page.clock.install(); await login(page, appServer);
+  const context = await browser.newContext(); const other = await context.newPage(); await login(other, appServer);
+  await page.getByRole('heading', { name: seed[0].cards[0].title, exact: true }).click();
+  await page.getByLabel('Description', { exact: true }).fill('Mon texte en cours de rédaction');
+  await newProject(other, 'Changement pendant la saisie');
+  await expect(other.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+  await page.clock.runFor(10100);
+  await expect(page.getByLabel('Description', { exact: true })).toHaveValue('Mon texte en cours de rédaction');
+  await expect(page.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /Changement pendant la saisie/ })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+  await page.clock.runFor(500);
+  await expect(page.getByRole('alert')).toContainText('Le tableau a changé');
+  await page.clock.runFor(5100);
+  await page.getByRole('heading', { name: seed[0].cards[0].title, exact: true }).click();
+  await expect(page.getByLabel('Description', { exact: true })).toHaveValue('Mon texte en cours de rédaction');
+  await context.close();
+});
+
+test('refresh recovers after a network error without losing the current board', async ({ page, browser, appServer }) => {
+  await page.clock.install(); await login(page, appServer);
+  await page.route('**/api/v1/workspace', route => route.request().method() === 'GET' ? route.abort() : route.continue());
+  await page.clock.runFor(5100);
+  await expect(page.getByText('Actualisation indisponible.', { exact: false })).toBeVisible();
+  await expect(page.getByRole('heading', { name: seed[0].name, exact: true })).toBeVisible();
+  const context = await browser.newContext(); const other = await context.newPage(); await login(other, appServer);
+  await newProject(other, 'Après reconnexion');
+  await expect(other.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+  await page.unroute('**/api/v1/workspace');
+  await page.clock.runFor(5100);
+  await expect(page.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /Après reconnexion/ })).toHaveCount(1);
+  await expect(page.getByText('Actualisation indisponible.', { exact: false })).toHaveCount(0);
+  await context.close();
+});
+
+test('owner can create and download a SQLite backup from the interface', async ({ page, appServer }) => {
+  await login(page, appServer);
+  await newProject(page, 'Projet dans ma sauvegarde');
+  await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+  await page.getByRole('button', { name: 'Informations sur le prototype', exact: true }).click();
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Créer et télécharger une sauvegarde SQLite', exact: true }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^planifikateur-.*\.sqlite$/);
+  const { DatabaseSync } = process.getBuiltinModule('node:sqlite');
+  const db = new DatabaseSync(await download.path(), { readOnly: true });
+  const projects = JSON.parse(db.prepare('SELECT projects FROM workspace WHERE id = 1').get().projects);
+  db.close();
+  expect(projects.some(p => p.name === 'Projet dans ma sauvegarde')).toBe(true);
+});
+
+test('a delayed refresh cannot replace a form opened while the read was in flight', async ({ page, browser, appServer }) => {
+  await page.clock.install(); await login(page, appServer);
+  const context = await browser.newContext(); const other = await context.newPage(); await login(other, appServer);
+  await newProject(other, 'Réponse retardée');
+  await expect(other.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+  let held, captured;
+  const pending = new Promise(resolve => { captured = resolve; });
+  await page.route('**/api/v1/workspace', async route => {
+    if (route.request().method() !== 'GET') return route.continue();
+    const response = await route.fetch(); held = () => route.fulfill({ response }); captured();
+  });
+  await page.clock.runFor(5100); await pending;
+  await page.getByRole('button', { name: 'Ajouter une carte dans Bugs', exact: true }).click();
+  await page.getByLabel('Titre de la carte', { exact: true }).fill('Mon brouillon intact');
+  await held();
+  await expect(page.getByLabel('Titre de la carte', { exact: true })).toHaveValue('Mon brouillon intact');
+  await expect(page.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /Réponse retardée/ })).toHaveCount(0);
+  await page.unroute('**/api/v1/workspace');
+  await page.getByRole('button', { name: 'Annuler', exact: true }).click();
+  await expect(page.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /Réponse retardée/ })).toHaveCount(1);
+  await context.close();
+});
+
+test('closing an unchanged card does not save stale data and resumes refresh', async ({ page, browser, appServer }) => {
+  await page.clock.install(); await login(page, appServer);
+  const context = await browser.newContext(); const other = await context.newPage(); await login(other, appServer);
+  let writes = 0;
+  page.on('request', req => { if (req.url().endsWith('/api/v1/workspace') && req.method() === 'PUT') writes++; });
+  await page.getByRole('heading', { name: seed[0].cards[0].title, exact: true }).click();
+  await newProject(other, 'Pendant la consultation');
+  await expect(other.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+  await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+  await expect(page.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /Pendant la consultation/ })).toHaveCount(1);
+  expect(writes).toBe(0);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await context.close();
 });

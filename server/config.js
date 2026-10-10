@@ -1,4 +1,4 @@
-import { resolve } from 'node:path';
+import { resolve, dirname, join } from 'node:path';
 
 export function readConfig(env = process.env) {
   const config = {
@@ -12,5 +12,10 @@ export function readConfig(env = process.env) {
   }
   if (config.ownerToken && config.ownerToken === config.readToken) throw new Error('Les clés propriétaire et lecture doivent être différentes.');
   if (!Number.isInteger(config.port) || config.port < 0 || config.port > 65535) throw new Error('PORT invalide.');
+  config.backupDirectory = resolve(env.PLANIFIKATEUR_BACKUP_DIR || join(dirname(config.database), 'backups'));
+  config.backupIntervalMs = Number(env.PLANIFIKATEUR_BACKUP_INTERVAL_HOURS || 6) * 3600000;
+  config.backupKeep = Number(env.PLANIFIKATEUR_BACKUP_KEEP || 28);
+  if (!Number.isFinite(config.backupIntervalMs) || config.backupIntervalMs < 3600000 || config.backupIntervalMs > 168 * 3600000) throw new Error('Intervalle de sauvegarde invalide (1 à 168 heures).');
+  if (!Number.isInteger(config.backupKeep) || config.backupKeep < 1 || config.backupKeep > 100) throw new Error('Nombre de sauvegardes invalide (1 à 100).');
   return config;
 }

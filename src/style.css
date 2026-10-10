@@ -189,3 +189,8 @@ input::placeholder, textarea::placeholder { color: #a1ac96; }
 .project-delete-confirm { padding: 24px; line-height: 1.6; }
 .empty-workspace { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 60px 20px; text-align: center; }
 .empty-workspace p { color: #85907f; }
+
+.backup-panel { text-align: left; margin: 22px 0; padding: 18px; border: 1px solid var(--border); border-radius: 10px; }
+.backup-list { max-height: 220px; overflow: auto; padding: 0; list-style: none; }
+.backup-list li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 0; font-size: 12px; border-top: 1px solid var(--border); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
