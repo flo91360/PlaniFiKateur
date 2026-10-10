@@ -43,7 +43,9 @@ test('a UI-created card is readable by an agent and another browser', async ({ p
   await page.getByLabel('Votre commentaire').fill('Une précision');
   await page.getByRole('button', { name: 'Créer la carte', exact: true }).click();
   await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
-  const response = await request.get(`${appServer}/api/v1/cards?status=ready&q=Bug%20visible`, { headers: { Authorization: `Bearer ${readToken}` } });
+  const projectData = await (await request.get(`${appServer}/api/v1/projects`, { headers: { Authorization: `Bearer ${readToken}` } })).json();
+  const projectId = projectData.data.find(p => p.name === 'Projet connecté').id;
+  const response = await request.get(`${appServer}/api/v1/projects/${projectId}/cards?status=ready&q=Bug%20visible`, { headers: { Authorization: `Bearer ${readToken}` } });
   expect(response.status()).toBe(200);
   const { data } = await response.json();
   expect(data).toHaveLength(1);
@@ -103,7 +105,7 @@ test('JSON import adds local cards to the API without replacing existing project
   await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
   const { data } = await (await request.get(`${appServer}/api/v1/projects`, { headers: { Authorization: `Bearer ${readToken}` } })).json();
   expect(data).toHaveLength(3);
-  const cards = await (await request.get(`${appServer}/api/v1/cards?q=importée`, { headers: { Authorization: `Bearer ${readToken}` } })).json();
+  const cards = await (await request.get(`${appServer}/api/v1/projects/${data.find(p => p.name === 'Projet importé').id}/cards?q=importée`, { headers: { Authorization: `Bearer ${readToken}` } })).json();
   expect(cards.data).toHaveLength(1);
   expect(cards.data[0].projectName).toBe('Projet importé');
 });
@@ -121,8 +123,8 @@ test('project deletion requires confirmation, removes cards and permits an empty
   await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
   await expect(page.getByRole('heading', { name: seed[1].name, exact: true })).toBeVisible();
   expect((await request.get(`${appServer}/api/v1/projects/${seed[0].id}`, { headers })).status()).toBe(404);
-  expect((await request.get(`${appServer}/api/v1/cards/${seed[0].cards[0].id}`, { headers })).status()).toBe(404);
-  expect((await (await request.get(`${appServer}/api/v1/cards`, { headers })).json()).data).toHaveLength(seed[1].cards.length);
+  expect((await request.get(`${appServer}/api/v1/projects/${seed[0].id}/cards/${seed[0].cards[0].id}`, { headers })).status()).toBe(404);
+  expect((await (await request.get(`${appServer}/api/v1/projects/${seed[1].id}/cards`, { headers })).json()).data).toHaveLength(seed[1].cards.length);
   await page.getByRole('button', { name: 'Supprimer le projet', exact: true }).click();
   await page.getByRole('button', { name: 'Confirmer la suppression', exact: true }).click();
   await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');

@@ -10,6 +10,7 @@ Un tableau de projets inspiré de Trello, conçu pour préparer des demandes con
 - Recherche, filtres, affichage mobile et navigation au clavier.
 - Mode connecté : données SQLite partagées entre le site et l’API de consultation.
 - Accès agent en lecture seule et connexion propriétaire pour l’interface.
+- Consultation des cartes avec projet obligatoire, pour éviter de mélanger des titres identiques entre projets.
 - Détection des modifications concurrentes et messages de sauvegarde fiables.
 - Import/export JSON pour transférer des projets locaux sans remplacer les projets existants.
 

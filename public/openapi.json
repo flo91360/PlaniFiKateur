@@ -374,12 +374,13 @@
               }
             }
           }
-        }
+        },
+        "description": "Le projet est identifié par son id. Une carte d’un autre projet renvoie 404. Un projectId en query contradictoire ou répété renvoie 400."
       }
     },
     "/api/v1/cards": {
       "get": {
-        "summary": "Lister et filtrer les cartes de tous les projets",
+        "summary": "Lister et filtrer les cartes d’un projet obligatoire",
         "security": [
           {
             "bearerAuth": []
@@ -392,11 +393,12 @@
           {
             "name": "projectId",
             "in": "query",
-            "required": false,
+            "required": true,
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
-            "description": "Identifiant du projet (route globale uniquement)."
+            "description": "Identifiant du projet obligatoire ; aucun résultat interprojets."
           },
           {
             "name": "listId",
@@ -518,7 +520,7 @@
     },
     "/api/v1/cards/{cardId}": {
       "get": {
-        "summary": "Consulter une carte, ses commentaires et ses critères",
+        "summary": "Consulter une carte dans le projet indiqué par projectId",
         "security": [
           {
             "bearerAuth": []
@@ -528,6 +530,16 @@
           }
         ],
         "parameters": [
+          {
+            "name": "projectId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "Identifiant du projet obligatoire ; aucun résultat interprojets."
+          },
           {
             "name": "cardId",
             "in": "path",
@@ -591,6 +603,94 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/projects/{projectId}/cards/{cardId}": {
+      "get": {
+        "summary": "Consulter une carte appartenant au projet indiqué",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "ownerSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "Identifiant du projet obligatoire ; aucun résultat interprojets."
+          },
+          {
+            "name": "cardId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Données consultées.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Card"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Paramètre invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentification requise",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource inexistante",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Le projet est identifié par son id. Une carte d’un autre projet renvoie 404. Un projectId en query contradictoire ou répété renvoie 400."
       }
     }
   },

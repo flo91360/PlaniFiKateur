@@ -24,7 +24,7 @@ test('consultation exposes persisted projects, lists and full card context', asy
   assert.equal((await (await get('/projects/planifikateur')).json()).data.name, 'PlaniFiKateur');
   const lists = await (await get('/projects/planifikateur/lists')).json();
   assert.equal(lists.data[0].cardCount, 3);
-  const card = await (await get('/cards/c1')).json();
+  const card = await (await get('/projects/planifikateur/cards/c1')).json();
   assert.equal(card.data.projectId, 'planifikateur');
   assert.equal(card.data.listName, 'Améliorations');
   assert.equal(card.data.comments.length, 1);
@@ -39,29 +39,29 @@ test('filters and pagination isolate the requested cards', async t => {
   const page = await (await get('/projects/planifikateur/cards?limit=2&offset=2')).json();
   assert.deepEqual(page.data.map(c => c.id), ['c3', 'c4']);
   assert.deepEqual(page.meta, { revision: 1, total: 8, limit: 2, offset: 2, nextOffset: 4 });
-  const last = await (await get('/cards?limit=2&offset=8')).json();
+  const last = await (await get('/projects/planifikateur/cards?limit=2&offset=8')).json();
   assert.equal(last.meta.nextOffset, null);
-  assert.equal((await (await get('/cards?listId=missing')).json()).data.length, 0);
+  assert.equal((await (await get('/projects/planifikateur/cards?listId=missing')).json()).data.length, 0);
 });
 
 test('invalid requests produce explicit JSON errors', async t => {
   const { get } = await fixture(t);
-  for (const path of ['/cards?status=unknown', '/cards?limit=201', '/cards?limit=0', '/cards?offset=-1', '/cards?limit=banana']) {
+  for (const path of ['/projects/planifikateur/cards?status=unknown', '/projects/planifikateur/cards?limit=201', '/projects/planifikateur/cards?limit=0', '/projects/planifikateur/cards?offset=-1', '/projects/planifikateur/cards?limit=banana']) {
     const response = await get(path); assert.equal(response.status, 400, path); assert.ok((await response.json()).error.code);
   }
-  for (const path of ['/cards/missing', '/projects/missing', '/cards?projectId=missing', '/unknown', '/../v2/cards']) assert.equal((await get(path)).status, 404, path);
+  for (const path of ['/projects/planifikateur/cards/missing', '/projects/missing', '/cards?projectId=missing', '/unknown', '/../v2/cards']) assert.equal((await get(path)).status, 404, path);
 });
 
 test('agent bearer key permits reading, never writing or owner snapshots', async t => {
   const { get, base } = await fixture(t, { ownerToken: 'owner-test-key', readToken: 'agent-test-key' });
-  assert.equal((await get('/cards')).status, 401);
-  assert.equal((await get('/cards', { Authorization: 'Bearer incorrect' })).status, 401);
+  assert.equal((await get('/cards?projectId=planifikateur')).status, 401);
+  assert.equal((await get('/cards?projectId=planifikateur', { Authorization: 'Bearer incorrect' })).status, 401);
   const headers = { Authorization: 'Bearer agent-test-key' };
-  assert.equal((await get('/cards', headers)).status, 200);
+  assert.equal((await get('/cards?projectId=planifikateur', headers)).status, 200);
   assert.equal((await get('/workspace', headers)).status, 401);
   assert.equal((await fetch(base + '/api/v1/workspace', { method: 'PUT', headers })).status, 401);
   assert.equal((await fetch(base + '/api/v1/cards', { method: 'POST', headers })).status, 405);
-  assert.equal((await get('/cards', headers)).headers.get('cache-control'), 'no-store');
+  assert.equal((await get('/cards?projectId=planifikateur', headers)).headers.get('cache-control'), 'no-store');
 });
 
 test('owner authentication saves UI data and makes it visible to the agent', async t => {
@@ -78,7 +78,7 @@ test('owner authentication saves UI data and makes it visible to the agent', asy
   const response = await fetch(base + '/api/v1/workspace', { method: 'PUT', headers: { Cookie, 'Content-Type': 'application/json', 'If-Match': '"1"' }, body: JSON.stringify({ projects: workspace.projects }) });
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('etag'), '"2"');
-  const card = await (await get('/cards/c1', { Authorization: 'Bearer agent-test-key' })).json();
+  const card = await (await get('/projects/planifikateur/cards/c1', { Authorization: 'Bearer agent-test-key' })).json();
   assert.equal(card.data.title, 'Créée depuis l’interface');
   assert.equal(card.meta.revision, 2);
   assert.equal((await fetch(base + '/api/v1/workspace', { method: 'PUT', headers: { Cookie, Origin: 'https://other.test' } })).status, 403);
@@ -96,7 +96,7 @@ test('concurrent editors cannot silently overwrite one another', async t => {
     return fetch(base + '/api/v1/workspace', { method: 'PUT', headers: { Cookie, 'Content-Type': 'application/json', 'If-Match': '"1"' }, body: JSON.stringify({ projects }) });
   });
   assert.deepEqual((await Promise.all(writes)).map(r => r.status).sort(), [200, 409]);
-  assert.equal((await (await get('/cards/c1')).json()).meta.revision, 2);
+  assert.equal((await (await get('/projects/planifikateur/cards/c1')).json()).meta.revision, 2);
 });
 
 test('invalid snapshots leave existing data intact', async t => {
@@ -110,7 +110,7 @@ test('invalid snapshots leave existing data intact', async t => {
   projects[0].cards[0].listId = 'missing';
   const invalid = await fetch(base + '/api/v1/workspace', { method: 'PUT', headers, body: JSON.stringify({ projects }) });
   assert.equal(invalid.status, 400);
-  assert.equal((await (await get('/cards/c1')).json()).meta.revision, 1);
+  assert.equal((await (await get('/projects/planifikateur/cards/c1')).json()).meta.revision, 1);
 });
 
 test('SQLite retains cards after closing and reopening the database', t => {
@@ -162,4 +162,42 @@ test('deleting every project persists an empty workspace after reopening SQLite'
   assert.deepEqual(reopened.read().projects, []);
   assert.equal(reopened.read().revision, 2);
   reopened.close();
+});
+
+test('card consultation requires a single explicit project', async t => {
+  const { get } = await fixture(t);
+  for (const path of ['/cards', '/cards?q=menu', '/cards/c1', '/cards?projectId=', '/cards/c1?projectId=', '/cards?projectId=planifikateur&projectId=website', '/projects/planifikateur/cards?projectId=website', '/projects/planifikateur/cards/c1?projectId=website']) {
+    const response = await get(path);
+    assert.equal(response.status, 400, path);
+    assert.ok(['project_required', 'invalid_project_scope'].includes((await response.json()).error.code));
+  }
+  assert.equal((await get('/cards/c1?projectId=planifikateur')).status, 200);
+  assert.equal((await get('/cards/c1?projectId=website')).status, 404);
+  assert.equal((await get('/projects/website/cards/c1')).status, 404);
+  assert.equal((await get('/projects/missing/cards/c1')).status, 404);
+});
+
+test('identical card titles in different projects never mix results', async t => {
+  const { store, get } = await fixture(t);
+  const { projects, revision } = store.read();
+  projects[1].name = 'Klaviflo';
+  projects[0].cards[0].title = projects[1].cards[0].title = 'Amélioration menu principal';
+  projects[0].cards[0].description = 'Menu de PlaniFiKateur';
+  projects[1].cards[0].description = 'Menu de Klaviflo';
+  store.write(projects, revision);
+  for (const p of projects) {
+    const query = encodeURIComponent('Amélioration menu principal');
+    for (const path of [`/projects/${p.id}/cards?q=${query}`, `/cards?projectId=${p.id}&q=${query}`]) {
+      const response = await get(path);
+      assert.equal(response.status, 200);
+      const { data, meta } = await response.json();
+      assert.equal(meta.total, 1);
+      assert.equal(data[0].id, p.cards[0].id);
+      assert.equal(data[0].projectId, p.id);
+    }
+    const own = await (await get(`/projects/${p.id}/cards/${p.cards[0].id}`)).json();
+    assert.equal(own.data.description, p.cards[0].description);
+    const other = projects.find(project => project.id !== p.id);
+    assert.equal((await get(`/projects/${p.id}/cards/${other.cards[0].id}`)).status, 404);
+  }
 });

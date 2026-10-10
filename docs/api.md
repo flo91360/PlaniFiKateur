@@ -37,23 +37,28 @@ Ce prototype possède un espace propriétaire unique. Les comptes individuels, p
 | `/api/v1/projects/{projectId}` | Informations d’un projet |
 | `/api/v1/projects/{projectId}/lists` | Listes et nombre de cartes de chaque liste |
 | `/api/v1/projects/{projectId}/cards` | Cartes du projet, filtrées et paginées |
-| `/api/v1/cards` | Cartes de tous les projets, filtrées et paginées |
-| `/api/v1/cards/{cardId}` | Carte complète avec contexte, commentaires et critères |
+| `/api/v1/projects/{projectId}/cards/{cardId}` | Carte complète appartenant au projet indiqué |
+| `/api/v1/cards?projectId={projectId}` | Cartes du projet obligatoire, filtrées et paginées |
+| `/api/v1/cards/{cardId}?projectId={projectId}` | Carte complète avec projet obligatoire |
 
-Les routes de collection de cartes acceptent `listId`, `status`, `q`, `limit` (1 à 200, défaut 50) et `offset` (défaut 0). La route globale accepte aussi `projectId`. `q` cherche dans le titre, la description et les étiquettes, sans distinction de casse. Un filtre de liste sans résultat renvoie une liste vide ; un projet inexistant renvoie 404.
+Les routes de collection de cartes acceptent `listId`, `status`, `q`, `limit` (1 à 200, défaut 50) et `offset` (défaut 0). Les routes `/cards` et `/cards/{cardId}` exigent désormais `projectId` : son absence renvoie 400 (`project_required`). Un projet inexistant ou une carte appartenant à un autre projet renvoie 404. Un paramètre `projectId` répété, vide ou contradictoire avec le chemin est refusé avec 400. `q` cherche dans le titre, la description et les étiquettes, sans distinction de casse. Un filtre de liste sans résultat renvoie une liste vide ; un projet inexistant renvoie 404.
 
 Les statuts sont `draft`, `ready`, `progress`, `clarify`, `review`, `done`. Une catégorie de liste et un statut sont indépendants.
 
 ```sh
 # Développement local, sans clés configurées
 curl 'http://127.0.0.1:3000/api/v1/projects'
-curl 'http://127.0.0.1:3000/api/v1/cards?status=ready&limit=20'
-curl 'http://127.0.0.1:3000/api/v1/cards/c1'
+curl 'http://127.0.0.1:3000/api/v1/projects/planifikateur/cards?status=ready&limit=20'
+curl 'http://127.0.0.1:3000/api/v1/projects/planifikateur/cards/c1'
 
 # Avec une clé agent déjà injectée dans le processus
 curl --header "Authorization: Bearer $PLANIFIKATEUR_READ_TOKEN" \
-  'https://votre-domaine/api/v1/cards?status=ready'
+  'https://votre-domaine/api/v1/projects/planifikateur/cards?status=ready'
 ```
+
+Pour rechercher « Amélioration menu principal », commencer par `GET /api/v1/projects`, identifier le projet voulu puis utiliser son **id**, pas son nom, dans `GET /api/v1/projects/{projectId}/cards?q=Am%C3%A9lioration%20menu%20principal`. La recherche renvoie une liste uniquement dans ce projet. Si plusieurs cartes correspondent dans ce même projet, choisir l’id de la carte voulue puis consulter `GET /api/v1/projects/{projectId}/cards/{cardId}` ; ne pas sélectionner automatiquement le premier résultat. Les noms de projets et titres de cartes ne sont pas des identifiants uniques.
+
+Cette modification impose le projet aux anciennes requêtes de cartes : les clients doivent ajouter `projectId` ou passer aux routes imbriquées. La clé agent conserve l’accès en lecture à tous les projets ; cette sélection explicite évite les confusions, sans introduire de permissions par projet. Les routes internes de l’interface (`workspace`) restent réservées à la session propriétaire.
 
 Les réponses sont `{ "data": …, "meta": … }`. Une carte inclut `projectId`, `projectName`, `listId`, `listName`, `title`, `description`, `status`, `priority`, `tags`, `checklist` et `comments`. La pagination fournit `total`, `limit`, `offset` et `nextOffset` (null pour la dernière page). Toutes les réponses indiquent la `revision` du tableau : si elle change pendant un parcours paginé, recommencer la lecture pour obtenir une vue cohérente. Les données ne sont pas mises en cache.
 

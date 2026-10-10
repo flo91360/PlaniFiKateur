@@ -99,11 +99,22 @@ export function createApi(store, config = {}) {
       const segments = path.split('/').filter(Boolean).map(segment => { try { return decodeURIComponent(segment); } catch { throw httpError(400, 'invalid_path', 'Chemin invalide.'); } });
       if (segments[0] !== 'api' || segments[1] !== 'v1') throw httpError(404, 'not_found', 'Route inexistante.');
       const projectSummary = p => ({ id: p.id, name: p.name, description: p.description, emoji: p.emoji, color: p.color, listCount: p.lists.length, cardCount: p.cards.length });
+      const scopedProject = pathId => {
+        const values = url.searchParams.getAll('projectId');
+        if (values.length > 1 || (values.length && (!values[0].trim() || (pathId && values[0] !== pathId)))) {
+          throw httpError(400, 'invalid_project_scope', 'Indiquez un seul projet, identique à celui du chemin.');
+        }
+        const projectId = pathId || values[0];
+        if (!projectId) throw httpError(400, 'project_required', 'Précisez le projet dans le chemin ou avec projectId.');
+        const project = projects.find(p => p.id === projectId);
+        if (!project) throw httpError(404, 'project_not_found', 'Projet inexistant.');
+        return project;
+      };
+      const cardContext = (p, c) => ({ ...c, projectId: p.id, projectName: p.name, listName: p.lists.find(l => l.id === c.listId)?.name });
       let data;
       if (path === '/api/v1/projects') data = projects.map(projectSummary);
       else if (path === '/api/v1/cards' || (segments[2] === 'projects' && segments[4] === 'cards' && segments.length === 5)) {
-        const projectId = segments[2] === 'projects' ? segments[3] : url.searchParams.get('projectId');
-        if (projectId && !projects.some(p => p.id === projectId)) throw httpError(404, 'project_not_found', 'Projet inexistant.');
+        const project = scopedProject(segments[2] === 'projects' ? segments[3] : undefined);
         const status = url.searchParams.get('status'), listId = url.searchParams.get('listId'), q = (url.searchParams.get('q') || '').trim().toLocaleLowerCase('fr');
         if (status && !STATUSES.includes(status)) throw httpError(400, 'invalid_filter', 'Statut inconnu.');
         const number = (key, fallback, max) => {
@@ -113,16 +124,16 @@ export function createApi(store, config = {}) {
           return Number(value);
         };
         const limit = number('limit', 50, 200), offset = number('offset', 0, Number.MAX_SAFE_INTEGER);
-        const cards = projects.filter(p => !projectId || p.id === projectId).flatMap(p => p.cards.map(c => ({ ...c, projectId: p.id, projectName: p.name, listName: p.lists.find(l => l.id === c.listId)?.name })));
+        const cards = project.cards.map(c => cardContext(project, c));
         const filtered = cards.filter(c => (!status || c.status === status) && (!listId || c.listId === listId) && (!q || `${c.title} ${c.description} ${c.tags.join(' ')}`.toLocaleLowerCase('fr').includes(q)));
         data = filtered.slice(offset, offset + limit);
         Object.assign(meta, { total: filtered.length, limit, offset, nextOffset: offset + limit < filtered.length ? offset + limit : null });
-      } else if (segments[2] === 'cards' && segments.length === 4) {
-        for (const p of projects) {
-          const card = p.cards.find(c => c.id === segments[3]);
-          if (card) data = { ...card, projectId: p.id, projectName: p.name, listName: p.lists.find(l => l.id === card.listId)?.name };
-        }
-        if (!data) throw httpError(404, 'card_not_found', 'Carte inexistante.');
+      } else if ((segments[2] === 'cards' && segments.length === 4) || (segments[2] === 'projects' && segments[4] === 'cards' && segments.length === 6)) {
+        const nested = segments[2] === 'projects';
+        const project = scopedProject(nested ? segments[3] : undefined);
+        const card = project.cards.find(c => c.id === segments[nested ? 5 : 3]);
+        if (!card) throw httpError(404, 'card_not_found', 'Carte inexistante dans ce projet.');
+        data = cardContext(project, card);
       } else if (segments[2] === 'projects' && (segments.length === 4 || (segments.length === 5 && segments[4] === 'lists'))) {
         const p = projects.find(p => p.id === segments[3]);
         if (!p) throw httpError(404, 'project_not_found', 'Projet inexistant.');
