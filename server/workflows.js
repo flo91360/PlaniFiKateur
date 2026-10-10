@@ -167,8 +167,7 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
         if (!['manual','github'].includes(delivery)) fail(400, 'invalid_delivery', 'Mode de livraison invalide.');
         const repository = delivery === 'github' ? githubProject(projectId) : null;
         if (delivery === 'github' && !repository) fail(400, 'github_not_configured', 'Configurez le dépôt GitHub du projet.');
-        if (!card.checklist.length) fail(400, 'missing_criteria', 'Ajoutez au moins un critère d’acceptation à la carte.');
-        const run = { delivery, repository, id: randomUUID(), projectId, cardId, state: 'ready', version: 0, requestSource: 'card', objective: text(card.description, 'Description de la carte'), criteria: card.checklist.map(item => item.text).join('\n'), context: '', requestedBy: { id: actor.id, name: actor.name }, createdAt: new Date().toISOString(), source: source(card), cardSnapshot: card, agent: null, updates: [], exchanges: [], submissions: [] };
+        const run = { delivery, repository, id: randomUUID(), projectId, cardId, state: 'ready', version: 0, requestSource: 'card', objective: text(card.description, 'Description de la carte'), criteria: '', context: '', requestedBy: { id: actor.id, name: actor.name }, createdAt: new Date().toISOString(), source: source(card), cardSnapshot: card, agent: null, updates: [], exchanges: [], submissions: [] };
         db.prepare('INSERT INTO executions(id,project_id,card_id,state,version,data) VALUES(?,?,?,?,0,?)').run(run.id, projectId, cardId, run.state, JSON.stringify(run));
         return save(run, actor, 'prepared');
       });

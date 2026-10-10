@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "PlaniFiKateur — API de consultation et travail agent",
-    "version": "0.1.12",
+    "version": "0.1.13",
     "description": "Consultation par clé de lecture ou session personnelle. Un agent actif possède une clé distincte, limitée à ses projets, pour réserver, poser des questions et soumettre un résultat. Seuls les comptes humains peuvent préparer et valider le travail. Voir docs/agents.md."
   },
   "servers": [
@@ -911,7 +911,7 @@
             }
           }
         },
-        "description": "Description non vide et au moins un critère dans card.checklist requis. objective, criteria et context sont calculés depuis la carte, sans champs supplémentaires à saisir."
+        "description": "Seule une description non vide est requise. objective provient de la description de la carte ; criteria et context sont vides pour les nouvelles exécutions. Aucun critère séparé à saisir."
       }
     },
     "/api/v1/projects/{projectId}/cards/{cardId}/work/{executionId}/claim": {

@@ -6,7 +6,7 @@ Un tableau de projets inspiré de Trello, conçu pour préparer des demandes con
 
 - Projets indépendants, listes personnalisées et cartes déplaçables.
 - Suppression d’un projet avec confirmation, y compris du dernier projet ; ses listes et cartes sont supprimées avec lui.
-- Création et édition avec titre, description, statut, priorité, étiquettes, critères et commentaires.
+- Création et édition avec titre, description, statut, priorité, étiquettes et commentaires.
 - Recherche, filtres, affichage mobile et navigation au clavier.
 - Mode connecté : données SQLite partagées entre le site et l’API de consultation.
 - Comptes individuels par e-mail et mot de passe, invitations, déconnexion et gestion des membres par l’administrateur.
@@ -39,7 +39,7 @@ npm start
 
 Le site et l’API écoutent sur `127.0.0.1:3000` par défaut. La base persistante `.data/planifikateur.sqlite` est ignorée par Git. Aucune clé d’environnement n’est nécessaire pour un développement local, mais le premier compte doit être créé depuis le site. Toute exposition réseau ou exécution avec `NODE_ENV=production` exige des clés d’initialisation et agent différentes. Les paramètres, les routes et des exemples de consultation sont décrits dans [la documentation API](docs/api.md).
 
-Après le déploiement de la v0.1.12, créer le compte administrateur avec l’ancienne clé `PLANIFIKATEUR_OWNER_TOKEN`, puis inviter les membres depuis « Mon compte ». Les projets existants sont conservés. Voir [les comptes et l’historique](docs/accounts.md) pour la migration et les droits.
+Après le déploiement de la v0.1.13, créer le compte administrateur avec l’ancienne clé `PLANIFIKATEUR_OWNER_TOKEN`, puis inviter les membres depuis « Mon compte ». Les projets existants sont conservés. Voir [les comptes et l’historique](docs/accounts.md) pour la migration et les droits.
 
 La spécification OpenAPI est disponible dans [public/openapi.json](public/openapi.json), servie par le site à `/openapi.json`.
 
@@ -68,7 +68,7 @@ Conserver également des copies hors du volume Railway.
 npm run export:preview
 ```
 
-`dist/PlaniFiKateur-apercu-v0.1.12.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
+`dist/PlaniFiKateur-apercu-v0.1.13.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 
@@ -78,10 +78,10 @@ Héberger le serveur sur une origine HTTPS avec un volume de données persistant
 
 Les comptes peuvent suivre ou ne plus suivre une carte depuis son détail, même sans en être auteurs. Les abonnements persistants alimentent les destinataires des futures notifications ; aucun envoi de notification n’est encore actif. Voir [la documentation des comptes](docs/accounts.md#suivre-une-carte).
 
-Le détail des cartes comprend **Travail IA** : échanges, livrables et suivi. La description et les critères de la carte constituent directement la demande pour l’agent. Le serveur conserve les exécutions ; aucun moteur IA n’est lancé automatiquement. Le client de référence est `scripts/agent-client.mjs`.
+Le détail des cartes comprend **Travail IA** : échanges, livrables et suivi. La description de la carte constitue directement la demande pour l’agent. Le serveur conserve les exécutions ; aucun moteur IA n’est lancé automatiquement. Le client de référence est `scripts/agent-client.mjs`.
 
 L’administrateur peut supprimer un membre depuis « Mon compte », après confirmation. L’accès est révoqué immédiatement et les contributions restent attribuées à leur auteur.
 
 Les livraisons de code peuvent maintenant suivre **tests GitHub → fusion automatique → carte terminée**, sans validation manuelle de la PR. Configurer les secrets, le webhook et les contrôles requis selon [le guide GitHub](docs/github.md).
 
-Les cartes disposent d’une seule description et d’une seule liste de critères d’acceptation. Le lancement du travail IA réutilise ces informations enregistrées, sans ressaisie.
+La description suffit à préparer une tâche IA. L’agent en déduit le résultat attendu et les vérifications à réaliser ; aucun critère d’acceptation séparé n’est demandé.

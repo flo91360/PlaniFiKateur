@@ -155,20 +155,22 @@ test('preparation derives the complete request from the saved card and cannot ov
   const response = await f.request(f.path, { method: 'POST', human: true, data: { objective: 'Injected objective', criteria: 'Injected criteria', context: 'Injected context' } });
   assert.equal(response.status, 201); const run = (await response.json()).data;
   assert.equal(run.requestSource, 'card'); assert.equal(run.objective, current.description);
-  assert.equal(run.criteria, current.checklist.map(c => c.text).join('\n'));
+  assert.equal(run.criteria, '');
   assert.equal(run.context, ''); assert.deepEqual(run.cardSnapshot.checklist, current.checklist);
   assert.equal(f.store.read().projects[0].cards[0].description, current.description);
 });
 
-test('preparation requires a saved description and criteria in the card itself', async t => {
+test('preparation requires a saved description but no acceptance criteria', async t => {
   const f = await fixture(t); let snapshot = f.store.read();
   snapshot.projects[0].cards[0].description = ''; f.store.write(snapshot.projects, snapshot.revision, f.user);
   const data = { objective: 'Duplicate cannot replace the description', criteria: 'Duplicate cannot replace criteria' };
   assert.equal((await f.request(f.path, { method: 'POST', human: true, data })).status, 400);
   snapshot = f.store.read(); snapshot.projects[0].cards[0].description = 'Actual request'; snapshot.projects[0].cards[0].checklist = []; f.store.write(snapshot.projects, snapshot.revision, f.user);
   const response = await f.request(f.path, { method: 'POST', human: true, data });
-  assert.equal(response.status, 400); assert.equal((await response.json()).error.code, 'missing_criteria');
-  assert.equal(f.store.workflows.list(f.project.id, f.card.id).length, 0);
+  assert.equal(response.status, 201); const run = (await response.json()).data;
+  assert.equal(run.objective, 'Actual request'); assert.equal(run.criteria, '');
+  assert.deepEqual(run.cardSnapshot.checklist, []);
+  assert.equal(f.store.workflows.list(f.project.id, f.card.id).length, 1);
 });
 
 test('legacy execution requests remain intact when opening an existing database', async t => {

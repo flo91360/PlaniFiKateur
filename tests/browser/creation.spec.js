@@ -50,14 +50,7 @@ for (const mode of ['standalone', 'sandbox-with-storage', 'sandbox-without-stora
     await app.getByLabel('Statut', { exact: true }).selectOption('ready');
     await app.getByLabel('Priorité', { exact: true }).selectOption('high');
     await app.getByLabel('Étiquettes', { exact: true }).fill('UX, Recherche, UX');
-    await app.getByLabel('Nouveau critère d’acceptation').fill('Un critère dès la création');
-    await app.getByRole('button', { name: 'Ajouter le critère', exact: true }).click();
-    await app.getByRole('checkbox', { name: 'Un critère dès la création' }).check();
-    await app.getByLabel('Nouveau critère d’acceptation').fill('Un critère à retirer');
-    await app.getByLabel('Nouveau critère d’acceptation').press('Enter');
-    await expect(app.getByRole('dialog')).toHaveCount(1);
-    await app.getByRole('button', { name: 'Supprimer le critère Un critère à retirer', exact: true }).click();
-    await app.getByLabel('Nouveau critère d’acceptation').fill('Un critère encore saisi');
+    await expect(app.getByRole('heading', { name: /^Critères d’acceptation/ })).toHaveCount(0);
     await app.getByLabel('Votre commentaire').fill('Un premier commentaire');
     await app.getByRole('button', { name: 'Créer la carte', exact: true }).click();
     await expect(app.locator('.list-column').filter({ has: app.getByRole('heading', { name: 'Ma liste', exact: true }) }).locator('.card')).toHaveCount(1);
@@ -65,17 +58,9 @@ for (const mode of ['standalone', 'sandbox-with-storage', 'sandbox-without-stora
     await expect(app.getByLabel('Statut', { exact: true })).toHaveValue('ready');
     await expect(app.getByLabel('Priorité', { exact: true })).toHaveValue('high');
     await expect(app.getByLabel('Étiquettes', { exact: true })).toHaveValue('UX, Recherche');
-    await expect(app.getByRole('checkbox', { name: 'Un critère dès la création' })).toBeChecked();
-    await expect(app.getByRole('checkbox', { name: 'Un critère encore saisi' })).not.toBeChecked();
-    await expect(app.getByRole('checkbox', { name: 'Un critère à retirer' })).toHaveCount(0);
+    await expect(app.getByRole('heading', { name: /^Critères d’acceptation/ })).toHaveCount(0);
+    await expect(app.getByLabel('Description', { exact: true })).toHaveValue('Première ligne');
     await expect(app.getByText('Un premier commentaire', { exact: true })).toBeVisible();
-
-    await app.getByLabel('Nouveau critère d’acceptation').fill('Vérifier le clic');
-    await app.getByRole('button', { name: 'Ajouter le critère', exact: true }).click();
-    await app.getByRole('checkbox', { name: 'Vérifier le clic' }).check();
-    await app.getByLabel('Nouveau critère d’acceptation').fill('Vérifier Entrée');
-    await app.getByLabel('Nouveau critère d’acceptation').press('Enter');
-    await expect(app.getByRole('checkbox', { name: 'Vérifier Entrée' })).toBeVisible();
 
     await app.getByLabel('Votre commentaire').fill('Commentaire par clic');
     await app.getByRole('button', { name: 'Publier', exact: true }).click();
@@ -90,10 +75,8 @@ for (const mode of ['standalone', 'sandbox-with-storage', 'sandbox-without-stora
       await openMenu();
       await app.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /test/ }).click();
       await app.locator('.card').click();
-      await expect(app.getByRole('checkbox', { name: 'Vérifier le clic' })).toBeChecked();
       await expect(app.getByLabel('Statut', { exact: true })).toHaveValue('ready');
       await expect(app.getByLabel('Priorité', { exact: true })).toHaveValue('high');
-      await expect(app.getByRole('checkbox', { name: 'Un critère dès la création' })).toBeChecked();
       await expect(app.getByText('Un premier commentaire', { exact: true })).toBeVisible();
       await expect(app.getByText('Commentaire par clic', { exact: true })).toBeVisible();
       await app.getByRole('button', { name: 'Terminé', exact: true }).click();

@@ -7,8 +7,8 @@ ou service GitHub n’est lancé automatiquement par cette version.
 ## Utilisation dans le site
 
 1. Ouvrir une carte. Renseigner sa **Description** avec la demande, le résultat
-   attendu et les contraintes, puis compléter sa liste de **Critères d’acceptation**.
-   Ces informations sont les seules sources de la demande transmise à l’agent.
+   attendu et les contraintes. Cette description est la demande transmise à
+   l’agent, qui déduit les vérifications utiles et pose une question si nécessaire.
 2. Cliquer **Prête pour un agent**. Cette action crée une exécution persistante.
 3. L’agent prend la tâche et signale son avancement. Une question fait apparaître
    **À préciser**. Répondre puis cliquer **Répondre et reprendre**.
@@ -164,21 +164,20 @@ parcours sur ordinateur et mobile.
 
 Pour une exécution préparée avec `delivery: "github"`, la soumission inclut `pullRequest: {url, headSha}`. Le résultat passe `merging` et ne demande aucune validation humaine ; il sera terminé après fusion GitHub confirmée par webhook signé. Les contrôles échoués remettent le travail en file. Voir [le parcours GitHub](github.md) pour la configuration et l’action `revise`. Les exécutions sans PR conservent le parcours décrit ci-dessus.
 
-## Une seule demande par carte — v0.1.12
+## Une description suffit — v0.1.13
 
-La description tient lieu d’objectif pour l’agent, et les critères sont ceux de
-`card.checklist`. Aucun champ séparé d’objectif, critères ou contexte n’est demandé
-pour lancer le travail. La description doit être non vide et au moins un critère
-doit être enregistré avant de préparer la carte.
+La description tient lieu d’objectif pour l’agent. Elle doit être non vide pour
+préparer une exécution. Les critères d’acceptation ont été retirés des formulaires
+et ne sont plus nécessaires : l’agent déduit le résultat attendu et les
+vérifications utiles de la description. Il peut demander des précisions.
 
 `POST .../cards/{carte}/work` reçoit `{}` ou `{ "delivery": "github" }`.
-Le serveur calcule `objective` à partir de la description et `criteria` à partir
-des textes de la liste, pour conserver le contrat de lecture des agents.
-`cardSnapshot` garde la demande et les critères structurés au démarrage ;
-`requestSource: "card"` identifie ces nouvelles exécutions. D’anciens paramètres
-`objective`, `criteria` ou `context` envoyés à cette route ne remplacent pas le
-contenu de la carte.
+Le serveur calcule `objective` à partir de la description. `criteria` et `context`
+restent présents mais vides dans les nouvelles exécutions pour conserver le
+contrat de lecture des agents. `cardSnapshot` garde la carte au démarrage et
+`requestSource: "card"` identifie ces exécutions. D’anciens paramètres `objective`,
+`criteria` ou `context` envoyés à cette route ne remplacent pas la description.
 
-Les anciennes exécutions conservent leurs demandes et contraintes historiques.
-Elles restent consultables dans une section repliée, sans créer de nouveaux
-champs de saisie. Les exécutions précédentes gardent leur demande au démarrage.
+Les listes de critères déjà stockées et les anciennes exécutions sont conservées
+pour ne pas perdre les données historiques. Elles ne sont pas exigées pour les
+nouvelles demandes. Les anciennes demandes restent consultables dans l’historique.
