@@ -144,7 +144,15 @@ le traitement des cartes avant d’avoir réussi le contrôle ci-dessous.
 4. Si le contrôle échoue, garder le service arrêté : Railway n’a pas encore
    démontré sa compatibilité avec l’isolation requise. Un déploiement construit
    avec succès ne suffit pas. Aucune carte n’a été prise en charge et aucun
-   appel au modèle n’a été effectué par ce contrôle.
+   appel au modèle n’a été effectué par ce contrôle. Dans **Settings → Deploy**,
+   régler **Restart Policy** sur **Never** pour éviter une boucle de démarrage.
+   La ligne **Diagnostic** donne le code de sortie et l’erreur technique du
+   contrôle, avec les clés connues masquées. Un refus de création de namespaces
+   par bubblewrap requiert un réglage de l’hôte ; il ne se corrige pas en ajoutant
+   une variable d’environnement ni une instruction dans le Dockerfile. Une autre
+   option d’isolation de Codex (`use_legacy_landlock`) a aussi été essayée dans
+   Docker : la version 0.162.1 exige toujours bubblewrap pour isoler les sockets
+   de l’app-server, et cette option ne constitue donc pas une solution validée.
 5. Si le contrôle réussit, renseigner les cinq variables obligatoires du tableau
    **Connexion**, puis l’authentification Codex. Une clé API se configure dans
    `OPENAI_API_KEY`. Pour utiliser une connexion ChatGPT, se connecter sur ce
