@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 
 const { version } = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
+const buildInfo = JSON.parse(readFileSync(new URL('../../dist/build-info.json', import.meta.url), 'utf8'));
 const html = readFileSync(new URL(`../../dist/PlaniFiKateur-apercu-v${version}.html`, import.meta.url), 'utf8');
 
 for (const mode of ['standalone', 'sandbox-with-storage', 'sandbox-without-storage']) {
@@ -32,7 +33,11 @@ for (const mode of ['standalone', 'sandbox-with-storage', 'sandbox-without-stora
     await expect(app.getByRole('dialog')).toHaveCount(0);
     await expect(app.getByRole('heading', { name: 'test', exact: true })).toBeVisible();
     await expect(app.locator('.project-title p')).toHaveText('test');
-    await expect(app.locator('.list-column')).toHaveCount(3);
+    await expect(app.locator('.list-column')).toHaveCount(4);
+    const infos = app.locator('.list-column').filter({ has: app.getByRole('heading', { name: 'Infos', exact: true }) });
+    await expect(infos.locator('.card')).toHaveCount(1);
+    await expect(infos.locator('.card h3')).toHaveText(buildInfo.name);
+    await expect(infos.locator('.card p')).toHaveText(buildInfo.date ? `Date du commit : ${buildInfo.date}` : 'Date du commit indisponible.');
 
     await app.getByRole('button', { name: 'Ajouter une liste', exact: true }).click();
     await app.getByLabel('Nom de la liste', { exact: true }).fill('Ma liste');
@@ -55,7 +60,7 @@ for (const mode of ['standalone', 'sandbox-with-storage', 'sandbox-without-stora
     await expect(app.getByRole('link', { name: 'bug.txt', exact: true })).toBeVisible();
     await app.getByRole('button', { name: 'Créer la carte', exact: true }).click();
     await expect(app.locator('.list-column').filter({ has: app.getByRole('heading', { name: 'Ma liste', exact: true }) }).locator('.card')).toHaveCount(1);
-    await app.locator('.card').click();
+    await app.getByRole('heading', { name: 'Ma carte', exact: true }).click();
     await expect(app.getByLabel('Déplacer vers', { exact: true })).toHaveCount(0);
     await expect(app.locator('.detail-status')).toContainText('dans Ma liste');
     await expect(app.getByLabel('Statut', { exact: true })).toHaveValue('ready');
@@ -91,7 +96,7 @@ for (const mode of ['standalone', 'sandbox-with-storage', 'sandbox-without-stora
       await page.reload();
       await openMenu();
       await app.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /test/ }).click();
-      await app.locator('.card').click();
+      await app.getByRole('heading', { name: 'Ma carte', exact: true }).click();
       await expect(app.getByLabel('Statut', { exact: true })).toHaveValue('flo');
       await expect(app.getByLabel('Priorité', { exact: true })).toHaveValue('high');
       await expect(app.getByText('Un premier commentaire', { exact: true })).toBeVisible();

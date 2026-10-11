@@ -1,3 +1,5 @@
+import { withInfos } from '../lib/infos.js';
+
 export const seed = [{
   id: 'planifikateur', name: 'PlaniFiKateur', emoji: '✳', color: '#cae5d7', description: 'Un espace pour faire grandir nos idées, ensemble.',
   lists: [{ id: 'improvements', name: 'Améliorations', color: 'green' }, { id: 'features', name: 'Nouvelles idées', color: 'purple' }, { id: 'bugs', name: 'Bugs', color: 'orange' }],
@@ -11,4 +13,4 @@ export const seed = [{
     { id: 'c7', listId: 'bugs', title: 'Conserver les idées après un rechargement', description: 'Les cartes et les modifications doivent rester disponibles lorsqu’on revient sur le tableau.', status: 'done', priority: 'high', tags: ['Sauvegarde'], comments: [], checklist: [{ id: 't4', text: 'Vérifier la sauvegarde locale', done: true }, { id: 't5', text: 'Recharger le tableau', done: true }] },
     { id: 'c8', listId: 'bugs', title: 'Éviter les titres de carte vides', description: 'Demander un titre avant de créer une nouvelle carte.', status: 'review', priority: 'normal', tags: ['Interface'], comments: [], checklist: [] },
   ]
-}, { id: 'website', name: 'Site vitrine', emoji: '◈', color: '#e5dbef', description: 'Imaginer une présence en ligne qui nous ressemble.', lists: [{ id: 'w1', name: 'Inspirations', color: 'purple' }, { id: 'w2', name: 'À construire', color: 'green' }, { id: 'w3', name: 'Retours', color: 'orange' }], cards: [{ id: 'w-card', listId: 'w1', title: 'Définir l’identité de la page d’accueil', description: 'Rassembler les inspirations et définir le message principal du site.', status: 'draft', priority: 'normal', tags: ['Design'], comments: [], checklist: [] }] }];
+}, { id: 'website', name: 'Site vitrine', emoji: '◈', color: '#e5dbef', description: 'Imaginer une présence en ligne qui nous ressemble.', lists: [{ id: 'w1', name: 'Inspirations', color: 'purple' }, { id: 'w2', name: 'À construire', color: 'green' }, { id: 'w3', name: 'Retours', color: 'orange' }], cards: [{ id: 'w-card', listId: 'w1', title: 'Définir l’identité de la page d’accueil', description: 'Rassembler les inspirations et définir le message principal du site.', status: 'draft', priority: 'normal', tags: ['Design'], comments: [], checklist: [] }] }].map(project => withInfos(project));
