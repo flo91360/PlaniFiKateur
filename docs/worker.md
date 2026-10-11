@@ -113,6 +113,22 @@ Le worker exécute du développement et des navigateurs : l’offre gratuite du 
 ne garantit pas les ressources nécessaires. Pour le premier essai, il peut aussi
 tourner sur votre ordinateur tout en consultant le site Railway.
 
+### Démarrage Docker sous Windows
+
+Si Docker affiche `exec /opt/worker/entrypoint.sh: no such file or directory`,
+une ancienne image peut contenir un script avec des fins de ligne Windows.
+Le Dockerfile normalise désormais les deux scripts exécutables au format Linux,
+et `.gitattributes` impose ce format lors des prochains téléchargements Git.
+Récupérer la correction puis reconstruire l’image depuis la racine du dépôt :
+
+```powershell
+git pull
+docker build -f worker/Dockerfile -t planifikateur-worker .
+```
+
+Relancer ensuite la commande `docker run` avec le fichier de variables et les
+mêmes montages de volumes. Les données du worker sont conservées.
+
 ## Essai réel
 
 Créer une **nouvelle** petite carte de test, par exemple : « Dans le menu des

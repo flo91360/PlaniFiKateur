@@ -1,0 +1,2 @@
+*.sh text eol=lf
+worker/git-askpass.mjs text eol=lf

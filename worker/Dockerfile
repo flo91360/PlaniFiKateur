@@ -10,7 +10,9 @@ RUN --mount=type=secret,id=build_ca,target=/tmp/build-ca.pem \
       NODE_EXTRA_CA_CERTS=/tmp/build-ca.pem npm ci --omit=dev --no-audit --no-fund; \
     else npm ci --omit=dev --no-audit --no-fund; fi
 COPY --chown=node:node worker/ ./
-RUN chmod +x git-askpass.mjs entrypoint.sh
+# Windows checkouts may contain CRLF even before .gitattributes is applied.
+RUN sed -i 's/\r$//' git-askpass.mjs entrypoint.sh \
+    && chmod +x git-askpass.mjs entrypoint.sh
 ENV PLANIFIKATEUR_WORKER_STATE_DIR=/data \
     CODEX_HOME=/data/codex \
     PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium
