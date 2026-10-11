@@ -198,6 +198,7 @@ test('an agent question is a card comment and only a new human comment on that c
   const question = f.store.read().projects[0].cards[0].comments.at(-1);
   assert.equal(question.text, 'Quel vert souhaitez-vous ?');
   assert.equal(question.author, 'Test agent'); assert.equal(question.authorId, f.credentials.agent.id);
+  assert.equal(question.authorKind, 'agent');
   assert.equal((await f.action(run, 'question', { message: 'Duplicate' })).status, 409);
   let snapshot = f.store.read(); snapshot.projects[0].cards[1].comments.push({ id: 'other-card-reply', author: 'Fake', text: 'Pas cette carte', date: new Date().toISOString() });
   f.store.write(snapshot.projects, snapshot.revision, f.user);
@@ -213,6 +214,7 @@ test('an agent question is a card comment and only a new human comment on that c
   assert.deepEqual(run.exchanges[0].answer.actor, { id: f.user.id, name: f.user.name });
   assert.equal(run.exchanges[0].answer.commentId, 'human-reply'); assert.equal(run.exchanges[0].answer.text, 'Un vert plus vif.');
   assert.equal(result.projects[0].cards[0].comments.at(-1).authorId, f.user.id);
+  assert.equal(result.projects[0].cards[0].comments.at(-1).authorKind, 'user');
   assert.equal(result.projects[0].cards[0].comments.filter(c => c.text === 'Un vert plus vif.').length, 1);
   assert.equal(f.store.activity({ cardId: f.card.id }).filter(e => e.action === 'work.answer').length, 1);
   assert.equal((await f.claim(run)).state, 'running');
@@ -232,14 +234,18 @@ test('concurrent comments cannot answer a waiting execution twice', async t => {
 
 test('upgrading backfills existing agent questions once and a comment can resume the pending task', async t => {
   const f = await fixture(t);
-  const run = await f.agentAction(await f.claim(await f.prepare()), 'question', { message: 'Configuration corrigée ?' });
+  const progress = await f.agentAction(await f.claim(await f.prepare()), 'progress', { message: 'Avancement historique de l’agent.' });
+  const run = await f.agentAction(progress, 'question', { message: 'Configuration corrigée ?' });
   const snapshot = f.store.read(), db = new DatabaseSync(f.file);
   snapshot.projects[0].cards[0].comments = snapshot.projects[0].cards[0].comments.filter(c => !c.id.startsWith(`work-${run.id}-question-`));
+  snapshot.projects[0].cards[0].comments.forEach(comment => { delete comment.authorKind; });
   db.prepare('UPDATE workspace SET projects=? WHERE id=1').run(JSON.stringify(snapshot.projects)); db.close();
   const upgraded = createStore(f.file); t.after(() => upgraded.close());
   const revision = upgraded.getRevision();
   assert.equal(revision, snapshot.revision + 1);
   assert.equal(upgraded.read().projects[0].cards[0].comments.filter(c => c.text === 'Configuration corrigée ?').length, 1);
+  assert.equal(upgraded.read().projects[0].cards[0].comments.find(c => c.text === 'Configuration corrigée ?').authorKind, 'agent');
+  assert.equal(upgraded.read().projects[0].cards[0].comments.find(c => c.text === 'Avancement historique de l’agent.').authorKind, 'agent');
   const again = createStore(f.file); t.after(() => again.close()); assert.equal(again.getRevision(), revision);
   const reply = upgraded.read(); reply.projects[0].cards[0].comments.push({ id: 'upgrade-reply', author: 'Alice', text: 'Oui, reprends.', date: new Date().toISOString() });
   upgraded.write(reply.projects, reply.revision, f.user);

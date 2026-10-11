@@ -115,6 +115,49 @@ tourner sur votre ordinateur tout en consultant le site Railway.
 
 ### Démarrage Docker sous Windows
 
+Depuis la racine du dépôt, lancer le worker avec le profil seccomp fourni :
+
+```powershell
+docker build -f worker/Dockerfile -t planifikateur-worker .
+docker run --rm --name planifikateur-worker --security-opt seccomp=worker/seccomp.json --env-file ..\planifikateur-worker.env --mount source=planifikateur-worker-data,target=/data planifikateur-worker
+```
+
+Codex utilise bubblewrap pour isoler les commandes. Le profil Docker par défaut
+refuse la création des namespaces nécessaires. `worker/seccomp.json` reprend le
+[profil par défaut de Moby](https://github.com/moby/profiles/blob/6fe7deb1b9fb7c0397a4593480d7d22b9ee8caef/seccomp/default.json)
+(Apache 2.0, licence conservée dans `worker/seccomp.LICENSE`) et ajoute uniquement
+les appels `unshare`, `clone`, `mount`, `umount2`, `pivot_root` et `setns` pour
+cette isolation. Les capacités Docker restent inchangées et Codex conserve
+`workspace-write` : les commandes peuvent modifier le dépôt, tandis que les
+écritures en dehors du dépôt restent bloquées.
+
+Le worker vérifie ces deux propriétés au démarrage, avant de réserver une carte.
+En cas d’échec, il affiche une erreur de configuration puis s’arrête. Le même
+contrôle peut être exécuté sans clé API ni connexion au site :
+
+```powershell
+docker run --rm --security-opt seccomp=worker/seccomp.json planifikateur-worker node sandbox-check.mjs
+```
+
+La configuration Codex doit être stockée dans le volume Linux `/data/codex`,
+sans montage du dossier Windows `.codex`. Pour se connecter avec son compte
+ChatGPT depuis ce volume :
+
+```powershell
+docker run --rm -it --security-opt seccomp=worker/seccomp.json --mount source=planifikateur-worker-data,target=/data planifikateur-worker sh
+```
+
+Dans le terminal Linux du conteneur, exécuter :
+
+```sh
+$(find /opt/worker/node_modules/@openai -type f -name codex -print -quit) login --device-auth
+exit
+```
+
+Suivre l’adresse et le code de connexion affichés avant de quitter le terminal.
+Si la carte est déjà « À préciser », publier ensuite un commentaire confirmant
+que l’environnement est corrigé pour relancer la même exécution.
+
 Si Docker affiche `exec /opt/worker/entrypoint.sh: no such file or directory`,
 une ancienne image peut contenir un script avec des fins de ligne Windows.
 Le Dockerfile normalise désormais les deux scripts exécutables au format Linux,
@@ -127,7 +170,8 @@ docker build -f worker/Dockerfile -t planifikateur-worker .
 ```
 
 Relancer ensuite la commande `docker run` avec le fichier de variables et les
-mêmes montages de volumes. Les données du worker sont conservées.
+mêmes montages de volumes et l’option `--security-opt` ci-dessus. Les données du
+worker sont conservées.
 
 ## Essai réel
 

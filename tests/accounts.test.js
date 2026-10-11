@@ -111,14 +111,17 @@ test('changing a password revokes other sessions and member reset links are rota
 test('the server stamps card and comment authors, preserves creators, and records recipients atomically', async t => {
   const f = await fixture(t); const admin = await f.login(); const bob = await inviteMember(f, admin); const alice = f.store.userByEmail(testEmail);
   let snapshot = f.store.read();
-  const card = structuredClone(snapshot.projects[0].cards[1]); card.id = 'authorship-card'; card.createdBy = { id: bob.user.id, name: 'Spoofed' }; card.comments = [{ id: 'authorship-comment', author: 'Spoofed', authorId: bob.user.id, text: 'Contexte', date: '2000-01-01T00:00:00Z' }]; snapshot.projects[0].cards.push(card);
+  const card = structuredClone(snapshot.projects[0].cards[1]); card.id = 'authorship-card'; card.createdBy = { id: bob.user.id, name: 'Spoofed' }; card.comments = [{ id: 'authorship-comment', author: 'Spoofed', authorId: bob.user.id, authorKind: 'agent', text: 'Contexte', date: '2000-01-01T00:00:00Z' }]; snapshot.projects[0].cards.push(card);
   const save = async (cookie, data) => f.request('/workspace', { method: 'PUT', cookie, headers: { 'If-Match': `"${data.revision}"` }, data: { projects: data.projects } });
   const created = await save(admin, snapshot); assert.equal(created.status, 200); snapshot = await created.json();
   const actual = snapshot.projects[0].cards.find(c => c.id === card.id); assert.deepEqual(actual.createdBy, { id: alice.id, name: 'Alice' }); assert.equal(actual.comments[0].authorId, alice.id); assert.equal(actual.comments[0].author, 'Alice'); assert.notEqual(actual.comments[0].date, '2000-01-01T00:00:00Z');
+  assert.equal(actual.comments[0].authorKind, 'user');
+  actual.comments[0].authorKind = 'agent';
   const stale = structuredClone(snapshot);
   actual.status = 'progress'; actual.createdBy = { id: bob.user.id, name: 'Spoofed' }; actual.comments.push({ id: 'bob-comment', author: 'Alice', authorId: alice.id, text: 'Je prends cette tâche', date: '2000-01-01T00:00:00Z' });
   assert.equal((await save(bob.cookie, snapshot)).status, 200);
   const result = f.store.read().projects[0].cards.find(c => c.id === card.id); assert.equal(result.createdBy.id, alice.id); assert.equal(result.updatedBy.id, bob.user.id); assert.equal(result.comments[1].author, 'Bob');
+  assert.equal(result.comments[0].authorKind, 'user'); assert.equal(result.comments[1].authorKind, 'user');
   const history = await (await f.request(`/projects/planifikateur/cards/${card.id}/activity`, { cookie: admin })).json();
   const status = history.data.find(e => e.action === 'card.status_changed'); assert.equal(status.actor.id, bob.user.id); assert.deepEqual(status.recipientIds, [alice.id]); assert.equal(status.projectId, 'planifikateur');
   const eventCount = f.store.activity({ limit: 100 }).length;

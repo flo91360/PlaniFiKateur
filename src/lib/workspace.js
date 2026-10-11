@@ -52,7 +52,8 @@ export function validateWorkspace(projects) {
         comments: array(c.comments, `${path}.cards.comments`, 1000).map(comment => {
           object(comment, 'comment');
           if (typeof comment.date !== 'string' || !Number.isFinite(Date.parse(comment.date))) fail('comment.date : date invalide.');
-          return { id: id(comment.id, 'comment.id'), author: text(comment.author, 'comment.author', 140, true), authorId: comment.authorId == null ? null : text(comment.authorId, 'comment.authorId', 128, true), text: text(comment.text, 'comment.text', 10000, true), date: comment.date };
+          if (comment.authorKind != null && !['user', 'agent', 'system'].includes(comment.authorKind)) fail('comment.authorKind : type d’auteur invalide.');
+          return { id: id(comment.id, 'comment.id'), author: text(comment.author, 'comment.author', 140, true), authorId: comment.authorId == null ? null : text(comment.authorId, 'comment.authorId', 128, true), ...(comment.authorKind ? { authorKind: comment.authorKind } : {}), text: text(comment.text, 'comment.text', 10000, true), date: comment.date };
         }),
       };
     });

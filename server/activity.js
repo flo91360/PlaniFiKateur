@@ -26,8 +26,8 @@ export function attributeChanges(before, after, actor, date) {
       card.updatedBy = previous?.updatedBy || null; card.updatedAt = previous?.updatedAt || null;
       for (const comment of card.comments) {
         const oldComment = previous?.comments.find(c => c.id === comment.id);
-        if (oldComment) { comment.author = oldComment.author; comment.authorId = oldComment.authorId || null; comment.date = oldComment.date; }
-        else { comment.author = actor?.name || 'Administration'; comment.authorId = actor?.id || null; comment.date = date; }
+        if (oldComment) { comment.author = oldComment.author; comment.authorId = oldComment.authorId || null; if (oldComment.authorKind) comment.authorKind = oldComment.authorKind; else delete comment.authorKind; comment.date = oldComment.date; }
+        else { comment.author = actor?.name || 'Administration'; comment.authorId = actor?.id || null; comment.authorKind = actor ? 'user' : 'system'; comment.date = date; }
       }
       if (!previous) { card.updatedBy = who(actor); card.updatedAt = date; emit('card.created', p, card); }
       else {

@@ -283,9 +283,12 @@ test('administrator invites a member whose cards, comments and actions carry the
   await member.getByLabel('Votre commentaire').fill('Précision de Bob');
   await member.getByRole('button', { name: 'Créer la carte', exact: true }).click();
   await expect(member.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+  await expect(member.locator('.card-avatar')).toHaveText('B');
+  await expect(member.locator('.sidebar-footer .user-avatar')).toHaveText('B');
   await member.getByRole('heading', { name: 'Carte créée par Bob', exact: true }).click();
   await expect(member.locator('.card-authorship')).toContainText('Créée par Bob');
   await expect(member.locator('.comment strong')).toContainText('Bob');
+  await expect(member.locator('.comment .user-avatar')).toHaveText('B');
   await expect(member.locator('.activity-list')).toContainText('Bob a créé la carte');
   await member.getByRole('button', { name: 'Terminé', exact: true }).click();
   await member.getByRole('button', { name: 'Mon compte', exact: true }).click();
@@ -384,11 +387,13 @@ test.describe('project task execution', () => {
     const discussion = page.locator('.comments-section');
     await expect(discussion).toContainText('Dois-je conserver les raccourcis ?');
     await expect(discussion).toContainText('Agent principal');
+    await expect(discussion.locator('.comment').filter({ hasText: 'Dois-je conserver les raccourcis ?' }).locator('.user-avatar')).toHaveText('IA');
     await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('clarify');
     await page.getByLabel('Votre commentaire', { exact: true }).fill('Oui, conserver tous les raccourcis.');
     await page.getByRole('button', { name: 'Publier', exact: true }).click();
     await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
     await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('ready');
+    await expect(discussion.locator('.comment').filter({ hasText: 'Oui, conserver tous les raccourcis.' }).locator('.user-avatar')).toHaveText('A');
     run = await queue(); expect(run.exchanges[0].answer.text).toBe('Oui, conserver tous les raccourcis.');
     await action('claim');
     const pullRequest = { url: 'https://github.com/flo91360/PlaniFiKateur/pull/7', headSha: 'a'.repeat(40) };

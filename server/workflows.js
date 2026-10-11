@@ -33,7 +33,8 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
       if (strict) fail(400, 'comment_limit', 'La discussion de cette carte a atteint sa limite de commentaires.');
       return false;
     }
-    card.comments.push({ id, author: actor?.name || 'Agent IA', authorId: actor?.id || null, text: message.slice(0, 10000), date });
+    const authorKind = actor?.id && actor.id === run.agent?.id ? 'agent' : actor?.id === 'github' || !actor ? 'system' : 'user';
+    card.comments.push({ id, author: actor?.name || 'Agent IA', authorId: actor?.id || null, authorKind, text: message.slice(0, 10000), date });
     audit(actor, 'comment.created', { projectId: run.projectId, cardId: run.cardId, cardTitle: card.title, details: { commentId: id }, executionId: run.id, recipientIds: recipients(card, actor, [run.requestedBy.id]) });
     return true;
   };
@@ -110,6 +111,10 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
   transaction(() => {
     const projects = JSON.parse(db.prepare('SELECT projects FROM workspace WHERE id=1').get().projects);
     let changed = false;
+    const agentIds = new Set(db.prepare('SELECT id FROM agents').all().map(agent => agent.id));
+    for (const card of projects.flatMap(project => project.cards)) for (const comment of card.comments) {
+      if (!comment.authorKind && agentIds.has(comment.authorId)) { comment.authorKind = 'agent'; changed = true; }
+    }
     for (const row of rows()) {
       const run = unpack(row), card = projects.find(p => p.id === run.projectId)?.cards.find(c => c.id === run.cardId);
       if (card) changed = questionComments(card, run, false) || changed;
