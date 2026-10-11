@@ -10,3 +10,5 @@ test-results/
 *.sqlite-wal
 *.sqlite-shm
 *.sqlite.partial
+__pycache__/
+*.py[cod]

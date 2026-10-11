@@ -30,6 +30,10 @@ humaine autorise un nouveau cycle de tentatives.
 
 ## Connexion
 
+Pour le VPS AWS déjà configuré, les [mises à jour automatiques](worker-updates.md)
+se configurent avec un timer systemd : tests GitHub, construction, contrôle du
+sandbox puis remplacement avec retour au conteneur précédent en cas d’échec.
+
 1. Dans le site, associer le dépôt au projet et configurer la livraison GitHub
    selon [le guide GitHub](github.md). Créer une clé dans **Connexion de l’agent**,
    avec accès au projet concerné. La clé `PLANIFIKATEUR_READ_TOKEN` ne suffit pas.

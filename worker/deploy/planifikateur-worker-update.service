@@ -1,0 +1,15 @@
+[Unit]
+Description=Update PlaniFiKateur worker from tested GitHub commits
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=admin
+Group=admin
+SupplementaryGroups=docker
+WorkingDirectory=/home/admin/PlaniFiKateur
+ExecStart=/usr/bin/python3 /home/admin/PlaniFiKateur/worker/deploy/update.py
+TimeoutStartSec=40min
+UMask=0077

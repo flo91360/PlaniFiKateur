@@ -1,0 +1,11 @@
+[Unit]
+Description=Check PlaniFiKateur worker updates every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+RandomizedDelaySec=30s
+Unit=planifikateur-worker-update.service
+
+[Install]
+WantedBy=timers.target
