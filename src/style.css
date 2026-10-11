@@ -232,3 +232,10 @@ input::placeholder, textarea::placeholder { color: #96aca3; }
 .project-automation select { width: 100%; min-height: 44px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; font: inherit; }
 .project-automation > p { font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
 @media (max-width: 700px) { .project-actions { justify-content: flex-start; } }
+
+.attachments { margin: 20px 0; }
+.attachments ul { padding: 0; list-style: none; }
+.attachments li { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #e7e9e2; }
+.attachments li a { overflow-wrap: anywhere; min-width: 0; flex: 1; }
+.attachments li img { width: 80px; height: 64px; object-fit: contain; }
+.attachment-paste { padding: 10px; border: 1px dashed #8d947f; border-radius: 8px; margin-top: 10px; }

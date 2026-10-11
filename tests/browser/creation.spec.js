@@ -51,6 +51,8 @@ for (const mode of ['standalone', 'sandbox-with-storage', 'sandbox-without-stora
     await app.getByLabel('Étiquettes', { exact: true }).fill('UX, Recherche, UX');
     await expect(app.getByRole('heading', { name: /^Critères d’acceptation/ })).toHaveCount(0);
     await app.getByLabel('Votre commentaire').fill('Un premier commentaire');
+    await app.getByLabel('Ajouter des fichiers', { exact: true }).setInputFiles({ name: 'bug.txt', mimeType: 'text/plain', buffer: Buffer.from('Étapes du bug') });
+    await expect(app.getByRole('link', { name: 'bug.txt', exact: true })).toBeVisible();
     await app.getByRole('button', { name: 'Créer la carte', exact: true }).click();
     await expect(app.locator('.list-column').filter({ has: app.getByRole('heading', { name: 'Ma liste', exact: true }) }).locator('.card')).toHaveCount(1);
     await app.locator('.card').click();
@@ -62,6 +64,12 @@ for (const mode of ['standalone', 'sandbox-with-storage', 'sandbox-without-stora
     await expect(app.getByRole('heading', { name: /^Critères d’acceptation/ })).toHaveCount(0);
     await expect(app.getByLabel('Description', { exact: true })).toHaveValue('Première ligne');
     await expect(app.getByText('Un premier commentaire', { exact: true })).toBeVisible();
+    await expect(app.getByRole('link', { name: 'bug.txt', exact: true })).toBeVisible();
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/a9sAAAAASUVORK5CYII=', 'base64');
+    await app.getByLabel('Ajouter des fichiers', { exact: true }).setInputFiles({ name: 'capture.png', mimeType: 'image/png', buffer: png });
+    await expect(app.getByRole('img', { name: 'Aperçu de capture.png', exact: true })).toBeVisible();
+    await app.getByRole('button', { name: 'Retirer bug.txt', exact: true }).click();
+    await expect(app.getByRole('link', { name: 'bug.txt', exact: true })).toHaveCount(0);
 
     await app.getByLabel('Votre commentaire').fill('Commentaire par clic');
     await app.getByRole('button', { name: 'Publier', exact: true }).click();

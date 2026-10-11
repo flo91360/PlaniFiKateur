@@ -9,7 +9,7 @@ const text = (value, name, max = 20000) => {
 };
 const terminal = new Set(['done', 'cancelled']);
 const cardStatus = { ready: 'ready', running: 'progress', waiting: 'clarify', review: 'review', merging: 'review', interrupted: 'ready', done: 'done', cancelled: 'draft' };
-const source = card => JSON.stringify([card.title, card.description, card.tags, card.checklist.map(c => c.text)]);
+const source = card => JSON.stringify([card.title, card.description, card.tags, card.checklist.map(c => c.text), ...((card.attachments || []).length ? [card.attachments] : [])]);
 export const LEASE_MS = 5 * 60000;
 
 export function createWorkflows(db, { transaction, audit, findCard }) {

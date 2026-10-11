@@ -85,3 +85,14 @@ L’administrateur peut supprimer un membre depuis « Mon compte », après conf
 Toutes les nouvelles livraisons suivent **tests GitHub → fusion automatique → carte terminée**, sans validation manuelle de la PR. Configurer les accès du worker, le webhook et les contrôles requis selon [le guide GitHub](docs/github.md).
 
 La description suffit à préparer une tâche IA. L’agent en déduit le résultat attendu et les vérifications à réaliser ; aucun critère d’acceptation séparé n’est demandé.
+
+Les cartes peuvent contenir des pièces jointes dès leur création ou depuis leur
+fiche : fichiers, images et captures collées dans la zone prévue. Les images PNG,
+JPEG, GIF et WebP ont un aperçu ; chaque fichier peut être téléchargé ou retiré.
+La limite est de 10 fichiers par carte, 1 Mo par fichier et 2 Mo de pièces jointes
+pour l’ensemble des projets. Les contenus sont conservés dans SQLite, inclus dans
+les sauvegardes et les exports JSON, et accessibles avec les mêmes droits que les
+cartes. Le worker prépare les fichiers dans `.planifikateur/attachments/` (exclu
+par le worker des commits) et transmet les images à Codex. Modifier les pièces
+jointes d’une demande en cours annule cette exécution et remet la carte en
+brouillon, comme une modification de sa description.
