@@ -31,7 +31,7 @@ export function attributeChanges(before, after, actor, date) {
       }
       if (!previous) { card.updatedBy = who(actor); card.updatedAt = date; emit('card.created', p, card); }
       else {
-        const fields = ['title', 'description', 'status', 'priority', 'listId', 'tags', 'checklist', 'comments'].filter(key => !same(previous[key], card[key]));
+        const fields = ['title', 'description', 'status', 'priority', 'listId', 'tags', 'checklist', 'comments', 'attachments'].filter(key => !same(previous[key], card[key]));
         if (fields.length) {
           card.updatedBy = who(actor); card.updatedAt = date;
           emit('card.updated', p, card, { fields });

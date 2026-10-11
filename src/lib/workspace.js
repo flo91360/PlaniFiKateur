@@ -4,6 +4,7 @@ const priorities = ['low', 'normal', 'high'];
 export function validateWorkspace(projects) {
   if (!Array.isArray(projects)) throw new Error('Une liste de projets est requise.');
   const ids = new Set();
+  let attachmentBytes = 0;
   const fail = message => { throw new Error(message); };
   const object = (value, path) => { if (!value || typeof value !== 'object' || Array.isArray(value)) fail(`${path} doit être un objet.`); };
   const text = (value, path, max, required = false) => {
@@ -43,6 +44,20 @@ export function validateWorkspace(projects) {
         createdBy: identity(c.createdBy), createdAt: date(c.createdAt), updatedBy: identity(c.updatedBy), updatedAt: date(c.updatedAt),
         title: text(c.title, `${path}.cards.title`, 140, true), description: text(c.description, `${path}.cards.description`, 20000),
         status: c.status, priority: c.priority,
+        attachments: array(c.attachments ?? [], 'attachments', 10).map(a => {
+          object(a, 'attachment');
+          const attachmentId = id(a.id, 'attachment.id');
+          const name = text(a.name, 'attachment.name', 255, true);
+          if (/[\x00-\x1f\x7f/\\]/.test(name)) fail('Nom de pièce jointe invalide.');
+          if (!Number.isInteger(a.size) || a.size < 1 || a.size > 1024 * 1024) fail('Chaque fichier doit peser entre 1 octet et 1 Mo.');
+          const data = text(a.data, 'attachment.data', 1398104, true);
+          if ((!/^[A-Za-z0-9+/]+={0,2}$/.test(data) || data.length % 4 !== 0) || data.length / 4 * 3 - (data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0) !== a.size) fail('Contenu de pièce jointe invalide.');
+          attachmentBytes += a.size;
+          if (attachmentBytes > 2 * 1024 * 1024) fail('Les pièces jointes de tous les projets dépassent 2 Mo.');
+          const type = text(a.type, 'attachment.type', 100, true);
+          if (!/^[a-zA-Z0-9.+-]+\/[a-zA-Z0-9.+-]+$/.test(type)) fail('Type de pièce jointe invalide.');
+          return { id: attachmentId, name, type, size: a.size, data };
+        }),
         tags: array(c.tags, `${path}.cards.tags`, 50).map(tag => text(tag, 'tag', 140, true)),
         checklist: array(c.checklist, `${path}.cards.checklist`, 500).map(item => {
           object(item, 'criterion');
