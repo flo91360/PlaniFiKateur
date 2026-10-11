@@ -300,3 +300,16 @@ immédiatement. Ces interruptions ne consomment pas les tentatives de travail du
 modèle. Le journal affiche un code de diagnostic, sans clés ni corps de réponse.
 Si une ancienne version a déjà placé la carte **À préciser**, répondre dans sa
 discussion après la mise à jour permet de reprendre la même exécution.
+
+Après un push, le worker relit la PR pour confirmer le commit exact testé, avec
+des tentatives espacées si GitHub renvoie encore l’ancien commit. Une publication
+non encore synchronisée interrompt temporairement la tâche et provoque une
+reprise automatique ; elle ne consomme pas les tentatives de correction du
+modèle. Une soumission réussie remet ce compteur à zéro, y compris avant une
+nouvelle résolution de conflit avec `main`.
+
+Pour les tâches bloquées par l’ancienne erreur **« La PR ne pointe pas sur le
+commit testé. »**, l’agent initial peut reprendre automatiquement la publication
+dans la même PR, même si cette erreur technique avait été présentée comme une
+question. Les véritables demandes de précision nécessitent toujours une réponse
+humaine. Aucun commit différent de celui testé n’est accepté par ce mécanisme.
