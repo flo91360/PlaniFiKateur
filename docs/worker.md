@@ -109,16 +109,24 @@ publication sur la carte. Le worker vérifie la branche et l’origine avant le 
 La compatibilité du sandbox avec Railway doit être vérifiée sur le service réel.
 Le profil `--security-opt seccomp=worker/seccomp.json` utilisé sur votre machine
 est une option de lancement Docker ; il ne peut pas être appliqué par le
-Dockerfile. Le fichier Railway ne prétend pas modifier ce profil. Ne pas activer
+Dockerfile. La configuration du service ne modifie pas ce profil. Ne pas activer
 le traitement des cartes avant d’avoir réussi le contrôle ci-dessous.
 
 1. Dans le projet Railway du site, ajouter un service vide nommé **worker-codex**.
    Garder le service du site existant. Associer le même dépôt GitHub et la branche
    `main`, avec le contexte **Root Directory** à la racine du dépôt.
-2. Dans **Settings**, régler **Railway Config File** sur
-   **`/worker/railway.toml`**. Ce fichier sélectionne le Dockerfile
-   `worker/Dockerfile`, une seule réplique et au plus une relance après un échec.
-   Ne pas ajouter de domaine public ni de vérification HTTP.
+2. Dans **Variables**, ajouter **`RAILWAY_DOCKERFILE_PATH`** avec la valeur
+   **`worker/Dockerfile`** pour sélectionner l’image du worker. Dans **Settings**,
+   garder une seule réplique et une politique de redémarrage **On Failure**, avec
+   au plus une relance pour cet essai. Supprimer une éventuelle commande de build
+   personnalisée du site. Ne pas ajouter de domaine public ni de vérification
+   HTTP. Vérifier dans les logs de construction que ce Dockerfile est utilisé.
+
+   **Config as Code est déprécié** : selon le message affiché par Railway,
+   les services ne l’ayant jamais utilisé ne peuvent plus l’activer depuis le
+   28 août 2026. Le fichier `worker/railway.toml` reste un exemple pour les
+   services historiques uniquement ; les nouveaux services se configurent dans
+   le tableau de bord. Ne pas utiliser **Add File Path** pour ce premier essai.
 3. Attacher un volume à **`/data`**. Pour le premier essai, définir la commande
    **Start Command** suivante avant de fournir les clés du site ou de GitHub :
 

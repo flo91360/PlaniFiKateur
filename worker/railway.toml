@@ -1,4 +1,7 @@
-# Use /worker/railway.toml as this service's Railway Config File path.
+# Legacy services only: Railway no longer lets new services opt into Config as
+# Code. New services: set RAILWAY_DOCKERFILE_PATH=worker/Dockerfile in Variables,
+# then configure deployment in the dashboard as described in docs/worker.md.
+# For a service already using Config as Code, use /worker/railway.toml.
 # Keep Root Directory at the repository root, and attach a volume at /data.
 [build]
 builder = "DOCKERFILE"
