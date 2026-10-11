@@ -16,8 +16,11 @@ Codex pour correction, avec au plus trois tours locaux. Il crée le commit et
 pousse uniquement sa branche, sans force. Une PR est liée au commit testé sur le
 site **avant** de recevoir le label `planifikateur-agent`. Cet ordre déclenche un
 nouveau contrôle GitHub après l’enregistrement de la soumission. En reprise, le
-label est retiré puis remis après la nouvelle soumission. GitHub reste responsable
-des contrôles et de la fusion ; seul le webhook signé termine la carte.
+label est retiré puis remis après la nouvelle soumission. GitHub exécute les
+contrôles ; le worker effectue la fusion squash après leur réussite et une
+vérification de l’éligibilité auprès du site. Seul le webhook signé termine la
+carte. Le worker réutilise ses clés existantes : aucun secret GitHub Actions
+supplémentaire n’est nécessaire pour cette fusion.
 
 Si `main` avance pendant l’attente, le worker reprend la PR avec `revise`, intègre
 `main`, relance Codex et les tests et soumet le nouveau commit. Une PR fermée sans
@@ -48,8 +51,10 @@ dans la réponse de l’API de consultation `GET /api/v1/projects`. Les noms aff
 Pour GitHub, utiliser un token personnel ou d’application permettant de déclencher
 les workflows sur les PR : un `GITHUB_TOKEN` d’un workflow GitHub ne déclenche
 généralement pas d’autres workflows. Ne pas copier les clés du site dans les
-variables du frontend. L’action de fusion a également besoin de ses propres
-secrets `PLANIFIKATEUR_URL` et `PLANIFIKATEUR_AGENT_TOKEN` côté GitHub.
+variables du frontend. Le worker attend la dernière exécution des contrôles
+sur le commit soumis : un ancien succès ne suffit pas pendant une nouvelle
+exécution. Un refus de fusion est réessayé automatiquement sans appel à Codex ;
+le motif apparaît dans les logs Docker. Les règles de branche restent appliquées.
 
 Une connexion Codex existante peut remplacer la clé API : effectuer `codex login`
 sur la machine du worker et conserver son `CODEX_HOME`. Ne pas copier l’authentification

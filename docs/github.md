@@ -14,14 +14,12 @@ de la fusion par GitHub.
 2. Dans **Paramètres du projet**, un administrateur ouvre **Dépôt GitHub et
    fusion automatique**, puis renseigne `propriétaire/dépôt`. La branche cible est
    `main`. Les workflows de ce dépôt doivent être présents dans chaque dépôt
-   qui reçoit les PR de l’agent : `.github/workflows/ci.yml`,
-   `.github/workflows/agent-merge.yml` et `scripts/merge-agent-pr.mjs`.
+   qui reçoit les PR de l’agent : `.github/workflows/ci.yml`.
    Les commandes de tests devront être adaptées pour les autres applications.
-3. Créer une identité d’agent autorisée sur ce projet. Dans le dépôt GitHub,
-   **Settings → Secrets and variables → Actions**, enregistrer :
-   - `PLANIFIKATEUR_URL` : origine HTTPS du site Railway, sans chemin.
-   - `PLANIFIKATEUR_AGENT_TOKEN` : clé de cet agent. Une révocation impose de
-     remplacer ce secret.
+3. Créer une identité d’agent autorisée sur ce projet. Configurer le worker avec
+   l’URL du site, la clé de cet agent et son token GitHub selon
+   [le guide du worker](worker.md). Le worker utilise ces accès pour vérifier
+   puis fusionner la PR ; aucun secret Actions n’est requis dans ce parcours.
 4. Dans **Settings → Webhooks**, ajouter :
    - URL : `https://votre-site/api/v1/github/webhook`.
    - Type : `application/json`.
@@ -33,14 +31,22 @@ de la fusion par GitHub.
    ainsi qu’une branche à jour avant fusion. Ne pas exiger d’approbation humaine.
    Les restrictions du dépôt doivent permettre au workflow la fusion des PR.
 
-Le workflow effectue directement une fusion squash via l’API GitHub. Il ne
-dépend pas du réglage natif **Allow auto-merge**. Il faut que les permissions
-`contents: write` et `pull-requests: write` soient autorisées pour GitHub Actions.
+Le worker effectue directement une fusion squash via l’API GitHub. Il ne
+dépend pas du réglage natif **Allow auto-merge**. Son token doit pouvoir lire les
+Actions et écrire le contenu, les issues et les pull requests.
 Les règles de branche restent appliquées : un refus GitHub ne sera pas contourné.
+
+Le workflow `.github/workflows/agent-merge.yml` reste un mécanisme complémentaire
+optionnel, avec les mêmes vérifications dans `worker/merge.mjs`. Pour l’utiliser,
+installer aussi ce module et `scripts/merge-agent-pr.mjs` dans le dépôt cible,
+autoriser `contents: write` et `pull-requests: write` pour Actions et définir les
+secrets Actions `PLANIFIKATEUR_URL` et `PLANIFIKATEUR_AGENT_TOKEN`. Leur absence
+ne bloque pas la fusion par le worker. Une révocation de l’agent impose de
+remplacer sa clé dans chaque service qui l’utilise.
 
 La configuration distante n’a pas été appliquée depuis l’environnement de
 travail : les appels à l’API GitHub de configuration y sont refusés. La création
-du webhook, les secrets et les règles de branche restent donc à effectuer dans
+du webhook et les règles de branche restent donc à effectuer dans
 les interfaces GitHub et Railway. Aucune fusion réelle n’a été vérifiée.
 
 ## Parcours de l’agent
@@ -76,6 +82,9 @@ les interfaces GitHub et Railway. Aucune fusion réelle n’a été vérifiée.
    est libérée à la soumission.
 6. Si les tests échouent, leur webhook remet l’exécution en file. Réserver à
    nouveau, corriger, pousser et soumettre la nouvelle référence de commit.
+   Une exécution annulée reste en attente des tests et de la fusion : elle ne
+   renvoie pas la tâche à Codex lorsque GitHub remplace les premiers contrôles
+   par ceux déclenchés par l’ajout du label.
 7. Si GitHub demande de remettre la branche à jour, retirer le label, utiliser
    `POST .../work/{execution}/revise` avec la version courante pour reprendre
    l’exécution, mettre la branche à jour, pousser puis soumettre à nouveau avant
@@ -88,8 +97,9 @@ peuvent être rattachées à cette exécution.
 
 ## Conditions de fusion
 
-Le workflow **Fusion des PR agent** tourne avec le code de `main`, jamais avec
-le code de la PR et ses secrets. Il vérifie :
+La fusion est exécutée par le code installé du worker, hors du dépôt modifié
+par Codex. Le workflow complémentaire **Fusion des PR agent** tourne avec le
+code de `main`, jamais avec le code de la PR et ses secrets. Ils vérifient :
 
 - Une exécution terminée et réussie du bon workflow **Tests**, pour cette PR.
 - Les deux jobs requis, présents une seule fois, terminés avec `success`.
@@ -109,7 +119,8 @@ webhook `pull_request` fermé avec `merged: true`, la bonne PR et le bon commit,
 signé avec le secret, la fait passer **Terminée — PR fusionnée**. Les événements
 répétés sont sans effet ; fermer une PR sans fusion ne termine pas la carte.
 En cas de webhook perdu, utiliser la redélivraison depuis GitHub. Un échec de
-fusion reste visible dans les logs du workflow et ne clôture pas la carte.
+fusion est publié en annotation GitHub, consultable automatiquement via l’API,
+et ne clôture pas la carte.
 
 Railway peut ensuite déployer si sa connexion GitHub et le déploiement automatique
 sont activés. La fusion n’est pas une confirmation de déploiement réussi.

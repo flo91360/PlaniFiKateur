@@ -24,7 +24,21 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: node scripts/merge-agent-pr.mjs
+      - name: Vérifier la configuration du mécanisme complémentaire
+        id: configuration
+        env:
+          PLANIFIKATEUR_URL: ${{ secrets.PLANIFIKATEUR_URL }}
+          PLANIFIKATEUR_AGENT_TOKEN: ${{ secrets.PLANIFIKATEUR_AGENT_TOKEN }}
+        run: |
+          if [ -n "$PLANIFIKATEUR_URL" ] && [ -n "$PLANIFIKATEUR_AGENT_TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Fusion confiée au worker : aucun secret Actions supplémentaire requis."
+          fi
+      - name: Fusion complémentaire via GitHub Actions
+        if: steps.configuration.outputs.enabled == 'true'
+        run: node scripts/merge-agent-pr.mjs
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
