@@ -255,7 +255,11 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
       return transaction(() => {
         checkAgent(agent, projectId); const row = scoped(projectId, cardId, id), run = unpack(row);
         if (action === 'claim' || action === 'revise') {
-          if (action === 'revise' ? (run.state !== 'merging' || run.agent?.id !== agent.id) : !['ready','interrupted'].includes(run.state)) fail(409, 'already_claimed', 'Cette exécution n’est pas disponible.');
+          // Compatibility recovery for the old worker's technical publication question.
+          // Real requests for clarification still require a human answer.
+          const publicationRecovery = run.delivery === 'github' && run.state === 'waiting' && run.submissions.at(-1)?.pullRequest
+            && run.exchanges.at(-1)?.question === 'La PR ne pointe pas sur le commit testé.' && !run.exchanges.at(-1)?.answer;
+          if (action === 'revise' ? ((!publicationRecovery && run.state !== 'merging') || run.agent?.id !== agent.id) : !['ready','interrupted'].includes(run.state)) fail(409, 'already_claimed', 'Cette exécution n’est pas disponible.');
           checkVersion(run, data?.version); checkSource(run);
           const leaseToken = randomBytes(32).toString('hex'); run.state = 'running'; run.agent = { id: agent.id, name: agent.name }; run.interruption = null;
           save(run, agent, 'claimed', { leaseHash: tokenHash(leaseToken), expires: Date.now() + LEASE_MS });

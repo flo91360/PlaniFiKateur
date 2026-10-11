@@ -13,7 +13,7 @@ import { createWorker } from '../worker/worker.mjs';
 import { createState } from '../worker/state.mjs';
 import { commandEnvironment, runCommand } from '../worker/commands.mjs';
 import { createCodexRunner, taskPrompt } from '../worker/codex.mjs';
-import { ApiError, createSiteClient, createGithubClient, connectionDiagnostic } from '../worker/clients.mjs';
+import { ApiError, PublicationPendingError, createSiteClient, createGithubClient, connectionDiagnostic } from '../worker/clients.mjs';
 import { mergeAgentPullRequest, requiredJobs } from '../scripts/merge-agent-pr.mjs';
 
 const repository = 'worker/example', webhookSecret = 'worker-test-webhook';
@@ -51,7 +51,7 @@ async function fixture(t, options = {}) {
     if (command[0] === 'git') command = ['git', '-c', `url.${bare}.insteadOf=https://github.com/${repository}.git`, ...command.slice(1)];
     return runCommand(command, args);
   };
-  let pr, labels = 0, branch, behind = false, testsReady = false, merges = 0, mergeFailure = false;
+  let pr, labels = 0, branch, behind = false, testsReady = false, merges = 0, mergeFailure = false, publications = 0;
   const mergeClient = createGithubClient('github-test-token', async (url, request) => {
     const path = new URL(url).pathname;
     const run = { id: 1, workflow_id: 2, event: 'pull_request', status: 'completed', conclusion: 'success', head_repository: { full_name: repository }, head_sha: pr.head.sha, head_branch: branch, run_attempt: 1 };
@@ -73,11 +73,14 @@ async function fixture(t, options = {}) {
     return Response.json(data);
   });
   const github = {
-    async ensurePullRequest(repo, name, title, body) {
+    async ensurePullRequest(repo, name, title, body, signal, expectedSha) {
       assert.equal(repo, repository); branch = name;
       const sha = await git(['rev-parse', `refs/heads/${branch}`], bare);
+      assert.equal(expectedSha, sha, 'publication must confirm the locally tested commit');
       pr ||= { number: 1, state: 'open', html_url: `https://github.com/${repository}/pull/1`, base: { ref: 'main' }, head: { repo: { full_name: repository } }, labels: [] };
-      pr.head.sha = sha; pr.head.ref = branch; pr.title = title; pr.body = body; return structuredClone(pr);
+      pr.head.sha = sha; pr.head.ref = branch; pr.title = title; pr.body = body;
+      if (options.publicationPending && publications++ === 0) throw new PublicationPendingError();
+      return structuredClone(pr);
     },
     async pull() { pr.head.sha = await git(['rev-parse', `refs/heads/${branch}`], bare); return structuredClone(pr); },
     async label() {
@@ -305,7 +308,7 @@ test('temporary heartbeat outages preserve the task and resume lease renewal', a
   assert.equal(f.modelCalls.length, 1);
   assert.ok(renewals > 0);
   assert.equal(f.logs.filter(line => line.includes('temporairement indisponible')).length, 2);
-  assert.equal((await f.state.get(f.current().id)).attempts, 1);
+  assert.equal((await f.state.get(f.current().id)).attempts, 0);
 });
 
 test('an outage cannot keep working after the last confirmed lease expires', async t => {
@@ -359,6 +362,72 @@ test('a retry budget stops repeated model runs until a human answers', async t =
   const worker = createWorker({ ...f.config, maxAttempts: 1 }, f.dependencies);
   await worker.processTask(f.prepare()); assert.equal(f.current().state, 'waiting'); assert.equal(f.modelCalls.length, 1);
   assert.equal((await worker.processTask({ ...f.current(), state: 'ready' })).status, 'claimed_elsewhere'); assert.equal(f.modelCalls.length, 1);
+});
+
+test('delayed PR synchronization retries automatically without using the model failure budget', async t => {
+  const f = await fixture(t, { publicationPending: true });
+  const worker = createWorker({ ...f.config, maxAttempts: 1 }, f.dependencies);
+  assert.equal((await worker.processTask(f.prepare())).status, 'interrupted');
+  assert.equal(f.current().state, 'interrupted');
+  assert.equal(f.current().exchanges.length, 0);
+  assert.equal((await f.state.get(f.current().id)).attempts, 0);
+  assert.equal((await worker.processTask(f.current())).status, 'merging');
+  assert.equal(f.pr.number, 1);
+  assert.equal(f.current().submissions.at(-1).pullRequest.headSha, f.pr.head.sha);
+});
+
+test('the original agent recovers the old publication question without a human answer', async t => {
+  const f = await fixture(t); f.prepare(); await f.worker.tick();
+  const claimed = await f.site.action(f.current(), 'revise');
+  await f.site.action(claimed, 'question', { message: 'La PR ne pointe pas sur le commit testé.' });
+  const job = await f.state.get(claimed.id); job.attempts = 3; job.phase = 'waiting'; await f.state.put(job);
+  const otherSite = createSiteClient({ ...f.config, token: 'unrecognized-agent-token' });
+  await assert.rejects(otherSite.action(f.current(), 'revise'), error => error.status === 401);
+  assert.equal((await f.worker.tick()).status, 'merging');
+  assert.equal(f.modelCalls.length, 2);
+  assert.equal(f.current().exchanges.at(-1).answer, null);
+  assert.equal(f.current().submissions.length, 2);
+  assert.equal(f.current().submissions.at(-1).pullRequest.number, 1);
+  assert.equal((await f.state.get(claimed.id)).attempts, 0);
+});
+
+test('genuine clarification questions cannot be bypassed by automatic PR recovery', async t => {
+  const f = await fixture(t); f.prepare(); await f.worker.tick();
+  const claimed = await f.site.action(f.current(), 'revise');
+  await f.site.action(claimed, 'question', { message: 'Quel fichier faut-il modifier ?' });
+  await assert.rejects(f.site.action(f.current(), 'revise'), error => error.status === 409);
+  assert.equal((await f.worker.tick()).status, 'idle');
+  assert.equal(f.current().state, 'waiting');
+  assert.equal(f.modelCalls.length, 1);
+});
+
+test('GitHub PR synchronization ignores stale listings and waits for the tested head', async () => {
+  const branch = 'planifikateur/task', testedSha = 'a'.repeat(40), waits = [];
+  const stale = { number: 9, state: 'open', draft: false, head: { sha: 'b'.repeat(40), ref: branch, repo: { full_name: repository } }, base: { ref: 'main' } };
+  let reads = 0;
+  const client = createGithubClient('private-token', async url => {
+    if (new URL(url).pathname.endsWith('/pulls')) return Response.json([stale]);
+    reads++;
+    return Response.json(reads < 3 ? stale : { ...stale, head: { ...stale.head, sha: testedSha } });
+  }, async ms => { waits.push(ms); });
+  const pr = await client.ensurePullRequest(repository, branch, 'Title', 'Body', undefined, testedSha);
+  assert.equal(pr.head.sha, testedSha);
+  assert.equal(reads, 3);
+  assert.deepEqual(waits, [1000, 2000]);
+});
+
+test('PR synchronization never approves a different commit or an unrelated branch', async () => {
+  const branch = 'planifikateur/task', testedSha = 'a'.repeat(40);
+  const stale = { number: 9, state: 'open', draft: false, head: { sha: 'b'.repeat(40), ref: branch, repo: { full_name: repository } }, base: { ref: 'main' } };
+  let reads = 0;
+  const client = createGithubClient('private-token', async url => {
+    if (new URL(url).pathname.endsWith('/pulls')) return Response.json([stale]);
+    reads++; return Response.json(stale);
+  }, async () => {});
+  await assert.rejects(client.ensurePullRequest(repository, branch, 'Title', 'Body', undefined, testedSha), PublicationPendingError);
+  assert.equal(reads, 6);
+  const foreign = createGithubClient('private-token', async url => Response.json(new URL(url).pathname.endsWith('/pulls') ? [stale] : { ...stale, head: { ...stale.head, ref: 'other-branch', sha: testedSha } }));
+  await assert.rejects(foreign.ensurePullRequest(repository, branch, 'Title', 'Body', undefined, testedSha), /ne correspond pas/);
 });
 
 test('worker configuration rejects external HTTP, credential URLs, invalid scopes and shell strings', () => {
