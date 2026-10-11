@@ -191,6 +191,61 @@ test('legacy execution requests remain intact when opening an existing database'
   assert.equal(run.objective, 'Objectif historique'); assert.equal(run.criteria, 'Critères historiques'); assert.equal(run.context, 'Contraintes historiques');
 });
 
+test('an agent question is a card comment and only a new human comment on that card resumes it', async t => {
+  const f = await fixture(t);
+  let run = await f.claim(await f.prepare());
+  run = await f.agentAction(run, 'question', { message: 'Quel vert souhaitez-vous ?' });
+  const question = f.store.read().projects[0].cards[0].comments.at(-1);
+  assert.equal(question.text, 'Quel vert souhaitez-vous ?');
+  assert.equal(question.author, 'Test agent'); assert.equal(question.authorId, f.credentials.agent.id);
+  assert.equal((await f.action(run, 'question', { message: 'Duplicate' })).status, 409);
+  let snapshot = f.store.read(); snapshot.projects[0].cards[1].comments.push({ id: 'other-card-reply', author: 'Fake', text: 'Pas cette carte', date: new Date().toISOString() });
+  f.store.write(snapshot.projects, snapshot.revision, f.user);
+  assert.equal(f.store.workflows.list(f.project.id, f.card.id)[0].state, 'waiting');
+  snapshot = f.store.read(); snapshot.projects[0].cards[0].priority = 'high';
+  f.store.write(snapshot.projects, snapshot.revision, f.user);
+  assert.equal(f.store.workflows.list(f.project.id, f.card.id)[0].state, 'waiting');
+  snapshot = f.store.read();
+  snapshot.projects[0].cards[0].comments.push({ id: 'human-reply', author: 'Fake', authorId: 'forged', text: 'Un vert plus vif.', date: new Date().toISOString() });
+  const result = f.store.write(snapshot.projects, snapshot.revision, f.user);
+  run = f.store.workflows.list(f.project.id, f.card.id)[0];
+  assert.equal(run.state, 'ready'); assert.equal(result.projects[0].cards[0].status, 'ready');
+  assert.deepEqual(run.exchanges[0].answer.actor, { id: f.user.id, name: f.user.name });
+  assert.equal(run.exchanges[0].answer.commentId, 'human-reply'); assert.equal(run.exchanges[0].answer.text, 'Un vert plus vif.');
+  assert.equal(result.projects[0].cards[0].comments.at(-1).authorId, f.user.id);
+  assert.equal(result.projects[0].cards[0].comments.filter(c => c.text === 'Un vert plus vif.').length, 1);
+  assert.equal(f.store.activity({ cardId: f.card.id }).filter(e => e.action === 'work.answer').length, 1);
+  assert.equal((await f.claim(run)).state, 'running');
+});
+
+test('concurrent comments cannot answer a waiting execution twice', async t => {
+  const f = await fixture(t);
+  await f.agentAction(await f.claim(await f.prepare()), 'question', { message: 'Pouvez-vous préciser ?' });
+  const first = f.store.read(), second = structuredClone(first);
+  for (const [snapshot, id] of [[first, 'reply-one'], [second, 'reply-two']]) snapshot.projects[0].cards[0].comments.push({ id, author: 'Alice', text: id, date: new Date().toISOString() });
+  assert.ok(f.store.write(first.projects, first.revision, f.user));
+  assert.equal(f.second.write(second.projects, second.revision, f.user), null);
+  const run = f.store.workflows.list(f.project.id, f.card.id)[0];
+  assert.equal(run.exchanges[0].answer.text, 'reply-one');
+  assert.equal(f.store.activity({ cardId: f.card.id }).filter(e => e.action === 'work.answer').length, 1);
+});
+
+test('upgrading backfills existing agent questions once and a comment can resume the pending task', async t => {
+  const f = await fixture(t);
+  const run = await f.agentAction(await f.claim(await f.prepare()), 'question', { message: 'Configuration corrigée ?' });
+  const snapshot = f.store.read(), db = new DatabaseSync(f.file);
+  snapshot.projects[0].cards[0].comments = snapshot.projects[0].cards[0].comments.filter(c => !c.id.startsWith(`work-${run.id}-question-`));
+  db.prepare('UPDATE workspace SET projects=? WHERE id=1').run(JSON.stringify(snapshot.projects)); db.close();
+  const upgraded = createStore(f.file); t.after(() => upgraded.close());
+  const revision = upgraded.getRevision();
+  assert.equal(revision, snapshot.revision + 1);
+  assert.equal(upgraded.read().projects[0].cards[0].comments.filter(c => c.text === 'Configuration corrigée ?').length, 1);
+  const again = createStore(f.file); t.after(() => again.close()); assert.equal(again.getRevision(), revision);
+  const reply = upgraded.read(); reply.projects[0].cards[0].comments.push({ id: 'upgrade-reply', author: 'Alice', text: 'Oui, reprends.', date: new Date().toISOString() });
+  upgraded.write(reply.projects, reply.revision, f.user);
+  assert.equal(upgraded.workflows.list(f.project.id, f.card.id)[0].state, 'ready');
+});
+
 test('ready status alone creates one execution across simultaneous queue polls and only one claim succeeds', async t => {
   const f = await fixture(t), snapshot = f.store.read();
   snapshot.projects[0].cards[0].status = 'ready';

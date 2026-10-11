@@ -15,12 +15,14 @@ service : il doit être installé, connecté puis lancé séparément du site.
    de sa prochaine consultation et le serveur crée automatiquement son exécution
    avec le dépôt du projet. Aucun bouton de lancement supplémentaire n’est requis.
 4. L’agent prend la tâche et signale son avancement. Une question fait apparaître
-   **À préciser**. Répondre puis cliquer **Répondre et reprendre**.
+   **À préciser** et ajoute la question dans la **Discussion** de la carte.
+   Publier un commentaire dans cette même carte pour répondre et remettre la tâche en file.
 5. Le résultat passe en attente de tests et de fusion GitHub. La PR se fusionne
    automatiquement après les contrôles requis, puis le webhook termine la carte.
    Aucun bouton de validation humaine n’est proposé pour les nouvelles tâches.
-   Il reste possible de demander des corrections avant fusion ou d’annuler.
-   Les questions, soumissions et anciennes décisions restent consultables.
+   L’avancement, le résultat, le lien vers la PR et la confirmation de fusion
+   apparaissent dans la discussion de la carte. Les routes API de correction
+   et d’annulation restent disponibles.
 
 Les listes restent l’organisation du projet ; les statuts des cartes suivent
 l’exécution automatiquement. Une carte en attente peut être retirée de la file en changeant son statut.
@@ -197,5 +199,9 @@ réussir. Le demandeur est attribué à la personne ayant marqué la carte prêt
 Les exécutions prêtes ou interrompues sont réutilisées sans perdre leur historique.
 Une carte repassée à un autre statut avant sa prise en charge quitte la file.
 Le `POST` de préparation reste disponible pour les anciens clients, mais n’est
-plus nécessaire dans le parcours normal. **Tâches du projet** sert au suivi, aux
-réponses aux questions et aux corrections.
+plus nécessaire dans le parcours normal. La **Discussion** de la carte contient les questions et le suivi.
+Un nouveau commentaire humain dans une carte « À préciser » répond à la dernière
+question et relance la même exécution. Un commentaire dans un autre état reste
+un commentaire ordinaire. Modifier un ancien commentaire ne relance pas la tâche.
+Les questions des exécutions déjà enregistrées sont ajoutées à la discussion
+lors de la mise à jour du serveur, sans doublons.

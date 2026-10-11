@@ -139,7 +139,10 @@ test('questions pause publication and an answer resumes the persisted conversati
     return { status: 'result', summary: 'French greeting', question: '' };
   } });
   f.prepare(); assert.equal((await f.worker.tick()).status, 'waiting'); assert.equal(f.pr, undefined);
-  let run = f.current(); f.store.workflows.human(f.project.id, f.card.id, run.id, 'answer', { version: run.version, message: 'Français' }, f.user);
+  const snapshot = f.store.read();
+  assert.equal(snapshot.projects[0].cards[0].comments.at(-1).text, 'Quelle langue ?');
+  snapshot.projects[0].cards[0].comments.push({ id: 'language-reply', author: f.user.name, text: 'Français', date: new Date().toISOString() });
+  f.store.write(snapshot.projects, snapshot.revision, f.user);
   const restarted = createWorker(f.config, f.dependencies); assert.equal((await restarted.tick()).status, 'merging');
   assert.equal(f.modelCalls.length, 2);
 });

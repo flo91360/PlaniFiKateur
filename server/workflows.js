@@ -27,6 +27,26 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
     const active = new Set(db.prepare('SELECT id FROM users WHERE active = 1 AND password_hash IS NOT NULL').all().map(u => u.id));
     return [...new Set([card.createdBy?.id, ...card.comments.map(c => c.authorId), ...prefs.filter(p => p.following).map(p => p.user_id), ...extra])].filter(id => id && id !== actor?.id && active.has(id) && !out.has(id));
   };
+  const addComment = (card, run, actor, id, message, date = new Date().toISOString(), strict = true) => {
+    if (card.comments.some(comment => comment.id === id)) return false;
+    if (card.comments.length >= 1000) {
+      if (strict) fail(400, 'comment_limit', 'La discussion de cette carte a atteint sa limite de commentaires.');
+      return false;
+    }
+    card.comments.push({ id, author: actor?.name || 'Agent IA', authorId: actor?.id || null, text: message.slice(0, 10000), date });
+    audit(actor, 'comment.created', { projectId: run.projectId, cardId: run.cardId, cardTitle: card.title, details: { commentId: id }, executionId: run.id, recipientIds: recipients(card, actor, [run.requestedBy.id]) });
+    return true;
+  };
+  const questionComments = (card, run, strict = true) => {
+    let changed = false;
+    run.exchanges.forEach((exchange, index) => {
+      changed = addComment(card, run, run.agent, `work-${run.id}-question-${index}`, exchange.question, exchange.date, strict) || changed;
+      if (exchange.answer && !exchange.answer.commentId) {
+        changed = addComment(card, run, exchange.answer.actor, `work-${run.id}-answer-${index}`, exchange.answer.text, exchange.answer.date, strict) || changed;
+      }
+    });
+    return changed;
+  };
   const save = (run, actor, action, { leaseHash = null, expires = null, syncCard = true } = {}) => {
     run.leaseExpiresAt = expires ? new Date(expires).toISOString() : null;
     run.version++; run.updatedAt = new Date().toISOString();
@@ -37,6 +57,17 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
       const row = db.prepare('SELECT projects FROM workspace WHERE id=1').get(); const projects = JSON.parse(row.projects);
       const card = projects.find(p => p.id === run.projectId).cards.find(c => c.id === run.cardId);
       card.status = cardStatus[run.state]; card.updatedAt = run.updatedAt; card.updatedBy = actor ? { id: actor.id, name: actor.name } : null;
+      if (['question', 'answer'].includes(action)) questionComments(card, run);
+      let message;
+      if (action === 'progress') message = run.updates.at(-1)?.text;
+      if (['interrupt', 'interrupted'].includes(action)) message = run.interruption;
+      if (action === 'submit') {
+        const result = run.submissions.at(-1);
+        message = `${result.pullRequest ? `PR : ${result.pullRequest.url}\n\n` : ''}${result.summary}\n\nVérifications : ${result.checks}`;
+      }
+      if (action === 'merged') message = `La PR a été fusionnée. La tâche est terminée.\n${run.submissions.at(-1).pullRequest.url}`;
+      if (action === 'checks' && run.state === 'ready') message = run.updates.at(-1)?.text;
+      if (message) addComment(card, run, actor, `work-${run.id}-${action}-${run.version}`, message);
       db.prepare('UPDATE workspace SET projects=?,revision=revision+1,updated_at=? WHERE id=1').run(JSON.stringify(projects), run.updatedAt);
     }
     audit(actor, `work.${action}`, { projectId: run.projectId, cardId: run.cardId, projectName: context?.project.name, cardTitle: context?.card.title, executionId: run.id, state: run.state, recipientIds: context ? recipients(context.card, actor, [run.requestedBy.id]) : [] });
@@ -75,6 +106,16 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
     db.prepare('INSERT INTO executions(id,project_id,card_id,state,version,data) VALUES(?,?,?,?,0,?)').run(run.id, projectId, cardId, run.state, JSON.stringify(run));
     return save(run, actor, 'prepared');
   };
+  // Bring existing questions into the card discussion when upgrading the site.
+  transaction(() => {
+    const projects = JSON.parse(db.prepare('SELECT projects FROM workspace WHERE id=1').get().projects);
+    let changed = false;
+    for (const row of rows()) {
+      const run = unpack(row), card = projects.find(p => p.id === run.projectId)?.cards.find(c => c.id === run.cardId);
+      if (card) changed = questionComments(card, run, false) || changed;
+    }
+    if (changed) db.prepare('UPDATE workspace SET projects=?,revision=revision+1,updated_at=? WHERE id=1').run(JSON.stringify(projects), new Date().toISOString());
+  });
   return {
     githubProject,
     configureGithub(projectId, repository, actor) {
@@ -251,6 +292,17 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
           run.state = 'cancelled'; run.cancellation = 'La carte a été retirée de la file par son changement de statut.';
           save(run, actor, 'cancel', { syncCard: false });
         } else if (card.status !== cardStatus[run.state]) fail(409, 'managed_status', 'Le statut de cette carte est piloté par son exécution IA.');
+        if (run.state === 'waiting' && card && actor && !restore) {
+          const previous = before.find(p => p.id === run.projectId)?.cards.find(c => c.id === run.cardId);
+          const oldIds = new Set(previous?.comments.map(comment => comment.id));
+          const reply = card.comments.find(comment => !oldIds.has(comment.id));
+          if (reply) {
+            run.exchanges.at(-1).answer = { text: reply.text.trim(), actor: { id: actor.id, name: actor.name }, date: new Date().toISOString(), commentId: reply.id };
+            run.state = 'ready';
+            save(run, actor, 'answer', { syncCard: false });
+            card.status = 'ready';
+          }
+        }
       }
     },
   };

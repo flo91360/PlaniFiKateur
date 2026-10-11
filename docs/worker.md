@@ -137,7 +137,9 @@ du fonctionnement. » Passer cette carte au statut **Prête à démarrer**.
 Le worker la détecte automatiquement ; aucun bouton de lancement n’est nécessaire. Le dépôt se configure une fois dans
 **Paramètres du projet** et la livraison se fait toujours par fusion automatique. Lancer le worker et observer :
 
-1. La prise en charge et l’avancement dans **Tâches du projet**.
+1. Le statut **En cours**, l’avancement et les questions dans la **Discussion**
+   de la carte. Si elle est **À préciser**, publier un commentaire pour répondre
+   et relancer la même exécution.
 2. Le commit et la PR liés à cette exécution, après tests locaux réussis.
 3. Les deux contrôles GitHub réussis sur ce commit, puis sa fusion automatique.
 4. La carte terminée après la livraison du webhook signé.
