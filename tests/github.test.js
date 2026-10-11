@@ -121,3 +121,11 @@ test('preparation without a delivery choice still requires the server webhook se
  assert.equal((await f.post(`/projects/${f.project.id}/cards/${f.card.id}/work`, {})).status, 503);
  assert.equal(f.store.workflows.list(f.project.id, f.card.id).length, 0);
 });
+
+test('automatic discovery does not create executions while the webhook secret is missing', async t => {
+ const f = await fixture(t, false), snapshot = f.store.read();
+ snapshot.projects[0].cards[0].status = 'ready'; f.store.write(snapshot.projects, snapshot.revision, f.user);
+ const response = await fetch(`${f.base}/projects/${f.project.id}/work`, { headers: { Authorization: `Bearer ${f.token}` } });
+ assert.equal(response.status, 200); assert.deepEqual((await response.json()).data, []);
+ assert.equal(f.store.workflows.list(f.project.id, f.card.id).length, 0);
+});

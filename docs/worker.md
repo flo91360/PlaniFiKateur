@@ -117,8 +117,8 @@ tourner sur votre ordinateur tout en consultant le site Railway.
 
 Créer une **nouvelle** petite carte de test, par exemple : « Dans le menu des
 projets, afficher le numéro de version précédé du mot Version. Conserver le reste
-du fonctionnement. » Dans **Tâches du projet**, sélectionner cette carte puis
-cliquer **Prête pour un agent**. Le dépôt se configure une fois dans
+du fonctionnement. » Passer cette carte au statut **Prête à démarrer**.
+Le worker la détecte automatiquement ; aucun bouton de lancement n’est nécessaire. Le dépôt se configure une fois dans
 **Paramètres du projet** et la livraison se fait toujours par fusion automatique. Lancer le worker et observer :
 
 1. La prise en charge et l’avancement dans **Tâches du projet**.

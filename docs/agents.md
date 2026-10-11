@@ -1,4 +1,4 @@
-# Parcours agent par projet — v0.1.15
+# Parcours agent par projet — v0.1.16
 
 Un seul agent actif, sans délégation. Le site pilote les demandes et confirme la fusion GitHub ;
 l’agent s’exécute dans un service externe. Le [worker Codex](worker.md) fournit ce
@@ -11,8 +11,9 @@ service : il doit être installé, connecté puis lancé séparément du site.
    l’agent, qui déduit les vérifications utiles et pose une question si nécessaire.
 2. Dans **Paramètres du projet**, configurer le dépôt GitHub et l’accès de l’agent.
    Ces paramètres s’appliquent à toutes les cartes de ce projet.
-3. Ouvrir **Tâches du projet**, sélectionner la carte puis cliquer **Prête pour
-   un agent**. Cette action crée une exécution persistante avec livraison GitHub.
+3. Passer la carte au statut **Prête à démarrer**. Le worker la détecte lors
+   de sa prochaine consultation et le serveur crée automatiquement son exécution
+   avec le dépôt du projet. Aucun bouton de lancement supplémentaire n’est requis.
 4. L’agent prend la tâche et signale son avancement. Une question fait apparaître
    **À préciser**. Répondre puis cliquer **Répondre et reprendre**.
 5. Le résultat passe en attente de tests et de fusion GitHub. La PR se fusionne
@@ -22,8 +23,8 @@ service : il doit être installé, connecté puis lancé séparément du site.
    Les questions, soumissions et anciennes décisions restent consultables.
 
 Les listes restent l’organisation du projet ; les statuts des cartes suivent
-l’exécution automatiquement. Le changement manuel de statut est bloqué pendant
-une exécution active, y compris via l’API du tableau. Préparer une nouvelle
+l’exécution automatiquement. Une carte en attente peut être retirée de la file en changeant son statut.
+Après la prise en charge, le changement manuel de statut est bloqué, y compris via l’API du tableau. Préparer une nouvelle
 exécution après une fusion conserve l’historique de la précédente.
 
 L’interface actualise le travail toutes les cinq secondes. Elle conserve les
@@ -185,3 +186,16 @@ contrat de lecture des agents. `cardSnapshot` garde la carte au démarrage et
 Les listes de critères déjà stockées et les anciennes exécutions sont conservées
 pour ne pas perdre les données historiques. Elles ne sont pas exigées pour les
 nouvelles demandes. Les anciennes demandes restent consultables dans l’historique.
+
+## Détection automatique des cartes prêtes — v0.1.16
+
+`GET /api/v1/projects/{projet}/work` matérialise les cartes au statut `ready`
+qui ont une description non vide et aucune exécution active. Le dépôt du projet
+et le secret de webhook du serveur doivent être configurés. Les consultations
+concurrentes créent une seule exécution par carte ; une seule réservation peut
+réussir. Le demandeur est attribué à la personne ayant marqué la carte prête.
+Les exécutions prêtes ou interrompues sont réutilisées sans perdre leur historique.
+Une carte repassée à un autre statut avant sa prise en charge quitte la file.
+Le `POST` de préparation reste disponible pour les anciens clients, mais n’est
+plus nécessaire dans le parcours normal. **Tâches du projet** sert au suivi, aux
+réponses aux questions et aux corrections.

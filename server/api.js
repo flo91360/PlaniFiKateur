@@ -163,7 +163,7 @@ export function createApi(store, config = {}) {
       const queueRoute = /^\/api\/v1\/projects\/([a-zA-Z0-9_-]+)\/work$/.exec(path);
       if (queueRoute) {
         if (req.method !== 'GET') throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
-        send(res, 200, { data: store.workflows.queue(queueRoute[1], authenticatedAgent()) }); return true;
+        send(res, 200, { data: store.workflows.queue(queueRoute[1], authenticatedAgent(), { autoPrepare: !!config.githubWebhookSecret }) }); return true;
       }
       const workRoute = /^\/api\/v1\/projects\/([a-zA-Z0-9_-]+)\/cards\/([a-zA-Z0-9_-]+)\/work(?:\/([a-zA-Z0-9_-]+)\/(claim|revise|heartbeat|progress|question|submit|interrupt|answer|accept|reject|cancel))?$/.exec(path);
       if (workRoute) {

@@ -16,7 +16,8 @@ const test = base.extend({
   initialAccounts: [true, { option: true }],
   appServer: async ({ initialAccounts, githubEnabled }, use) => {
     const store = createStore(':memory:');
-    if (initialAccounts) seedAccount(store);
+    const user = initialAccounts ? seedAccount(store) : null;
+    if (githubEnabled) { const initial = store.read(); initial.projects.forEach(p => p.cards.forEach(c => { c.status = 'draft'; })); store.write(initial.projects, initial.revision, user); }
     const dir = mkdtempSync(join(tmpdir(), 'planifikateur-browser-backups-'));
     const backups = createBackups(store, { directory: dir });
     const server = createAppServer({ store, config: { ownerToken, readToken, backups, githubWebhookSecret: githubEnabled ? 'browser-github-secret' : '' } });
@@ -371,15 +372,17 @@ test.describe('project task execution', () => {
     await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
     await page.getByRole('button', { name: 'Tâches du projet', exact: true }).click();
     const panel = page.locator('.work-panel');
-    await expect(panel.getByRole('button', { name: 'Prête pour un agent', exact: true })).toBeDisabled();
+    await expect(panel.getByRole('button', { name: 'Prête pour un agent', exact: true })).toHaveCount(0);
+    await expect(panel).toContainText('Complétez la description');
     await expect(page.getByLabel('Livraison', { exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: 'Modifier la carte', exact: true }).click();
     await page.getByLabel('Description', { exact: true }).fill('Améliorer le menu mobile');
+    await page.getByLabel('Statut', { exact: true }).selectOption('ready');
     await page.getByRole('button', { name: 'Terminé', exact: true }).click();
     await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
     await page.getByRole('button', { name: 'Tâches du projet', exact: true }).click();
-    await panel.getByRole('button', { name: 'Prête pour un agent', exact: true }).click();
-    await expect(panel.locator('.work-state')).toHaveText('Prête pour l’agent');
+    await expect(panel.getByRole('button', { name: 'Prête pour un agent', exact: true })).toHaveCount(0);
+    await expect(panel).toContainText('en attente de l’agent');
     const queue = async () => (await (await request.get(`${appServer}/api/v1/projects/${project.id}/work`, { headers: { Authorization: `Bearer ${token}` } })).json()).data[0];
     let run = await queue(), leaseToken;
     expect(run).toMatchObject({ objective: 'Améliorer le menu mobile', criteria: '', delivery: 'github', repository: 'flo91360/PlaniFiKateur' });
@@ -414,6 +417,30 @@ test.describe('project task execution', () => {
     await page.reload(); await page.getByRole('button', { name: 'Tâches du projet', exact: true }).click();
     await expect(panel.locator('.work-state')).toHaveText('Terminée — PR fusionnée');
     await expect(page.locator('.work-result')).toHaveCount(2);
+  });
+
+  test('a ready card is automatically queued and can be withdrawn from its status before claim', async ({ page, request, appServer }) => {
+    await login(page, appServer); const project = seed[0], card = project.cards[0];
+    expect((await page.request.put(`${appServer}/api/v1/projects/${project.id}/github`, { data: { repository: 'flo91360/PlaniFiKateur' } })).status()).toBe(200);
+    const credentials = await page.request.post(`${appServer}/api/v1/agents`, { data: { name: 'Status agent', projectIds: [project.id] } });
+    expect(credentials.status()).toBe(201); const token = (await credentials.json()).data.token;
+    const queue = async () => (await (await request.get(`${appServer}/api/v1/projects/${project.id}/work`, { headers: { Authorization: `Bearer ${token}` } })).json()).data;
+    await page.getByRole('heading', { name: card.title, exact: true }).click();
+    await page.getByLabel('Statut', { exact: true }).selectOption('ready');
+    await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+    await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+    const first = await queue(); expect(first).toHaveLength(1);
+    await page.getByRole('heading', { name: card.title, exact: true }).click();
+    await expect(page.getByLabel('Statut', { exact: true })).toBeEnabled();
+    await page.getByLabel('Statut', { exact: true }).selectOption('draft');
+    await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+    await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+    expect(await queue()).toHaveLength(0);
+    await page.getByRole('heading', { name: card.title, exact: true }).click();
+    await page.getByLabel('Statut', { exact: true }).selectOption('ready');
+    await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+    await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+    const next = await queue(); expect(next).toHaveLength(1); expect(next[0].id).not.toBe(first[0].id);
   });
 
 test('interruption and recovery remain visible without replacing a local title draft', async ({ page, request, appServer }) => {
@@ -502,7 +529,7 @@ test.describe('automatic GitHub delivery', () => {
     await page.getByRole('button', { name: 'Créer la carte', exact: true }).click();
     await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
     await page.getByRole('button', { name: 'Tâches du projet', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Prête pour un agent', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Prête pour un agent', exact: true })).toHaveCount(0);
     await expect(page.locator('.work-panel')).toContainText('non configuré');
     await page.getByRole('button', { name: 'Fermer', exact: true }).click();
     await configure('flo91360/Klaviflo');
@@ -534,12 +561,12 @@ test.describe('automatic GitHub delivery', () => {
     await page.getByRole('button', { name: 'Fermer', exact: true }).click();
     await page.getByRole('heading', { name: card.title, exact: true }).click();
     await page.getByLabel('Description', { exact: true }).fill('Corriger le menu');
+    await page.getByLabel('Statut', { exact: true }).selectOption('ready');
     await page.getByLabel('Description', { exact: true }).press('Tab');
     await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
     await page.getByRole('button', { name: 'Terminé', exact: true }).click();
     await page.getByRole('button', { name: 'Tâches du projet', exact: true }).click();
-    await panel.getByRole('button', { name: 'Prête pour un agent', exact: true }).click();
-    await expect(panel.locator('.work-state')).toHaveText('Prête pour l’agent');
+    await expect(panel).toContainText('en attente de l’agent');
     const credentials = await page.request.post(`${appServer}/api/v1/agents`, { data: { name: 'GitHub agent', projectIds: [project.id] } });
     const token = (await credentials.json()).data.token;
     const queue = await request.get(`${appServer}/api/v1/projects/${project.id}/work`, { headers: { Authorization: `Bearer ${token}` } });

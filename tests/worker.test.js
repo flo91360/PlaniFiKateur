@@ -21,6 +21,7 @@ async function fixture(t, options = {}) {
   const root = await mkdtemp(join(tmpdir(), 'planifikateur-worker-'));
   const store = createStore(join(root, 'site.sqlite')), user = seedAccount(store);
   const snapshot = store.read(), project = snapshot.projects[0], card = project.cards[0];
+  project.cards.slice(1).forEach(c => { c.status = 'draft'; });
   card.description = 'La fonction greet doit renvoyer bonjour plutôt que hello.'; card.checklist = [];
   store.write(snapshot.projects, snapshot.revision, user);
   store.workflows.configureGithub(project.id, repository, user);
@@ -88,9 +89,11 @@ async function fixture(t, options = {}) {
   return { root, store, user, project, card, credentials, config, state, worker, site, prepare, current, github, dependencies, calls, modelCalls, logs, git, bare, source, webhook, get pr() { return pr; }, setBehind(value) { behind = value; } };
 }
 
-test('local end-to-end: real card API, Git changes, passing tests, PR simulation, gated merge and signed completion', async t => {
-  const f = await fixture(t); const ready = f.prepare();
-  const outcome = await f.worker.tick(); assert.equal(outcome.status, 'merging');
+test('local end-to-end from ready card status: real API, Git changes, passing tests, PR simulation, gated merge and signed completion', async t => {
+  const f = await fixture(t), snapshot = f.store.read();
+  snapshot.projects[0].cards[0].status = 'ready'; f.store.write(snapshot.projects, snapshot.revision, f.user);
+  assert.equal(f.current(), undefined);
+  const outcome = await f.worker.tick(); const ready = f.current(); assert.equal(outcome.status, 'merging');
   assert.equal(f.current().state, 'merging'); assert.equal(f.store.read().projects[0].cards[0].status, 'review');
   assert.match(await f.git(['show', `${outcome.sha}:greet.mjs`], f.bare), /bonjour/);
   const job = await f.state.get(ready.id); assert.equal(job.threadId, 'fixture-thread');

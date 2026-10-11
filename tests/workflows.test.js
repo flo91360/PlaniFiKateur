@@ -14,6 +14,7 @@ import { restoreBackup } from '../server/backups.js';
 async function fixture(t, { legacyManual = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'planifikateur-work-')), file = join(dir, 'site.sqlite');
   const store = createStore(file), user = seedAccount(store), project = store.read().projects[0], card = project.cards[0];
+  const initial = store.read(); initial.projects[0].cards.slice(1).forEach(c => { c.status = 'draft'; }); store.write(initial.projects, initial.revision, user);
   const credentials = store.workflows.configureAgent({ name: 'Test agent', projectIds: [project.id] }, user);
   store.workflows.configureGithub(project.id, 'flo91360/PlaniFiKateur', user);
   const second = createStore(file), config = { readToken: 'read-only-test', githubWebhookSecret: 'test-webhook-secret' };
@@ -188,4 +189,52 @@ test('legacy execution requests remain intact when opening an existing database'
   const reopened = createStore(f.file); t.after(() => reopened.close());
   const run = reopened.workflows.list(f.project.id, f.card.id)[0];
   assert.equal(run.objective, 'Objectif historique'); assert.equal(run.criteria, 'Critères historiques'); assert.equal(run.context, 'Contraintes historiques');
+});
+
+test('ready status alone creates one execution across simultaneous queue polls and only one claim succeeds', async t => {
+  const f = await fixture(t), snapshot = f.store.read();
+  snapshot.projects[0].cards[0].status = 'ready';
+  f.store.write(snapshot.projects, snapshot.revision, f.user);
+  const revision = f.store.getRevision(), route = `/projects/${f.project.id}/work`;
+  const responses = await Promise.all([f.request(route, { token: f.credentials.token }), f.request(route, { token: f.credentials.token, base: f.bases[1] })]);
+  assert.deepEqual(responses.map(r => r.status), [200, 200]);
+  const queues = await Promise.all(responses.map(r => r.json()));
+  assert.equal(queues[0].data.length, 1); assert.equal(queues[1].data[0].id, queues[0].data[0].id);
+  const run = queues[0].data[0];
+  assert.equal(run.objective, f.card.description); assert.equal(run.repository, 'flo91360/PlaniFiKateur');
+  assert.equal(run.delivery, 'github'); assert.equal(run.requestedBy.id, f.user.id);
+  assert.equal(f.store.getRevision(), revision + 1);
+  await f.request(route, { token: f.credentials.token }); assert.equal(f.store.getRevision(), revision + 1);
+  const claimed = await Promise.all([f.action(run, 'claim'), f.action(run, 'claim', {}, { base: f.bases[1] })]);
+  assert.deepEqual(claimed.map(r => r.status).sort(), [200, 409]);
+  assert.equal(f.store.workflows.list(f.project.id, f.card.id).length, 1);
+});
+
+test('withdrawing a ready card removes it from the queue and making it ready again creates a new execution', async t => {
+  const f = await fixture(t); let snapshot = f.store.read();
+  snapshot.projects[0].cards[0].status = 'ready'; f.store.write(snapshot.projects, snapshot.revision, f.user);
+  const run = f.store.workflows.queue(f.project.id, f.credentials.agent)[0];
+  snapshot = f.store.read(); snapshot.projects[0].cards[0].status = 'draft'; f.store.write(snapshot.projects, snapshot.revision, f.user);
+  assert.equal(f.store.workflows.queue(f.project.id, f.credentials.agent).length, 0);
+  assert.equal(f.store.workflows.list(f.project.id, f.card.id)[0].state, 'cancelled');
+  assert.equal((await f.action(run, 'claim')).status, 409);
+  snapshot = f.store.read(); snapshot.projects[0].cards[0].status = 'ready'; f.store.write(snapshot.projects, snapshot.revision, f.user);
+  const next = f.store.workflows.queue(f.project.id, f.credentials.agent)[0];
+  assert.notEqual(next.id, run.id); assert.equal(f.store.workflows.list(f.project.id, f.card.id).length, 2);
+});
+
+test('automatic queue ignores empty descriptions, missing configuration and unauthorized projects', async t => {
+  const f = await fixture(t); let snapshot = f.store.read();
+  snapshot.projects[0].cards[0].status = 'ready'; snapshot.projects[0].cards[0].description = '';
+  f.store.write(snapshot.projects, snapshot.revision, f.user);
+  assert.equal(f.store.workflows.queue(f.project.id, f.credentials.agent).length, 0);
+  snapshot = f.store.read(); snapshot.projects[0].cards[0].description = 'Ready request';
+  const other = snapshot.projects[1]; other.cards[0].status = 'ready'; f.store.write(snapshot.projects, snapshot.revision, f.user);
+  f.store.workflows.configureGithub(other.id, 'worker/other', f.user);
+  assert.equal((await f.request(`/projects/${other.id}/work`, { token: f.credentials.token })).status, 403);
+  assert.equal(f.store.workflows.list(other.id, other.cards[0].id).length, 0);
+  assert.equal(f.store.workflows.queue(f.project.id, f.credentials.agent, { autoPrepare: false }).length, 0);
+  const db = new DatabaseSync(f.file); db.prepare('DELETE FROM github_projects WHERE project_id=?').run(f.project.id); db.close();
+  assert.equal(f.store.workflows.queue(f.project.id, f.credentials.agent).length, 0);
+  assert.equal(f.store.workflows.list(f.project.id, f.card.id).length, 0);
 });

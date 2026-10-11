@@ -1,4 +1,4 @@
-# PR d’agent : tests puis fusion automatique — v0.1.15
+# PR d’agent : tests puis fusion automatique — v0.1.16
 
 Toutes les nouvelles tâches sont livrées par PR GitHub avec fusion automatique,
 sans sélection du mode de livraison. Les anciennes exécutions sans PR restent
@@ -45,8 +45,8 @@ les interfaces GitHub et Railway. Aucune fusion réelle n’a été vérifiée.
 
 ## Parcours de l’agent
 
-1. Renseigner la description de la carte, puis ouvrir **Tâches du projet**,
-   sélectionner la carte et cliquer **Prête pour un agent**.
+1. Renseigner la description de la carte et choisir le statut **Prête à démarrer**.
+   La consultation de la file par le worker crée automatiquement l’exécution.
    Le serveur exige un dépôt et un secret de webhook configurés. L’API accepte `{}` et impose
    `delivery: "github"` ; toute autre livraison est refusée. Le dépôt est repris
    des paramètres du projet et mémorisé au démarrage de l’exécution. Modifier

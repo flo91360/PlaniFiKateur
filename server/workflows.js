@@ -64,6 +64,17 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
     if (source(card) !== run.source) fail(409, 'request_changed', 'La demande a changé. Préparez une nouvelle exécution.');
   };
   const githubProject = projectId => db.prepare('SELECT repository FROM github_projects WHERE project_id=?').get(projectId)?.repository || null;
+  const prepare = (projectId, cardId, data, actor) => {
+    const { card } = findCard(projectId, cardId);
+    if (db.prepare("SELECT id FROM executions WHERE card_id=? AND state NOT IN ('done','cancelled')").get(cardId)) fail(409, 'active_execution', 'Une exécution existe déjà. Annulez-la avant de préparer une nouvelle demande.');
+    const delivery = 'github';
+    if (data?.delivery !== undefined && data.delivery !== 'github') fail(400, 'invalid_delivery', 'La livraison se fait par fusion automatique GitHub.');
+    const repository = githubProject(projectId);
+    if (!repository) fail(400, 'github_not_configured', 'Configurez le dépôt GitHub du projet.');
+    const run = { delivery, repository, id: randomUUID(), projectId, cardId, state: 'ready', version: 0, requestSource: 'card', objective: text(card.description, 'Description de la carte'), criteria: '', context: '', requestedBy: { id: actor.id, name: actor.name }, createdAt: new Date().toISOString(), source: source(card), cardSnapshot: card, agent: null, updates: [], exchanges: [], submissions: [] };
+    db.prepare('INSERT INTO executions(id,project_id,card_id,state,version,data) VALUES(?,?,?,?,0,?)').run(run.id, projectId, cardId, run.state, JSON.stringify(run));
+    return save(run, actor, 'prepared');
+  };
   return {
     githubProject,
     configureGithub(projectId, repository, actor) {
@@ -153,24 +164,25 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
         return rows().filter(row => row.project_id === projectId && row.card_id === cardId).map(unpack);
       });
     },
-    queue(projectId, agent) {
+    queue(projectId, agent, { autoPrepare = true } = {}) {
       return transaction(() => {
         checkAgent(agent, projectId); expire();
+        const projects = JSON.parse(db.prepare('SELECT projects FROM workspace WHERE id=1').get().projects);
+        const project = projects.find(p => p.id === projectId);
+        if (autoPrepare && githubProject(projectId)) {
+          const activeCards = new Set(rows().filter(row => !terminal.has(row.state)).map(row => row.card_id));
+          for (const card of project?.cards || []) {
+            if (card.status !== 'ready' || !card.description.trim() || activeCards.has(card.id)) continue;
+            const readiness = db.prepare("SELECT actor_id,actor_name FROM activity WHERE card_id=? AND action='card.status_changed' AND json_extract(payload,'$.details.to')='ready' ORDER BY id DESC LIMIT 1").get(card.id);
+            const actor = readiness?.actor_id ? { id: readiness.actor_id, name: readiness.actor_name } : card.updatedBy || card.createdBy || { id: 'system', name: 'Système' };
+            prepare(projectId, card.id, {}, actor);
+          }
+        }
         return rows().filter(row => row.project_id === projectId && ['ready','interrupted'].includes(row.state)).map(unpack);
       });
     },
     prepare(projectId, cardId, data, actor) {
-      return transaction(() => {
-        const { card } = findCard(projectId, cardId);
-        if (db.prepare("SELECT id FROM executions WHERE card_id=? AND state NOT IN ('done','cancelled')").get(cardId)) fail(409, 'active_execution', 'Une exécution existe déjà. Annulez-la avant de préparer une nouvelle demande.');
-        const delivery = 'github';
-        if (data?.delivery !== undefined && data.delivery !== 'github') fail(400, 'invalid_delivery', 'La livraison se fait par fusion automatique GitHub.');
-        const repository = githubProject(projectId);
-        if (!repository) fail(400, 'github_not_configured', 'Configurez le dépôt GitHub du projet.');
-        const run = { delivery, repository, id: randomUUID(), projectId, cardId, state: 'ready', version: 0, requestSource: 'card', objective: text(card.description, 'Description de la carte'), criteria: '', context: '', requestedBy: { id: actor.id, name: actor.name }, createdAt: new Date().toISOString(), source: source(card), cardSnapshot: card, agent: null, updates: [], exchanges: [], submissions: [] };
-        db.prepare('INSERT INTO executions(id,project_id,card_id,state,version,data) VALUES(?,?,?,?,0,?)').run(run.id, projectId, cardId, run.state, JSON.stringify(run));
-        return save(run, actor, 'prepared');
-      });
+      return transaction(() => prepare(projectId, cardId, data, actor));
     },
     human(projectId, cardId, id, action, data, actor) {
       return transaction(() => {
@@ -235,6 +247,9 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
           run.state = 'cancelled'; run.cancellation = restore ? 'Restauration du contenu : préparez une nouvelle demande.' : 'Carte supprimée, déplacée ou demande modifiée : préparez une nouvelle exécution.';
           save(run, actor, 'cancel', { syncCard: false });
           if (card) card.status = 'draft';
+        } else if (run.state === 'ready' && card.status !== 'ready') {
+          run.state = 'cancelled'; run.cancellation = 'La carte a été retirée de la file par son changement de statut.';
+          save(run, actor, 'cancel', { syncCard: false });
         } else if (card.status !== cardStatus[run.state]) fail(409, 'managed_status', 'Le statut de cette carte est piloté par son exécution IA.');
       }
     },

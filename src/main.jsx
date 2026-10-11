@@ -234,7 +234,7 @@ function CardDetail({ onWorkflowRefresh, offline, projectId, user, saveStatus, c
     const load = async () => {
       try {
         const runs = await workRequest(`projects/${projectId}/cards/${card.id}/work`, 'GET', null, controller.signal);
-        if (!controller.signal.aborted) { setWorkflowManaged(runs.some(run => !['done', 'cancelled'].includes(run.state))); await workflowRefresh.current(); }
+        if (!controller.signal.aborted) { setWorkflowManaged(runs.some(run => !['ready', 'done', 'cancelled'].includes(run.state))); await workflowRefresh.current(); }
       } catch { /* The workspace reports connectivity errors; keep the last known lock. */ }
     };
     void load(); const timer = setInterval(() => void load(), 5000);
