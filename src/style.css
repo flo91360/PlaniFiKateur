@@ -1,4 +1,4 @@
-:root { font-family: 'DM Sans', sans-serif; color: #262f3b; background: #f7f8fa; font-synthesis: none; font-weight: 400; --primary: #275caa; --primary-hover: #1e4783; --border: #e2e5e9; --muted: #838890; }
+:root { font-family: 'DM Sans', sans-serif; color: #262f3b; background: #f7f8fa; font-synthesis: none; font-weight: 400; --primary: #b91c1c; --primary-hover: #991b1b; --primary-focus: #dc2626; --border: #e2e5e9; --muted: #838890; }
 * { box-sizing: border-box; }
 body { margin: 0; }
 button, input, textarea, select { font: inherit; }
@@ -6,8 +6,8 @@ button { cursor: pointer; }
 button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 button { color: inherit; }
 button:disabled { cursor: default; opacity: .45; }
-button:focus-visible, a:focus-visible { outline: 3px solid #788eae; outline-offset: 3px; }
-input:focus, textarea:focus, select:focus { outline: 2px solid #a5b4c8; outline-offset: 1px; }
+button:focus-visible, a:focus-visible { outline: 3px solid var(--primary-focus); outline-offset: 3px; }
+input:focus, textarea:focus, select:focus { outline: 2px solid var(--primary-focus); outline-offset: 1px; }
 button { transition: background .16s, box-shadow .16s, transform .16s; }
 .app-shell { display: flex; min-height: 100vh; }
 .sidebar { width: 244px; min-width: 244px; background: #19283d; color: #eff2f6; padding: 31px 17px 0; position: fixed; inset: 0 auto 0 0; display: flex; flex-direction: column; z-index: 20; overflow-y: auto; }
@@ -74,7 +74,7 @@ h1 { font-family: Manrope, sans-serif; font-size: 29px; letter-spacing: -1.2px; 
 .search-field, .filter-field { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); background: #fffefa; border-radius: 6px; padding: 8px 11px; color: #878e99; }
 .search-field input { border: none; background: none; width: 170px; outline: none; font-size: 10px; color: #414d5d; min-width: 0; }
 .search-field input::placeholder { color: #939aa4; }
-.search-field:focus-within { outline: 2px solid #a5b4c8; }
+.search-field:focus-within { outline: 2px solid var(--primary-focus); }
 .search-field button { border: none; background: none; padding: 0; display: flex; color: #707c8e; }
 .filter-field select { font-size: 10px; color: #5b6675; background: none; border: none; max-width: 145px; }
 .board-caption { display: flex; justify-content: space-between; gap: 15px; margin: 19px 0 22px; font-size: 10px; color: #858e9a; }
@@ -165,7 +165,7 @@ input::placeholder, textarea::placeholder { color: #969fac; }
 .criteria-section h3 span, .comments-section h3 span { color: #8b96a5; font-size: 10px; margin-left: auto; }
 .criteria-section > p, .muted { font-size: 11px; color: #8e98a6; line-height: 1.7; }
 .criterion { display: flex; align-items: center; gap: 8px; font-size: 12px; margin: 13px 0; color: #576373; }
-.criterion input { accent-color: #3b506d; width: 15px; height: 15px; }
+.criterion input { accent-color: var(--primary); width: 15px; height: 15px; }
 .checked { text-decoration: line-through; color: #8b95a3; }
 .inline-form { display: flex; gap: 7px; }.inline-form input { padding: 8px; font-size: 11px; }
 .comment { display: flex; gap: 10px; margin: 17px 0; }.comment > div { flex: 1; min-width: 0; }.comment strong { font-size: 11px; display: flex; justify-content: space-between; font-weight: 500; }.comment time { color: #8f99a7; font-size: 9px; font-weight: 400; }.comment p { background: #edf0f5; padding: 12px; border-radius: 7px; font-size: 12px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; color: #6a7483; margin: 7px 0 0; }
