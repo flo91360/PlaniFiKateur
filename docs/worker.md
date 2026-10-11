@@ -106,13 +106,58 @@ publication sur la carte. Le worker vérifie la branche et l’origine avant le 
 
 ## Service Railway séparé
 
-Ajouter un deuxième service depuis le même dépôt GitHub. Garder le site existant.
-Configurer le contexte de build à la racine et le Dockerfile **`worker/Dockerfile`**
-(`RAILWAY_DOCKERFILE_PATH=worker/Dockerfile`). Utiliser la commande de l’image,
-sans commande de démarrage du site ni domaine public ni vérification HTTP.
-Attacher un volume à **`/data`** et renseigner les variables ci-dessus.
-Garder une seule réplique. L’image contient Node 24, Git et Chromium ; le service
-installe les dépendances du dépôt cloné à chaque reprise avant de lancer Codex.
+La compatibilité du sandbox avec Railway doit être vérifiée sur le service réel.
+Le profil `--security-opt seccomp=worker/seccomp.json` utilisé sur votre machine
+est une option de lancement Docker ; il ne peut pas être appliqué par le
+Dockerfile. Le fichier Railway ne prétend pas modifier ce profil. Ne pas activer
+le traitement des cartes avant d’avoir réussi le contrôle ci-dessous.
+
+1. Dans le projet Railway du site, ajouter un service vide nommé **worker-codex**.
+   Garder le service du site existant. Associer le même dépôt GitHub et la branche
+   `main`, avec le contexte **Root Directory** à la racine du dépôt.
+2. Dans **Settings**, régler **Railway Config File** sur
+   **`/worker/railway.toml`**. Ce fichier sélectionne le Dockerfile
+   `worker/Dockerfile`, une seule réplique et au plus une relance après un échec.
+   Ne pas ajouter de domaine public ni de vérification HTTP.
+3. Attacher un volume à **`/data`**. Pour le premier essai, définir la commande
+   **Start Command** suivante avant de fournir les clés du site ou de GitHub :
+
+   ```sh
+   sh -c 'node sandbox-check.mjs && sleep infinity'
+   ```
+
+   Déployer. Cette commande teste l’exécution des commandes et le refus d’une
+   écriture en dehors du dépôt, sans consulter la file ni appeler le modèle.
+   Le succès affiche **Sandbox Codex OK : commandes exécutables, écriture limitée
+   au dépôt.** Le service reste démarré pour permettre la configuration.
+4. Si le contrôle échoue, garder le service arrêté : Railway n’a pas encore
+   démontré sa compatibilité avec l’isolation requise. Un déploiement construit
+   avec succès ne suffit pas. Aucune carte n’a été prise en charge et aucun
+   appel au modèle n’a été effectué par ce contrôle.
+5. Si le contrôle réussit, renseigner les cinq variables obligatoires du tableau
+   **Connexion**, puis l’authentification Codex. Une clé API se configure dans
+   `OPENAI_API_KEY`. Pour utiliser une connexion ChatGPT, se connecter sur ce
+   service via SSH Railway et lancer, dans `/opt/worker` :
+
+   ```sh
+   $(find /opt/worker/node_modules/@openai -type f -name codex -print -quit) login --device-auth
+   ```
+
+   Valider dans le navigateur. La connexion est conservée dans le volume
+   `/data/codex` et reste soumise aux limites de l’offre et à une éventuelle
+   reconnexion. Ne pas exporter l’authentification de l’environnement Codex cloud.
+6. Arrêter le worker sur votre ordinateur, effacer la commande temporaire
+   **Start Command**, puis redéployer. L’image utilise alors `node index.mjs`.
+   Le worker vérifie de nouveau son isolation avant de consulter les cartes.
+   Le message **Worker Codex démarré : une tâche à la fois.** confirme que le
+   contrôle a réussi ; une carte de test prête permet de vérifier le parcours
+   jusqu’à la fusion et au webhook.
+
+Les push sur `main` pourront ensuite redéployer ce service si le déploiement
+automatique GitHub est activé pour lui. Conserver le volume lors des mises à
+jour ; il contient les copies de travail, l’état des tâches et la connexion
+Codex. La construction, le login et une fusion réels sur Railway restent à
+vérifier sur votre service.
 
 Le worker exécute du développement et des navigateurs : l’offre gratuite du site
 ne garantit pas les ressources nécessaires. Pour le premier essai, il peut aussi

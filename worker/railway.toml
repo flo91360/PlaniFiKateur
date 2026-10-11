@@ -1,0 +1,14 @@
+# Use /worker/railway.toml as this service's Railway Config File path.
+# Keep Root Directory at the repository root, and attach a volume at /data.
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "worker/Dockerfile"
+
+[deploy]
+numReplicas = 1
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 1
+# No HTTP healthcheck or public domain: this is a polling worker.
+# Start Command is deliberately omitted so the dashboard can first run:
+# sh -c 'node sandbox-check.mjs && sleep infinity'
+# Clear that override after configuration to use the image's node index.mjs.
