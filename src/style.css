@@ -227,3 +227,8 @@ input::placeholder, textarea::placeholder { color: #a1ac96; }
 .work-result a { overflow-wrap: anywhere; }
 
 .account-delete-confirm { flex-basis: 100%; max-width: 440px; }
+
+.project-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.project-automation select { width: 100%; min-height: 44px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; font: inherit; }
+.project-automation > p { font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+@media (max-width: 700px) { .project-actions { justify-content: flex-start; } }

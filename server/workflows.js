@@ -163,10 +163,10 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
       return transaction(() => {
         const { card } = findCard(projectId, cardId);
         if (db.prepare("SELECT id FROM executions WHERE card_id=? AND state NOT IN ('done','cancelled')").get(cardId)) fail(409, 'active_execution', 'Une exécution existe déjà. Annulez-la avant de préparer une nouvelle demande.');
-        const delivery = data?.delivery || 'manual';
-        if (!['manual','github'].includes(delivery)) fail(400, 'invalid_delivery', 'Mode de livraison invalide.');
-        const repository = delivery === 'github' ? githubProject(projectId) : null;
-        if (delivery === 'github' && !repository) fail(400, 'github_not_configured', 'Configurez le dépôt GitHub du projet.');
+        const delivery = 'github';
+        if (data?.delivery !== undefined && data.delivery !== 'github') fail(400, 'invalid_delivery', 'La livraison se fait par fusion automatique GitHub.');
+        const repository = githubProject(projectId);
+        if (!repository) fail(400, 'github_not_configured', 'Configurez le dépôt GitHub du projet.');
         const run = { delivery, repository, id: randomUUID(), projectId, cardId, state: 'ready', version: 0, requestSource: 'card', objective: text(card.description, 'Description de la carte'), criteria: '', context: '', requestedBy: { id: actor.id, name: actor.name }, createdAt: new Date().toISOString(), source: source(card), cardSnapshot: card, agent: null, updates: [], exchanges: [], submissions: [] };
         db.prepare('INSERT INTO executions(id,project_id,card_id,state,version,data) VALUES(?,?,?,?,0,?)').run(run.id, projectId, cardId, run.state, JSON.stringify(run));
         return save(run, actor, 'prepared');

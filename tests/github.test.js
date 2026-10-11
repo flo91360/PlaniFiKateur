@@ -96,3 +96,28 @@ test('revise rotates reservations and blocks merging while the agent updates the
  const newSubmission = f.submit(revised, nextSha); assert.equal(newSubmission.state, 'merging');
  assert.equal(f.store.workflows.mergeEligible(repository, 7, nextSha, f.agent).eligible, true);
 });
+
+
+test('new tasks inherit their project repository and always use automatic GitHub delivery', async t => {
+ const f = await fixture(t), path = `/projects/${f.project.id}/cards/${f.card.id}/work`;
+ const invalid = await f.post(path, { delivery: 'manual' });
+ assert.equal(invalid.status, 400); assert.equal(f.store.workflows.list(f.project.id, f.card.id).length, 0);
+ const response = await f.post(path, {}); assert.equal(response.status, 201);
+ const run = (await response.json()).data; assert.equal(run.delivery, 'github'); assert.equal(run.repository, repository);
+ const snapshot = f.store.read(), other = structuredClone(f.project);
+ other.id = 'other-project'; other.lists.forEach((list, i) => { list.id = `other-list-${i}`; });
+ other.cards.forEach((card, i) => { card.id = `other-card-${i}`; card.listId = other.lists[0].id; card.comments = []; card.checklist = []; });
+ snapshot.projects.push(other); f.store.write(snapshot.projects, snapshot.revision, f.user);
+ assert.throws(() => f.store.workflows.prepare(other.id, other.cards[0].id, {}, f.user), { code: 'github_not_configured' });
+ f.store.workflows.configureGithub(other.id, 'flo91360/Klaviflo', f.user);
+ const otherRun = f.store.workflows.prepare(other.id, other.cards[0].id, {}, f.user);
+ assert.equal(otherRun.repository, 'flo91360/Klaviflo'); assert.equal(otherRun.delivery, 'github');
+ f.store.workflows.configureGithub(f.project.id, 'flo91360/NewRepository', f.user);
+ assert.equal(f.store.workflows.list(f.project.id, f.card.id)[0].repository, repository);
+});
+
+test('preparation without a delivery choice still requires the server webhook secret', async t => {
+ const f = await fixture(t, false);
+ assert.equal((await f.post(`/projects/${f.project.id}/cards/${f.card.id}/work`, {})).status, 503);
+ assert.equal(f.store.workflows.list(f.project.id, f.card.id).length, 0);
+});

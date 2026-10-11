@@ -1,6 +1,6 @@
-# Premier parcours agent — v0.1.9
+# Parcours agent par projet — v0.1.15
 
-Un seul agent actif, sans délégation. Le site pilote les demandes et la validation ;
+Un seul agent actif, sans délégation. Le site pilote les demandes et confirme la fusion GitHub ;
 l’agent s’exécute dans un service externe. Le [worker Codex](worker.md) fournit ce
 service : il doit être installé, connecté puis lancé séparément du site.
 
@@ -9,31 +9,34 @@ service : il doit être installé, connecté puis lancé séparément du site.
 1. Ouvrir une carte. Renseigner sa **Description** avec la demande, le résultat
    attendu et les contraintes. Cette description est la demande transmise à
    l’agent, qui déduit les vérifications utiles et pose une question si nécessaire.
-2. Cliquer **Prête pour un agent**. Cette action crée une exécution persistante.
-3. L’agent prend la tâche et signale son avancement. Une question fait apparaître
+2. Dans **Paramètres du projet**, configurer le dépôt GitHub et l’accès de l’agent.
+   Ces paramètres s’appliquent à toutes les cartes de ce projet.
+3. Ouvrir **Tâches du projet**, sélectionner la carte puis cliquer **Prête pour
+   un agent**. Cette action crée une exécution persistante avec livraison GitHub.
+4. L’agent prend la tâche et signale son avancement. Une question fait apparaître
    **À préciser**. Répondre puis cliquer **Répondre et reprendre**.
-4. Un résultat fait apparaître **À valider** : résumé, vérifications déclarées
-   par l’agent et liens HTTP(S) vers les livrables.
-5. **Valider le résultat** clôt l’exécution. **Demander des corrections** exige
-   un commentaire et remet la tâche dans la file. Les anciennes soumissions et
-   décisions restent consultables.
+5. Le résultat passe en attente de tests et de fusion GitHub. La PR se fusionne
+   automatiquement après les contrôles requis, puis le webhook termine la carte.
+   Aucun bouton de validation humaine n’est proposé pour les nouvelles tâches.
+   Il reste possible de demander des corrections avant fusion ou d’annuler.
+   Les questions, soumissions et anciennes décisions restent consultables.
 
 Les listes restent l’organisation du projet ; les statuts des cartes suivent
 l’exécution automatiquement. Le changement manuel de statut est bloqué pendant
 une exécution active, y compris via l’API du tableau. Préparer une nouvelle
-exécution après une validation conserve l’historique de la précédente.
+exécution après une fusion conserve l’historique de la précédente.
 
 L’interface actualise le travail toutes les cinq secondes. Elle conserve les
 brouillons des champs de la carte ; enregistrer ces champs avant toute action.
 Les transitions humaines exigent une version à jour pour éviter deux validations
-contradictoires. Tous les membres actifs peuvent répondre et valider dans cet
+contradictoires. Tous les membres actifs peuvent répondre et demander des corrections dans cet
 espace actuellement partagé.
 
 ## Connecter l’agent
 
-Un administrateur ouvre **Connexion de l’agent** dans une carte, crée sa clé et
+Un administrateur ouvre **Connexion de l’agent** dans **Paramètres du projet**, crée sa clé et
 la copie dans les secrets du service externe. Seul le projet sélectionné est
-initialement autorisé. Ouvrir une carte d’un autre projet puis **Autoriser ce
+initialement autorisé. Ouvrir les paramètres d’un autre projet puis **Autoriser ce
 projet** permet d’étendre l’accès. La clé ne sera pas réaffichée après fermeture.
 Sa révocation invalide immédiatement les requêtes et interrompt les travaux en
 cours ; il devient alors possible de créer une nouvelle clé.
@@ -61,7 +64,7 @@ utilisent `{ "data": ... }`, les erreurs `{ "error": { "code", "message" } }`.
 | `DELETE /api/v1/agents/{id}` | Administrateur | Révoquer la clé |
 | `GET /api/v1/projects/{projet}/work` | Agent | File des exécutions prêtes ou interrompues |
 | `GET /api/v1/projects/{projet}/cards/{carte}/work` | Membre ou agent autorisé | Historique des exécutions, sans réservation secrète |
-| `POST` sur cette dernière route | Membre | Préparer avec `{delivery}` ou `{}` ; demande issue de la carte |
+| `POST` sur cette dernière route | Membre | Préparer avec `{}` ; description de la carte, dépôt du projet, fusion automatique |
 | `POST .../work/{execution}/{action}` | Selon l’action ci-dessous | Transition contrôlée |
 
 Les actions d’agent :
@@ -72,13 +75,13 @@ Les actions d’agent :
 | `heartbeat` | `{leaseToken}` | Prolonger la réservation sans changer la version |
 | `progress` | `{version, leaseToken, message}` | Enregistrer une mise à jour importante et prolonger la réservation |
 | `question` | `{version, leaseToken, message}` | Attendre une réponse humaine, sans délai d’expiration |
-| `submit` | `{version, leaseToken, summary, checks, links: []}` | Soumettre un résultat pour validation |
+| `submit` | `{version, leaseToken, summary, checks, links: [], pullRequest: {url, headSha}}` | Soumettre une PR pour fusion automatique |
 | `interrupt` | `{version, leaseToken, message}` | Signaler un problème et rendre la tâche reprenable |
 
 Les actions humaines exigent une session personnelle :
 
 - `answer` : `{version, message}` ; remet l’exécution en file.
-- `accept` : `{version}` ; accepte la dernière soumission.
+- `accept` : `{version}` ; uniquement pour les anciennes exécutions sans PR.
 - `reject` : `{version, message}` ; conserve le refus et remet le travail en file.
 - `cancel` : `{version, message}` ; annule l’exécution et conserve son historique.
 
@@ -96,8 +99,9 @@ est rattaché à cette exécution, avec son auteur dans l’historique des actio
 4. Si des informations manquent, envoyer `question` puis revenir à la lecture
    de la file. La réponse humaine rend la tâche disponible ; refaire `claim`.
 5. Sinon, envoyer `submit` avec le résumé, les vérifications réellement faites
-   et les liens vers les livrables. Attendre la validation. Un refus remet la
-   tâche en file ; refaire `claim` et prendre en compte le commentaire.
+   et `pullRequest: {url, headSha}`. Attendre les tests et la fusion GitHub. Un
+   échec ou une demande de corrections remet la tâche en file ; refaire `claim`
+   et prendre en compte les informations de reprise.
 6. Sur `409`, relire l’exécution et arrêter le travail associé à la réservation
    périmée. **Ne jamais continuer à soumettre avec une ancienne réservation.**
 
@@ -126,7 +130,7 @@ node scripts/agent-client.mjs submit PROJET CARTE EXECUTION < result.json
 
 `claim.json` contient `{ "version": 1 }`. `question.json` contient la version
 courante et `message` ; `result.json` contient la version courante, `summary`,
-`checks` et `links`. La réservation peut venir de la variable d’environnement ou
+`checks`, `links` et `pullRequest: {url, headSha}`. La réservation peut venir de la variable d’environnement ou
 du JSON. La réponse à `claim` contient une réservation secrète : ne pas publier
 sa sortie. Le client renvoie un code de sortie non nul en cas d’erreur.
 
@@ -162,7 +166,7 @@ parcours sur ordinateur et mobile.
 
 ## Livraisons GitHub — v0.1.11
 
-Pour une exécution préparée avec `delivery: "github"`, la soumission inclut `pullRequest: {url, headSha}`. Le résultat passe `merging` et ne demande aucune validation humaine ; il sera terminé après fusion GitHub confirmée par webhook signé. Les contrôles échoués remettent le travail en file. Voir [le parcours GitHub](github.md) pour la configuration et l’action `revise`. Les exécutions sans PR conservent le parcours décrit ci-dessus.
+Toutes les nouvelles exécutions utilisent `delivery: "github"` ; la soumission inclut `pullRequest: {url, headSha}`. Le résultat passe `merging` et ne demande aucune validation humaine ; il sera terminé après fusion GitHub confirmée par webhook signé. Les contrôles échoués remettent le travail en file. Voir [le parcours GitHub](github.md) pour la configuration et l’action `revise`. Seules les anciennes exécutions sans PR conservent leur parcours de validation historique.
 
 ## Une description suffit — v0.1.13
 

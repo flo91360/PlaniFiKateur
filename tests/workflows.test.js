@@ -11,11 +11,12 @@ import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
 import { restoreBackup } from '../server/backups.js';
 
-async function fixture(t) {
+async function fixture(t, { legacyManual = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'planifikateur-work-')), file = join(dir, 'site.sqlite');
   const store = createStore(file), user = seedAccount(store), project = store.read().projects[0], card = project.cards[0];
   const credentials = store.workflows.configureAgent({ name: 'Test agent', projectIds: [project.id] }, user);
-  const second = createStore(file), config = { readToken: 'read-only-test' };
+  store.workflows.configureGithub(project.id, 'flo91360/PlaniFiKateur', user);
+  const second = createStore(file), config = { readToken: 'read-only-test', githubWebhookSecret: 'test-webhook-secret' };
   const servers = [createAppServer({ store, config }), createAppServer({ store: second, config })];
   for (const server of servers) await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const bases = servers.map(s => `http://127.0.0.1:${s.address().port}`);
@@ -24,7 +25,12 @@ async function fixture(t) {
   t.after(async () => { for (const s of servers) { s.closeAllConnections(); await new Promise(resolve => s.close(resolve)); } second.close(); store.close(); rmSync(dir, { recursive: true, force: true }); });
   const path = `/projects/${project.id}/cards/${card.id}/work`;
   const request = (route, { method = 'GET', data, token, human = false, base = bases[0], headers = {} } = {}) => fetch(`${base}/api/v1${route}`, { method, headers: { ...(human ? { Cookie: cookie } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(data ? { 'Content-Type': 'application/json' } : {}), ...headers }, ...(data ? { body: JSON.stringify(data) } : {}) });
-  const prepare = async () => { const r = await request(path, { method: 'POST', human: true, data: {} }); assert.equal(r.status, 201); return (await r.json()).data; };
+  const prepare = async () => { const r = await request(path, { method: 'POST', human: true, data: {} }); assert.equal(r.status, 201); const run = (await r.json()).data;
+    if (legacyManual) { // Simulate an execution already stored before automatic-only delivery.
+      run.delivery = 'manual'; run.repository = null;
+      const db = new DatabaseSync(file); db.prepare('UPDATE executions SET data=? WHERE id=?').run(JSON.stringify(run), run.id); db.close();
+    }
+    return run; };
   const action = (run, name, data = {}, options = {}) => request(`${path}/${run.id}/${name}`, { method: 'POST', token: credentials.token, data: { version: run.version, leaseToken: run.leaseToken, ...data }, ...options });
   const agentAction = async (run, name, data) => { const r = await action(run, name, data); assert.equal(r.status, 200, JSON.stringify(await r.clone().json())); return { ...(await r.json()).data, leaseToken: run.leaseToken }; };
   const claim = async run => { const r = await action(run, 'claim'); assert.equal(r.status, 200); return (await r.json()).data; };
@@ -46,8 +52,8 @@ test('two servers claiming simultaneously create one exclusive reservation and n
   assert.notEqual(db.prepare('SELECT lease_hash FROM executions').get().lease_hash, claimed.leaseToken);
 });
 
-test('complete workflow keeps questions, corrections and submissions and requires human acceptance', async t => {
-  const f = await fixture(t); f.store.setSubscription(f.project.id, f.card.id, f.user, true);
+test('legacy manual workflow keeps questions, corrections and submissions and requires human acceptance', async t => {
+  const f = await fixture(t, { legacyManual: true }); f.store.setSubscription(f.project.id, f.card.id, f.user, true);
   let run = await f.claim(await f.prepare());
   const leaseToken = run.leaseToken;
   run = await f.agentAction(run, 'progress', { message: 'J’analyse le menu.' });
@@ -127,7 +133,7 @@ test('human transitions require current versions and content edits cancel obsole
 });
 
 test('backup restoration keeps execution history but invalidates current work and pending validation', async t => {
-  const f = await fixture(t), file = join(f.dir, 'backup.sqlite');
+  const f = await fixture(t, { legacyManual: true }), file = join(f.dir, 'backup.sqlite');
   f.store.snapshot(file); const run = await f.claim(await f.prepare());
   const reviewed = await f.agentAction(run, 'submit', { summary: 'Result', checks: 'Verified', links: [] });
   restoreBackup(f.store, file, () => {});

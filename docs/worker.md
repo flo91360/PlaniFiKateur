@@ -43,8 +43,8 @@ humaine autorise un nouveau cycle de tentatives.
 | `PLANIFIKATEUR_WORKER_REPOSITORIES` | Dépôts explicitement autorisés, par exemple `flo91360/PlaniFiKateur` |
 | `PLANIFIKATEUR_WORKER_STATE_DIR` | Répertoire persistant des copies et états, `/data` dans Docker |
 
-L’identifiant du projet est visible dans la réponse de l’API de consultation
-`GET /api/v1/projects`. Les noms affichés ne remplacent pas ces identifiants.
+L’identifiant du projet est visible dans **Paramètres du projet**, ainsi que
+dans la réponse de l’API de consultation `GET /api/v1/projects`. Les noms affichés ne remplacent pas ces identifiants.
 Pour GitHub, utiliser un token personnel ou d’application permettant de déclencher
 les workflows sur les PR : un `GITHUB_TOKEN` d’un workflow GitHub ne déclenche
 généralement pas d’autres workflows. Ne pas copier les clés du site dans les
@@ -117,10 +117,11 @@ tourner sur votre ordinateur tout en consultant le site Railway.
 
 Créer une **nouvelle** petite carte de test, par exemple : « Dans le menu des
 projets, afficher le numéro de version précédé du mot Version. Conserver le reste
-du fonctionnement. » Choisir **Livraison → PR GitHub · fusion automatique**, puis
-**Prête pour un agent**. Lancer le worker et observer :
+du fonctionnement. » Dans **Tâches du projet**, sélectionner cette carte puis
+cliquer **Prête pour un agent**. Le dépôt se configure une fois dans
+**Paramètres du projet** et la livraison se fait toujours par fusion automatique. Lancer le worker et observer :
 
-1. La prise en charge et l’avancement dans la carte.
+1. La prise en charge et l’avancement dans **Tâches du projet**.
 2. Le commit et la PR liés à cette exécution, après tests locaux réussis.
 3. Les deux contrôles GitHub réussis sur ce commit, puis sa fusion automatique.
 4. La carte terminée après la livraison du webhook signé.

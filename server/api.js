@@ -173,7 +173,7 @@ export function createApi(store, config = {}) {
           send(res, 200, { data: store.workflows.list(projectId, cardId, agent) });
         } else if (!id && req.method === 'POST') {
           requireAccount(req); const data = await body(req);
-          if (data?.delivery === 'github' && !config.githubWebhookSecret) throw httpError(503, 'github_not_configured', 'Configurez le secret du webhook GitHub sur le serveur.');
+          if (!config.githubWebhookSecret) throw httpError(503, 'github_not_configured', 'Configurez le secret du webhook GitHub sur le serveur.');
           send(res, 201, { data: store.workflows.prepare(projectId, cardId, data, requireAccount(req)) });
         } else if (id && req.method === 'POST') {
           const human = ['answer','accept','reject','cancel'].includes(action);

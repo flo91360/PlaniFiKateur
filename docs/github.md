@@ -1,7 +1,8 @@
-# PR d’agent : tests puis fusion automatique — v0.1.11
+# PR d’agent : tests puis fusion automatique — v0.1.15
 
-Les livraisons GitHub n’exigent plus une validation humaine. Les résultats sans
-PR conservent le parcours précédent. Une PR est fusionnée seulement après la
+Toutes les nouvelles tâches sont livrées par PR GitHub avec fusion automatique,
+sans sélection du mode de livraison. Les anciennes exécutions sans PR restent
+consultables et peuvent terminer leur parcours précédent. Une PR est fusionnée seulement après la
 réussite des contrôles requis ; la carte est terminée après confirmation signée
 de la fusion par GitHub.
 
@@ -10,8 +11,8 @@ de la fusion par GitHub.
 1. Déployer cette version du site. Sur Railway, ajouter le secret
    `PLANIFIKATEUR_GITHUB_WEBHOOK_SECRET`, généré aléatoirement et conservé dans
    les variables privées du service. Ne pas le placer dans Git.
-2. Dans une carte du projet, un administrateur ouvre **Dépôt GitHub et fusion
-   automatique**, puis renseigne `propriétaire/dépôt`. La branche cible est
+2. Dans **Paramètres du projet**, un administrateur ouvre **Dépôt GitHub et
+   fusion automatique**, puis renseigne `propriétaire/dépôt`. La branche cible est
    `main`. Les workflows de ce dépôt doivent être présents dans chaque dépôt
    qui reçoit les PR de l’agent : `.github/workflows/ci.yml`,
    `.github/workflows/agent-merge.yml` et `scripts/merge-agent-pr.mjs`.
@@ -44,10 +45,12 @@ les interfaces GitHub et Railway. Aucune fusion réelle n’a été vérifiée.
 
 ## Parcours de l’agent
 
-1. Renseigner la description de la carte, puis
-   préparer le travail avec **Livraison → PR GitHub · fusion automatique**.
-   Le serveur exige un dépôt et un secret de webhook configurés. L’API utilise
-   `delivery: "github"` ; les anciennes exécutions restent inchangées.
+1. Renseigner la description de la carte, puis ouvrir **Tâches du projet**,
+   sélectionner la carte et cliquer **Prête pour un agent**.
+   Le serveur exige un dépôt et un secret de webhook configurés. L’API accepte `{}` et impose
+   `delivery: "github"` ; toute autre livraison est refusée. Le dépôt est repris
+   des paramètres du projet et mémorisé au démarrage de l’exécution. Modifier
+   le dépôt du projet ne redirige pas les exécutions déjà commencées.
 2. Réserver l’exécution et travailler sur une branche issue de `main` à jour.
 3. Créer une PR vers `main` dans le même dépôt. Les PR venant de forks et les PR
    encore en brouillon ne sont pas fusionnées par ce parcours.
