@@ -1,4 +1,9 @@
 import { mergeAgentPullRequest } from './merge.mjs';
+import { setTimeout as delay } from 'node:timers/promises';
+
+export class PublicationPendingError extends Error {
+  constructor() { super('GitHub n’a pas encore confirmé le commit testé sur la PR. Nouvelle tentative automatique.'); }
+}
 
 export class ApiError extends Error {
   constructor(status, code) { super(`API : ${status} ${code}`); this.status = status; this.code = code; }
@@ -40,7 +45,7 @@ export function createSiteClient({ origin, token }, transport = fetch) {
   };
 }
 
-export function createGithubClient(token, transport = fetch) {
+export function createGithubClient(token, transport = fetch, wait = delay) {
   const request = async (path, method = 'GET', data, signal) => {
     const response = await transport(`https://api.github.com${path}`, {
       method, redirect: 'error', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000),
@@ -69,11 +74,23 @@ export function createGithubClient(token, transport = fetch) {
         return current?.id === latest.id && current.run_attempt === latest.run_attempt && current.status === 'completed' && current.conclusion === 'success' && await eligible(data);
       } });
     },
-    async ensurePullRequest(repo, branch, title, body, signal) {
+    async ensurePullRequest(repo, branch, title, body, signal, expectedSha) {
       const pulls = await request(`/repos/${repo}/pulls?state=open&head=${encodeURIComponent(repo.split('/')[0] + ':' + branch)}&base=main`, 'GET', undefined, signal);
       if (pulls.length > 1) throw new Error('Plusieurs PR pour cette branche.');
-      const pr = pulls[0] || await request(`/repos/${repo}/pulls`, 'POST', { title, body, head: branch, base: 'main' }, signal);
+      let pr = pulls[0] || await request(`/repos/${repo}/pulls`, 'POST', { title, body, head: branch, base: 'main' }, signal);
       if (pr.draft || pr.head?.repo?.full_name?.toLowerCase() !== repo.toLowerCase() || pr.base?.ref !== 'main') throw new Error('La PR ne correspond pas à la livraison attendue.');
+      if (expectedSha) {
+        // The list endpoint can still describe the previous head just after push.
+        // Confirm the exact tested commit through the individual PR endpoint.
+        const number = pr.number;
+        for (let attempt = 0; attempt < 6; attempt++) {
+          pr = await pull(repo, number, signal);
+          if (pr.number !== number || pr.state !== 'open' || pr.draft || pr.head?.ref !== branch || pr.head?.repo?.full_name?.toLowerCase() !== repo.toLowerCase() || pr.base?.ref !== 'main') throw new Error('La PR ne correspond pas à la livraison attendue.');
+          if (pr.head.sha === expectedSha) return pr;
+          if (attempt < 5) await wait(Math.min(attempt + 1, 5) * 1000, undefined, { signal });
+        }
+        throw new PublicationPendingError();
+      }
       return pr;
     },
     label: (repo, number, signal) => request(`/repos/${repo}/issues/${number}/labels`, 'POST', { labels: ['planifikateur-agent'] }, signal),

@@ -2,7 +2,7 @@ import { access, appendFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validId, validRepository } from './config.mjs';
-import { ApiError, createSiteClient, createGithubClient, connectionDiagnostic, temporaryConnectionError } from './clients.mjs';
+import { ApiError, PublicationPendingError, createSiteClient, createGithubClient, connectionDiagnostic, temporaryConnectionError } from './clients.mjs';
 import { createState } from './state.mjs';
 import { commandEnvironment, runCommand } from './commands.mjs';
 import { createCodexRunner } from './codex.mjs';
@@ -20,7 +20,7 @@ export function createWorker(config, dependencies = {}) {
   async function processTask(candidate, parentSignal) {
     if (!allowed(candidate)) return { status: 'ignored' };
     let run;
-    try { run = await site.action(candidate, candidate.state === 'merging' ? 'revise' : 'claim', {}, parentSignal); }
+    try { run = await site.action(candidate, candidate.state === 'merging' || candidate.publicationRecovery ? 'revise' : 'claim', {}, parentSignal); }
     catch (error) { if (error.status === 409) return { status: 'claimed_elsewhere' }; throw error; }
     const lease = run.leaseToken;
     const controller = new AbortController();
@@ -72,6 +72,7 @@ export function createWorker(config, dependencies = {}) {
       if (job.repository !== run.repository.toLowerCase() || job.projectId !== run.projectId || job.cardId !== run.cardId || job.branch !== `planifikateur/${run.id}`) throw new Error('État du worker incompatible avec la carte.');
       const answers = run.exchanges.filter(e => e.answer).length;
       if (answers !== job.answers) { job.attempts = 0; job.answers = answers; }
+      if (candidate.publicationRecovery || candidate.interruption === 'La PR ne pointe pas sur le commit testé.' || candidate.state === 'merging' && job.phase === 'merging') job.attempts = 0;
       if (candidate.workerQuestion) {
         await action('question', { message: candidate.workerQuestion }); job.phase = 'waiting'; await state.put(job);
         return { status: 'waiting' };
@@ -151,22 +152,23 @@ export function createWorker(config, dependencies = {}) {
       await action('progress', { message: 'Les tests locaux ont réussi. Le worker publie la branche et prépare la PR.' });
       await command(['git', 'push', 'origin', `HEAD:refs/heads/${job.branch}`]);
       // PR starts unlabeled. Only enable merging after the site has bound this SHA.
-      const pr = await github.ensurePullRequest(job.repository, job.branch, run.cardSnapshot.title.slice(0, 140), `${result.summary}\n\nCarte PlaniFiKateur : ${run.cardId}\nExécution : ${run.id}\n\nVérifications locales :\n${checks.map(c => `- ${c}`).join('\n')}`, signal);
+      const pr = await github.ensurePullRequest(job.repository, job.branch, run.cardSnapshot.title.slice(0, 140), `${result.summary}\n\nCarte PlaniFiKateur : ${run.cardId}\nExécution : ${run.id}\n\nVérifications locales :\n${checks.map(c => `- ${c}`).join('\n')}`, signal, sha);
       if (pr.head.sha !== sha) throw new Error('La PR ne pointe pas sur le commit testé.');
       job.pullRequest = { number: pr.number, url: pr.html_url, headSha: sha }; job.phase = 'pr'; await state.put(job);
       await action('submit', { summary: result.summary, checks: checks.join('\n'), links: [pr.html_url], pullRequest: { url: pr.html_url, headSha: sha } });
-      job.phase = 'merging'; await state.put(job);
+      job.phase = 'merging'; job.attempts = 0; await state.put(job);
       await github.label(job.repository, pr.number, signal);
       log(`Exécution ${run.id} : PR #${pr.number}, tests GitHub et fusion en attente.`);
       return { status: 'merging', number: pr.number, sha };
     } catch (error) {
       // Infrastructure failures and shutdowns must not exhaust the model retry budget.
-      if (attemptStarted && (reservationFailure || parentSignal?.aborted)) job.attempts = Math.max(0, job.attempts - 1);
+      const publicationPending = error instanceof PublicationPendingError;
+      if (attemptStarted && (reservationFailure || parentSignal?.aborted || publicationPending)) job.attempts = Math.max(0, job.attempts - 1);
       // A failed final label is recovered by reconcile; never resubmit a merged task.
       const history = await site.history(run).catch(() => []);
       let current = history.find(item => item.id === run.id);
       if (current?.state === 'running') {
-        current = await site.action({ ...current, leaseToken: lease }, !signal.aborted && job?.attempts >= config.maxAttempts ? 'question' : 'interrupt', {
+        current = await site.action({ ...current, leaseToken: lease }, !signal.aborted && !publicationPending && job?.attempts >= config.maxAttempts ? 'question' : 'interrupt', {
           message: clean(reservationFailure ? controller.signal.reason.message : signal.aborted ? 'Le worker a été arrêté. Une reprise est possible.' : error.message).slice(0, 10000),
         }).catch(() => current);
       }
@@ -194,6 +196,14 @@ export function createWorker(config, dependencies = {}) {
         job.phase = 'cancelled'; await state.put(job);
         log(`Exécution ${job.id} archivée localement : exécution absente de la carte.`);
         continue;
+      }
+      if (run.state === 'waiting' && allowed(run) && run.submissions.at(-1)?.pullRequest
+          && run.exchanges.at(-1)?.question === 'La PR ne pointe pas sur le commit testé.' && !run.exchanges.at(-1)?.answer) {
+        const pr = await github.pull(run.repository, run.submissions.at(-1).pullRequest.number, signal);
+        if (pr.state === 'open' && pr.head.ref === job.branch && pr.head.repo?.full_name?.toLowerCase() === run.repository.toLowerCase() && pr.base?.ref === 'main') {
+          log(`Exécution ${run.id} : reprise automatique de la publication interrompue.`);
+          return { ...run, publicationRecovery: true };
+        }
       }
       if (['done', 'cancelled', 'waiting', 'review'].includes(run.state)) {
         if (job.phase !== run.state) { job.phase = run.state; await state.put(job); log(`Exécution ${job.id} : ${run.state}.`); }
