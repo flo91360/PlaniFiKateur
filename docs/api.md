@@ -43,7 +43,7 @@ L’espace est partagé entre les comptes actifs. Un administrateur invite les m
 
 Les routes de collection de cartes acceptent `listId`, `status`, `q`, `limit` (1 à 200, défaut 50) et `offset` (défaut 0). Les routes `/cards` et `/cards/{cardId}` exigent désormais `projectId` : son absence renvoie 400 (`project_required`). Un projet inexistant ou une carte appartenant à un autre projet renvoie 404. Un paramètre `projectId` répété, vide ou contradictoire avec le chemin est refusé avec 400. `q` cherche dans le titre, la description et les étiquettes, sans distinction de casse. Un filtre de liste sans résultat renvoie une liste vide ; un projet inexistant renvoie 404.
 
-Les statuts sont `draft`, `ready`, `progress`, `clarify`, `review`, `done`. Une catégorie de liste et un statut sont indépendants.
+Les statuts sont `draft`, `ready`, `progress`, `clarify`, `review`, `flo` (« Flo regarde »), `done`. Une catégorie de liste et un statut sont indépendants.
 
 ```sh
 # Développement local : configurer PLANIFIKATEUR_READ_TOKEN sur le serveur
