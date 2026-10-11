@@ -40,13 +40,12 @@ for (const mode of ['standalone', 'sandbox-with-storage', 'sandbox-without-stora
     await expect(app.getByRole('heading', { name: 'Ma liste', exact: true })).toBeVisible();
 
     await expect(app.getByRole('button', { name: 'Nouvelle carte', exact: true })).toHaveCount(0);
-    await app.getByRole('button', { name: 'Ajouter une carte dans Améliorations', exact: true }).click();
-    await expect(app.getByLabel('Liste', { exact: true })).toHaveValue('' + await app.getByLabel('Liste', { exact: true }).evaluate(el => [...el.options].find(o => o.textContent === 'Améliorations').value));
+    await app.getByRole('button', { name: 'Ajouter une carte dans Ma liste', exact: true }).click();
+    await expect(app.getByLabel('Liste', { exact: true })).toHaveCount(0);
     await app.getByLabel('Titre de la carte', { exact: true }).fill('Ma carte');
     await app.getByLabel('Description', { exact: true }).fill('Première ligne');
     await app.getByLabel('Description', { exact: true }).press('Enter');
     await expect(app.getByRole('dialog')).toHaveCount(1);
-    await app.getByLabel('Liste', { exact: true }).selectOption({ label: 'Ma liste' });
     await app.getByLabel('Statut', { exact: true }).selectOption('ready');
     await app.getByLabel('Priorité', { exact: true }).selectOption('high');
     await app.getByLabel('Étiquettes', { exact: true }).fill('UX, Recherche, UX');
@@ -55,6 +54,8 @@ for (const mode of ['standalone', 'sandbox-with-storage', 'sandbox-without-stora
     await app.getByRole('button', { name: 'Créer la carte', exact: true }).click();
     await expect(app.locator('.list-column').filter({ has: app.getByRole('heading', { name: 'Ma liste', exact: true }) }).locator('.card')).toHaveCount(1);
     await app.locator('.card').click();
+    await expect(app.getByLabel('Déplacer vers', { exact: true })).toHaveCount(0);
+    await expect(app.locator('.detail-status')).toContainText('dans Ma liste');
     await expect(app.getByLabel('Statut', { exact: true })).toHaveValue('ready');
     await expect(app.getByLabel('Priorité', { exact: true })).toHaveValue('high');
     await expect(app.getByLabel('Étiquettes', { exact: true })).toHaveValue('UX, Recherche');
