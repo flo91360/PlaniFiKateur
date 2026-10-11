@@ -4,6 +4,21 @@ export class ApiError extends Error {
   constructor(status, code) { super(`API : ${status} ${code}`); this.status = status; this.code = code; }
 }
 
+// Only known diagnostics are printable; never include response bodies or URLs.
+export function connectionDiagnostic(error) {
+  if (error instanceof ApiError) return `API : ${error.status} ${/^[a-z0-9_]{1,60}$/.test(error.code) ? error.code : 'api_error'}`;
+  if (/^GitHub : (GET|POST|PUT|PATCH|DELETE) refusé \(\d{3}\)\.$/.test(error?.message)) return error.message;
+  const code = error?.cause?.code || error?.code;
+  if (['ENOTFOUND', 'EAI_AGAIN', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET'].includes(code)) return `Réseau : ${code}`;
+  if (error?.name === 'TimeoutError') return 'Délai de connexion dépassé';
+  if (error?.name === 'SyntaxError') return 'Réponse du serveur invalide';
+  return 'Connexion indisponible';
+}
+
+export function temporaryConnectionError(error) {
+  return error instanceof ApiError ? error.status === 429 || error.status >= 500 : ['TypeError', 'TimeoutError', 'SyntaxError'].includes(error?.name);
+}
+
 export function createSiteClient({ origin, token }, transport = fetch) {
   const request = async (path, data, signal) => {
     const response = await transport(new URL(`/api/v1/${path}`, origin), {

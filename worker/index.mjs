@@ -2,6 +2,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { readWorkerConfig } from './config.mjs';
 import { createWorker } from './worker.mjs';
 import { checkSandbox } from './sandbox-check.mjs';
+import { connectionDiagnostic } from './clients.mjs';
 
 try {
   if (process.argv.slice(2).some(arg => arg !== '--once')) throw new Error('Usage : node worker/index.mjs [--once]');
@@ -20,7 +21,7 @@ try {
     } catch (error) {
       if (stop.signal.aborted) break;
       // No response body, process environment or model transcript in service logs.
-      console.error('Connexion du worker refusée ou indisponible. Vérifiez la configuration du site et de GitHub.');
+      console.error(`Connexion du worker refusée ou indisponible (${connectionDiagnostic(error)}). Vérifiez la configuration du site et de GitHub.`);
       if (once) process.exitCode = 1;
     }
     if (once || stop.signal.aborted) break;

@@ -2,7 +2,7 @@ import { access, appendFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validId, validRepository } from './config.mjs';
-import { ApiError, createSiteClient, createGithubClient } from './clients.mjs';
+import { ApiError, createSiteClient, createGithubClient, connectionDiagnostic, temporaryConnectionError } from './clients.mjs';
 import { createState } from './state.mjs';
 import { commandEnvironment, runCommand } from './commands.mjs';
 import { createCodexRunner } from './codex.mjs';
@@ -25,8 +25,23 @@ export function createWorker(config, dependencies = {}) {
     const lease = run.leaseToken;
     const controller = new AbortController();
     const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(config.taskTimeoutMs), ...(parentSignal ? [parentSignal] : [])]);
+    let leaseDeadline = Date.parse(run.leaseExpiresAt), leaseTimer, reservationFailure = false;
+    const renewDeadline = response => {
+      const expires = Date.parse(response.leaseExpiresAt);
+      if (!Number.isFinite(expires)) return;
+      leaseDeadline = Math.max(leaseDeadline || 0, expires);
+      clearTimeout(leaseTimer);
+      leaseTimer = setTimeout(() => {
+        reservationFailure = true;
+        controller.abort(new Error('Réservation expirée : le site n’a pas confirmé sa prolongation.'));
+      }, Math.max(0, leaseDeadline - Date.now()));
+      leaseTimer.unref();
+    };
+    renewDeadline(run);
     const action = async (name, data = {}, actionSignal = signal) => {
       run = { ...await site.action({ ...run, leaseToken: lease }, name, data, actionSignal), leaseToken: lease };
+      if (run.state === 'running') renewDeadline(run);
+      else { clearInterval(timer); clearTimeout(leaseTimer); }
       return run;
     };
     let heartbeating = false, heartbeatPromise;
@@ -35,11 +50,23 @@ export function createWorker(config, dependencies = {}) {
       heartbeating = true;
       // Heartbeat does not change the version; do not overwrite a parallel action.
       heartbeatPromise = site.action({ ...run, leaseToken: lease }, 'heartbeat', {}, signal)
-        .catch(() => controller.abort(new Error('Connexion ou réservation perdue.')))
+        .then(response => { if (run.state === 'running') renewDeadline(response); })
+        .catch(error => {
+          if (signal.aborted || run.state !== 'running') return;
+          const diagnostic = connectionDiagnostic(error);
+          if (temporaryConnectionError(error) && Date.now() < leaseDeadline) {
+            log(`Exécution ${run.id} : prolongation temporairement indisponible (${diagnostic}), nouvelle tentative prévue.`);
+            return;
+          }
+          reservationFailure = true;
+          controller.abort(new Error(temporaryConnectionError(error) && Date.now() >= leaseDeadline
+            ? 'Réservation expirée : le site n’a pas confirmé sa prolongation.'
+            : `Réservation perdue (${diagnostic}).`));
+        })
         .finally(() => { heartbeating = false; });
     }, config.heartbeatMs);
     timer.unref();
-    let job;
+    let job, attemptStarted = false;
     try {
       job = await state.get(run.id) || { id: run.id, projectId: run.projectId, cardId: run.cardId, repository: run.repository.toLowerCase(), branch: `planifikateur/${run.id}`, attempts: 0, answers: 0 };
       if (job.repository !== run.repository.toLowerCase() || job.projectId !== run.projectId || job.cardId !== run.cardId || job.branch !== `planifikateur/${run.id}`) throw new Error('État du worker incompatible avec la carte.');
@@ -53,7 +80,7 @@ export function createWorker(config, dependencies = {}) {
         await action('question', { message: 'Les tentatives automatiques n’ont pas abouti. Pouvez-vous préciser la demande ou faire corriger la configuration du worker avant une nouvelle reprise ?' });
         return { status: 'waiting' };
       }
-      job.attempts++; job.phase = 'running'; await state.put(job);
+      job.attempts++; attemptStarted = true; job.phase = 'running'; await state.put(job);
       const previous = run.submissions.at(-1)?.pullRequest || job.pullRequest;
       if (previous) {
         const pr = await github.pull(job.repository, previous.number, signal);
@@ -133,19 +160,21 @@ export function createWorker(config, dependencies = {}) {
       log(`Exécution ${run.id} : PR #${pr.number}, tests GitHub et fusion en attente.`);
       return { status: 'merging', number: pr.number, sha };
     } catch (error) {
+      // Infrastructure failures and shutdowns must not exhaust the model retry budget.
+      if (attemptStarted && (reservationFailure || parentSignal?.aborted)) job.attempts = Math.max(0, job.attempts - 1);
       // A failed final label is recovered by reconcile; never resubmit a merged task.
       const history = await site.history(run).catch(() => []);
-      const current = history.find(item => item.id === run.id);
+      let current = history.find(item => item.id === run.id);
       if (current?.state === 'running') {
-        await site.action({ ...current, leaseToken: lease }, job?.attempts >= config.maxAttempts ? 'question' : 'interrupt', {
-          message: clean(signal.aborted ? 'Le worker a été arrêté ou sa réservation a été perdue. Une reprise est possible.' : error.message).slice(0, 10000),
-        }).catch(() => {});
+        current = await site.action({ ...current, leaseToken: lease }, !signal.aborted && job?.attempts >= config.maxAttempts ? 'question' : 'interrupt', {
+          message: clean(reservationFailure ? controller.signal.reason.message : signal.aborted ? 'Le worker a été arrêté. Une reprise est possible.' : error.message).slice(0, 10000),
+        }).catch(() => current);
       }
       if (job) { job.phase = current?.state || 'interrupted'; job.retryAfter = Date.now() + 60000; await state.put(job); }
-      log(`Exécution ${run.id} suspendue : ${clean(error.message)}`);
+      log(`Exécution ${run.id} suspendue : ${clean(reservationFailure ? controller.signal.reason.message : error.message)}`);
       return { status: 'interrupted' };
     } finally {
-      clearInterval(timer); await heartbeatPromise;
+      clearInterval(timer); await heartbeatPromise; clearTimeout(leaseTimer);
     }
   }
 

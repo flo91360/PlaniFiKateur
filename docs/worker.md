@@ -282,3 +282,12 @@ Si une carte a été supprimée ou déplacée hors de son projet, le worker arch
 localement son ancienne exécution et continue à consulter les tâches disponibles.
 Les fichiers de travail et la conversation sont conservés dans le volume.
 Une erreur d’accès ou de réseau ne provoque pas cet archivage.
+
+Une prolongation de réservation échouée temporairement (réseau, délai dépassé,
+HTTP 429 ou 5xx) est réessayée tant que la dernière réservation confirmée reste
+valide. Sans confirmation avant son expiration, les commandes sont interrompues ;
+un refus définitif (par exemple HTTP 401 ou réservation invalide) les interrompt
+immédiatement. Ces interruptions ne consomment pas les tentatives de travail du
+modèle. Le journal affiche un code de diagnostic, sans clés ni corps de réponse.
+Si une ancienne version a déjà placé la carte **À préciser**, répondre dans sa
+discussion après la mise à jour permet de reprendre la même exécution.

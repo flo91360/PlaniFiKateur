@@ -13,7 +13,7 @@ import { createWorker } from '../worker/worker.mjs';
 import { createState } from '../worker/state.mjs';
 import { commandEnvironment, runCommand } from '../worker/commands.mjs';
 import { createCodexRunner, taskPrompt } from '../worker/codex.mjs';
-import { ApiError, createSiteClient, createGithubClient } from '../worker/clients.mjs';
+import { ApiError, createSiteClient, createGithubClient, connectionDiagnostic } from '../worker/clients.mjs';
 import { mergeAgentPullRequest, requiredJobs } from '../scripts/merge-agent-pr.mjs';
 
 const repository = 'worker/example', webhookSecret = 'worker-test-webhook';
@@ -282,6 +282,58 @@ test('loss of agent access stops Codex through the heartbeat and prevents public
   f.store.workflows.revokeAgent(f.credentials.agent.id, f.user);
   assert.equal((await running).status, 'interrupted'); assert.equal(f.pr, undefined);
   assert.equal(f.calls.some(c => c.command[0] === 'git' && c.command[1] === 'push'), false);
+  assert.equal((await f.state.get(f.current().id)).attempts, 0);
+  assert.match(f.logs.at(-1), /API : 401/);
+});
+
+test('temporary heartbeat outages preserve the task and resume lease renewal', async t => {
+  let failures = 0, renewals = 0;
+  const f = await fixture(t, { model: async input => {
+    await delay(160, undefined, { signal: input.signal });
+    await writeFile(join(input.cwd, 'greet.mjs'), "export const greet = () => 'bonjour';\n");
+    return { status: 'result', summary: 'Greeting translated', question: '' };
+  } });
+  const site = { ...f.site, async action(run, name, data, signal) {
+    if (name === 'heartbeat') {
+      if (failures++ < 2) throw new ApiError(503, 'unavailable');
+      renewals++;
+    }
+    return f.site.action(run, name, data, signal);
+  } };
+  const worker = createWorker({ ...f.config, heartbeatMs: 20 }, { ...f.dependencies, site });
+  assert.equal((await worker.processTask(f.prepare())).status, 'merging');
+  assert.equal(f.modelCalls.length, 1);
+  assert.ok(renewals > 0);
+  assert.equal(f.logs.filter(line => line.includes('temporairement indisponible')).length, 2);
+  assert.equal((await f.state.get(f.current().id)).attempts, 1);
+});
+
+test('an outage cannot keep working after the last confirmed lease expires', async t => {
+  const f = await fixture(t, { model: async input => {
+    await delay(60000, undefined, { signal: input.signal });
+    throw new Error('Must stop before completing');
+  } });
+  const site = { ...f.site, async action(run, name, data, signal) {
+    if (name === 'heartbeat') throw new ApiError(502, 'unavailable');
+    const response = await f.site.action(run, name, data, signal);
+    return response.state === 'running' ? { ...response, leaseExpiresAt: new Date(Date.now() + 200).toISOString() } : response;
+  } };
+  const worker = createWorker({ ...f.config, heartbeatMs: 20 }, { ...f.dependencies, site });
+  assert.equal((await worker.processTask(f.prepare())).status, 'interrupted');
+  assert.equal(f.pr, undefined);
+  assert.equal(f.current().state, 'interrupted');
+  const job = await f.state.get(f.current().id);
+  assert.equal(job.attempts, 0);
+  assert.equal(job.phase, 'interrupted');
+  assert.ok(f.logs.some(line => line.includes('Réservation expirée')));
+});
+
+test('connection diagnostics expose codes without response bodies or credentials', () => {
+  const secret = 'private-token';
+  assert.equal(connectionDiagnostic(new ApiError(401, 'invalid_token')), 'API : 401 invalid_token');
+  assert.equal(connectionDiagnostic(new ApiError(500, secret + ' https://private.example')), 'API : 500 api_error');
+  assert.equal(connectionDiagnostic(new TypeError(secret, { cause: { code: 'ECONNRESET' } })), 'Réseau : ECONNRESET');
+  assert.equal(connectionDiagnostic(new Error(secret)), 'Connexion indisponible');
 });
 
 test('a rejected result resumes on the same PR with corrections and a new commit', async t => {
