@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 
 export default defineConfig({
   testDir: './tests/browser',
-  workers: 2,
+  workers: process.env.PLANIFIKATEUR_WORKER === '1' ? 1 : 2,
   use: {
     browserName: 'chromium',
     launchOptions: {

@@ -266,6 +266,15 @@ configurés. Les tests locaux ne remplacent pas cet essai.
 
 ## Vérification reproductible locale
 
+Le worker exécute les tests navigateur avec un seul processus Playwright à la
+fois (`PLANIFIKATEUR_WORKER=1`). Les mêmes tests desktop et mobile sont conservés ;
+leur exécution prend plus de temps mais utilise moins de mémoire. Un VPS avec
+1 Gio de RAM reste limité pour Codex, npm et Chromium : prévoir de préférence
+au moins 2 Gio de RAM, et du swap pour absorber les pointes. Le swap réduit le
+risque d’arrêt par manque de mémoire, mais ne remplace pas la RAM et peut ralentir
+les tests. Ce réglage s’applique au prochain lancement des tests depuis le dépôt
+mis à jour ; il ne change pas les processus Chromium déjà démarrés.
+
 ```sh
 node --test tests/worker.test.js
 ```
