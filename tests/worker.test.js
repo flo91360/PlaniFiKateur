@@ -13,7 +13,7 @@ import { createWorker } from '../worker/worker.mjs';
 import { createState } from '../worker/state.mjs';
 import { commandEnvironment, runCommand } from '../worker/commands.mjs';
 import { createCodexRunner, taskPrompt } from '../worker/codex.mjs';
-import { createSiteClient, createGithubClient } from '../worker/clients.mjs';
+import { ApiError, createSiteClient, createGithubClient } from '../worker/clients.mjs';
 import { mergeAgentPullRequest, requiredJobs } from '../scripts/merge-agent-pr.mjs';
 
 const repository = 'worker/example', webhookSecret = 'worker-test-webhook';
@@ -128,6 +128,45 @@ test('two worker claims start only one model and one PR', async t => {
   const second = createWorker(f.config, f.dependencies);
   const results = await Promise.all([f.worker.processTask(run), second.processTask(run)]);
   assert.deepEqual(results.map(r => r.status).sort(), ['claimed_elsewhere', 'merging']); assert.equal(f.modelCalls.length, 1);
+});
+
+test('deleted cards in persisted jobs do not block a new task and their checkout remains intact', async t => {
+  const f = await fixture(t);
+  const jobs = ['deleted-job-one', 'deleted-job-two'].map(id => ({ id, projectId: f.project.id, cardId: 'deleted-card', repository, phase: 'interrupted', threadId: 'previous-thread' }));
+  for (const job of jobs) await f.state.put(job);
+  const checkout = join(f.config.stateRoot, 'jobs', jobs[0].id);
+  await mkdir(checkout, { recursive: true }); await writeFile(join(checkout, 'partial.txt'), 'Keep partial work');
+  f.prepare();
+  assert.equal((await f.worker.tick()).status, 'merging');
+  for (const job of jobs) assert.deepEqual(await f.state.get(job.id), { ...job, phase: 'cancelled' });
+  assert.equal(await readFile(join(checkout, 'partial.txt'), 'utf8'), 'Keep partial work');
+  assert.equal(f.modelCalls.length, 1);
+  assert.equal(f.logs.filter(message => message.includes('carte absente de son projet')).length, 2);
+  const restarted = createWorker(f.config, { ...f.dependencies, site: { ...f.site, history: job => {
+    assert.ok(!jobs.some(old => old.id === job.id), 'archived jobs must not be queried again');
+    return f.site.history(job);
+  } } });
+  assert.equal((await restarted.tick()).status, 'idle'); assert.equal(f.modelCalls.length, 1);
+});
+
+test('an execution absent from an existing card is archived locally and the current task proceeds', async t => {
+  const f = await fixture(t);
+  const old = { id: 'missing-execution', projectId: f.project.id, cardId: f.card.id, repository, phase: 'running' };
+  await f.state.put(old); f.prepare();
+  assert.equal((await f.worker.tick()).status, 'merging');
+  assert.deepEqual(await f.state.get(old.id), { ...old, phase: 'cancelled' });
+  assert.equal(f.modelCalls.length, 1);
+});
+
+test('access denials, network failures and unrelated 404 errors never discard persisted jobs', async t => {
+  const f = await fixture(t), job = { id: 'protected-job', projectId: f.project.id, cardId: f.card.id, repository, phase: 'interrupted' };
+  await f.state.put(job);
+  for (const error of [new ApiError(401, 'agent_unauthorized'), new ApiError(403, 'agent_scope'), new ApiError(404, 'unknown_route'), new TypeError('fetch failed')]) {
+    let polled = false;
+    const worker = createWorker(f.config, { ...f.dependencies, site: { ...f.site, history: async () => { throw error; }, queue: async () => { polled = true; return []; } } });
+    await assert.rejects(worker.tick(), caught => caught === error);
+    assert.equal(polled, false); assert.deepEqual(await f.state.get(job.id), job);
+  }
 });
 
 test('questions pause publication and an answer resumes the persisted conversation and checkout', async t => {

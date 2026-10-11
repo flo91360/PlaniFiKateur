@@ -160,3 +160,8 @@ GitHub réelle. Il vérifie aussi la concurrence, les questions, l’arrêt/repr
 les tests échoués, la récupération du label, une avancée de `main` et la reprise
 de conversation du SDK. Les parcours du site restent couverts par
 `npm run test:browser`.
+
+Si une carte a été supprimée ou déplacée hors de son projet, le worker archive
+localement son ancienne exécution et continue à consulter les tâches disponibles.
+Les fichiers de travail et la conversation sont conservés dans le volume.
+Une erreur d’accès ou de réseau ne provoque pas cet archivage.

@@ -2,7 +2,7 @@ import { access, appendFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validId, validRepository } from './config.mjs';
-import { createSiteClient, createGithubClient } from './clients.mjs';
+import { ApiError, createSiteClient, createGithubClient } from './clients.mjs';
 import { createState } from './state.mjs';
 import { commandEnvironment, runCommand } from './commands.mjs';
 import { createCodexRunner } from './codex.mjs';
@@ -152,8 +152,20 @@ export function createWorker(config, dependencies = {}) {
   async function reconcile(signal) {
     for (const job of await state.all()) {
       if (['done', 'cancelled'].includes(job.phase)) continue;
-      const history = await site.history(job, signal), run = history.find(r => r.id === job.id);
-      if (!run) continue;
+      let history;
+      try { history = await site.history(job, signal); }
+      catch (error) {
+        if (!(error instanceof ApiError) || error.status !== 404 || error.code !== 'card_not_found') throw error;
+        job.phase = 'cancelled'; await state.put(job);
+        log(`Exécution ${job.id} archivée localement : carte absente de son projet.`);
+        continue;
+      }
+      const run = history.find(r => r.id === job.id);
+      if (!run) {
+        job.phase = 'cancelled'; await state.put(job);
+        log(`Exécution ${job.id} archivée localement : exécution absente de la carte.`);
+        continue;
+      }
       if (['done', 'cancelled', 'waiting', 'review'].includes(run.state)) {
         if (job.phase !== run.state) { job.phase = run.state; await state.put(job); log(`Exécution ${job.id} : ${run.state}.`); }
         continue;
