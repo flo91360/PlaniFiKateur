@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { withInfos } from './infos.js';
 import { seed } from '../data/demo.js';
 import { validateWorkspace } from './workspace.js';
 
 const STORAGE = 'planifikateur.workspace.v1';
 export const offlineMode = globalThis.__PLANIFIKATEUR_OFFLINE__ === true || globalThis.location?.protocol === 'file:';
 function readLocal() {
-  try { return validateWorkspace(JSON.parse(localStorage.getItem(STORAGE))); } catch { return seed; }
+  try { return validateWorkspace(JSON.parse(localStorage.getItem(STORAGE))).map(project => withInfos(project)); } catch { return seed; }
 }
 async function request(path, options = {}) {
   const response = await fetch(`/api/v1/${path}`, { credentials: 'same-origin', ...options });

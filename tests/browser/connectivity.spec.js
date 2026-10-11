@@ -283,7 +283,7 @@ test('administrator invites a member whose cards, comments and actions carry the
   await member.getByLabel('Votre commentaire').fill('Précision de Bob');
   await member.getByRole('button', { name: 'Créer la carte', exact: true }).click();
   await expect(member.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
-  await expect(member.locator('.card-avatar')).toHaveText('B');
+  await expect(member.locator('.card').filter({ has: member.getByRole('heading', { name: 'Carte créée par Bob', exact: true }) }).locator('.card-avatar')).toHaveText('B');
   await expect(member.locator('.sidebar-footer .user-avatar')).toHaveText('B');
   await member.getByRole('heading', { name: 'Carte créée par Bob', exact: true }).click();
   await expect(member.locator('.card-authorship')).toContainText('Créée par Bob');

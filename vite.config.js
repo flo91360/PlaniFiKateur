@@ -1,12 +1,20 @@
 import { defineConfig } from 'vite';
+import { readBuildInfo } from './server/build-info.js';
+
 import { createApi } from './server/api.js';
 import { createStore } from './server/store.js';
 import { readConfig } from './server/config.js';
 import { createBackups } from './server/backups.js';
 
+const buildInfo = readBuildInfo();
+
 export default defineConfig({
+  define: { __PLANIFIKATEUR_BUILD_INFO__: JSON.stringify(buildInfo) },
   plugins: [{
     name: 'planifikateur-api',
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'build-info.json', source: JSON.stringify(buildInfo) });
+    },
     configureServer(server) {
       const config = readConfig();
       if (server.config.server.host === true || (typeof server.config.server.host === 'string' && !['localhost', '127.0.0.1', '::1'].includes(server.config.server.host))) {

@@ -1,7 +1,10 @@
 import { DatabaseSync } from 'node:sqlite';
+import { isDeepStrictEqual } from 'node:util';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID, randomBytes } from 'node:crypto';
+import { readBuildInfo } from './build-info.js';
+import { withInfos } from '../src/lib/infos.js';
 import { seed } from '../src/data/demo.js';
 import { validateWorkspace } from '../src/lib/workspace.js';
 import { publicUser, tokenHash } from './accounts.js';
@@ -20,8 +23,17 @@ export function createStore(filename) {
     CREATE TABLE IF NOT EXISTS activity (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, actor_id TEXT, actor_name TEXT NOT NULL, action TEXT NOT NULL, project_id TEXT, card_id TEXT, revision INTEGER, payload TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS activity_project ON activity(project_id, id);
     CREATE INDEX IF NOT EXISTS activity_card ON activity(card_id, id);`);
-  db.prepare('INSERT OR IGNORE INTO workspace VALUES (1, 1, ?, ?)').run(JSON.stringify(validateWorkspace(seed)), new Date().toISOString());
+  const version = readBuildInfo();
+  db.prepare('INSERT OR IGNORE INTO workspace VALUES (1, 1, ?, ?)').run(JSON.stringify(validateWorkspace(seed.map(project => withInfos(project, version)))), new Date().toISOString());
   const transaction = fn => { db.exec('BEGIN IMMEDIATE'); try { const result = fn(); db.exec('COMMIT'); return result; } catch (error) { db.exec('ROLLBACK'); throw error; } };
+  transaction(() => {
+    const row = db.prepare('SELECT projects FROM workspace WHERE id = 1').get();
+    const previous = JSON.parse(row.projects);
+    const projects = previous.map(project => withInfos(project, version));
+    // Comment migrations may reorder properties without changing their values.
+    // Only an actual Infos change should increment the workspace revision.
+    if (!isDeepStrictEqual(projects, previous)) db.prepare('UPDATE workspace SET projects = ?, revision = revision + 1, updated_at = ? WHERE id = 1').run(JSON.stringify(validateWorkspace(projects)), new Date().toISOString());
+  });
   const audit = (actor, action, payload = {}, revision = null) => db.prepare('INSERT INTO activity(date,actor_id,actor_name,action,project_id,card_id,revision,payload) VALUES(?,?,?,?,?,?,?,?)').run(new Date().toISOString(), actor?.id || null, actor?.name || 'Administration', action, payload.projectId || null, payload.cardId || null, revision, JSON.stringify(payload));
   const userById = id => db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   const findCard = (projectId, cardId) => {
