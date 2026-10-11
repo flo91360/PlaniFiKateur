@@ -78,11 +78,16 @@ test('owner authentication saves UI data and makes it visible to the agent', asy
   const Cookie = login.headers.get('set-cookie').split(';')[0];
   const workspace = await (await get('/workspace', { Cookie })).json();
   workspace.projects[0].cards[0].title = 'Créée depuis l’interface';
+  workspace.projects[0].cards[0].status = 'flo';
   const response = await fetch(base + '/api/v1/workspace', { method: 'PUT', headers: { Cookie, 'Content-Type': 'application/json', 'If-Match': '"1"' }, body: JSON.stringify({ projects: workspace.projects }) });
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('etag'), '"2"');
   const card = await (await get('/projects/planifikateur/cards/c1', { Authorization: 'Bearer agent-test-key' })).json();
   assert.equal(card.data.title, 'Créée depuis l’interface');
+  assert.equal(card.data.status, 'flo');
+  const filtered = await get('/projects/planifikateur/cards?status=flo');
+  assert.equal(filtered.status, 200);
+  assert.deepEqual((await filtered.json()).data.map(card => card.id), ['c1']);
   assert.equal(card.meta.revision, 2);
   assert.equal((await fetch(base + '/api/v1/workspace', { method: 'PUT', headers: { Cookie, Origin: 'https://other.test' } })).status, 403);
   assert.equal((await fetch(base + '/api/v1/session', { method: 'DELETE', headers: { Cookie } })).status, 200);

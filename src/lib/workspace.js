@@ -1,4 +1,4 @@
-export const STATUSES = ['draft', 'ready', 'progress', 'clarify', 'review', 'done'];
+export const STATUSES = ['draft', 'ready', 'progress', 'clarify', 'review', 'flo', 'done'];
 const priorities = ['low', 'normal', 'high'];
 
 export function validateWorkspace(projects) {
