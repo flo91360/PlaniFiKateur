@@ -51,5 +51,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     };
     const result = await mergeAgentPullRequest({ repository: process.env.GITHUB_REPOSITORY, runId: process.env.TEST_RUN_ID, request, eligible, log: console.log });
     if (!result.merged) console.log(`Fusion différée : ${result.reason}.`);
-  } catch (error) { console.error(error.message); process.exitCode = 1; }
+  } catch (error) {
+    // GitHub exposes annotations through its API even when job logs cannot be
+    // downloaded. Escape workflow commands to keep error text literal.
+    const message = error.message.replaceAll('%', '%25').replaceAll('\r', '%0D').replaceAll('\n', '%0A');
+    console.error(`::error title=Fusion automatique bloquée::${message}`);
+    process.exitCode = 1;
+  }
 }
