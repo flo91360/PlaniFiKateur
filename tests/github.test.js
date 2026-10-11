@@ -5,6 +5,7 @@ import { createStore } from '../server/store.js';
 import { createAppServer } from '../server/index.js';
 import { seedAccount, loginRequest } from './helpers/accounts.mjs';
 import { mergeAgentPullRequest, requiredJobs } from '../scripts/merge-agent-pr.mjs';
+import { createGithubClient } from '../worker/clients.mjs';
 
 const repository = 'flo91360/PlaniFiKateur', sha = 'a'.repeat(40), nextSha = 'b'.repeat(40), secret = 'webhook-test-secret';
 async function fixture(t, configured = true) {
@@ -37,6 +38,28 @@ test('only a signed GitHub merge closes a code task, with idempotency and histor
  assert.equal(f.store.read().projects[0].cards[0].status,'done');
  const revision=f.store.getRevision(); await f.webhook('pull_request',payload); assert.equal(f.store.getRevision(),revision);
  assert.equal(f.store.activity({cardId:f.card.id}).filter(e=>e.action==='work.merged').length,1);
+});
+
+test('superseded CI does not requeue the agent and later successful tests allow automatic merge', async t => {
+ const f = await fixture(t), run = f.submit(f.prepare());
+ await f.webhook('workflow_run', f.check('cancelled'));
+ let current = f.store.workflows.list(f.project.id, f.card.id)[0];
+ assert.equal(current.state, 'merging');
+ assert.equal(f.store.workflows.queue(f.project.id, f.agent, { autoPrepare: false }).length, 0);
+ assert.equal(f.store.read().projects[0].cards[0].status, 'review');
+ assert.equal(current.submissions.length, 1);
+ const success = f.check('success'); success.workflow_run.id++;
+ await f.webhook('workflow_run', success);
+ current = f.store.workflows.list(f.project.id, f.card.id)[0];
+ assert.equal(current.state, 'merging');
+ assert.equal(current.githubChecks.conclusion, 'success');
+ const revision = f.store.getRevision();
+ await f.webhook('workflow_run', f.check('cancelled'));
+ assert.equal(f.store.getRevision(), revision);
+ assert.equal(f.store.workflows.mergeEligible(repository, 7, sha, f.agent).eligible, true);
+ await f.webhook('pull_request', f.merged());
+ assert.equal(f.store.workflows.list(f.project.id, f.card.id)[0].state, 'done');
+ assert.equal(f.store.workflows.list(f.project.id, f.card.id)[0].id, run.id);
 });
 
 test('failed checks requeue work; obsolete commits, cancelled work and unmerged closure cannot finish it',async t=>{
@@ -72,6 +95,36 @@ function mergeFixture(change={}) {
 test('automatic merger checks both suites and merges exactly the tested head commit',async()=>{
  const f=mergeFixture(); const result=await mergeAgentPullRequest({repository,runId:12,request:f.request,eligible:async()=>true}); assert.equal(result.merged,true);
  assert.deepEqual(f.calls.find(c=>c.method==='PUT').data,{sha,merge_method:'squash'});
+});
+test('repository names differing only in case still identify the same tested PR', async () => {
+ const f = mergeFixture();
+ const result = await mergeAgentPullRequest({ repository: repository.toLowerCase(), runId: 12, request: f.request, eligible: async () => true });
+ assert.equal(result.merged, true);
+});
+
+test('worker merger never uses an older green run when newer tests are pending, failed or cancelled', async () => {
+ for (const conclusion of [null, 'failure', 'cancelled']) {
+  const f = mergeFixture(); f.pr.head.ref = f.run.head_branch;
+  const client = createGithubClient('test-token', async (url, options) => {
+   const path = new URL(url).pathname;
+   if (path.endsWith('/ci.yml/runs')) return Response.json({ workflow_runs: [f.run, { ...f.run, id: 13, status: conclusion ? 'completed' : 'in_progress', conclusion }] });
+   return Response.json(await f.request(path, options.method, options.body && JSON.parse(options.body)));
+  });
+  let eligibilityCalls = 0;
+  const result = await client.mergeWhenReady(repository, f.pr, async () => { eligibilityCalls++; return true; });
+  assert.equal(result.merged, false); assert.equal(eligibilityCalls, 0); assert.equal(f.calls.some(call => call.method === 'PUT'), false);
+ }
+});
+
+test('worker merger rechecks for newly started CI before checking eligibility and merging', async () => {
+ const f = mergeFixture(); f.pr.head.ref = f.run.head_branch; let listings = 0, eligibilityCalls = 0;
+ const client = createGithubClient('test-token', async (url, options) => {
+  const parsed = new URL(url), path = parsed.pathname;
+  if (path.endsWith('/ci.yml/runs')) return Response.json({ workflow_runs: ++listings === 1 ? [f.run] : [{ ...f.run, id: 13, status: 'queued', conclusion: null }] });
+  return Response.json(await f.request(path + parsed.search, options.method, options.body && JSON.parse(options.body)));
+ });
+ const result = await client.mergeWhenReady(repository, f.pr, async () => { eligibilityCalls++; return true; });
+ assert.equal(result.merged, false); assert.equal(eligibilityCalls, 0); assert.equal(f.calls.some(call => call.method === 'PUT'), false);
 });
 test('automatic merger rejects absent, skipped, failed, unfinished or ambiguous required suites',async()=>{
  for(const jobs of [[],[{name:'Tests serveur',status:'completed',conclusion:'success',run_attempt:1}],...['skipped','failure','cancelled',null].map(conclusion=>requiredJobs.map(name=>({name,status:'completed',conclusion,run_attempt:1}))),requiredJobs.map(name=>({name,status:'in_progress',conclusion:'success',run_attempt:1})),[...requiredJobs.map(name=>({name,status:'completed',conclusion:'success',run_attempt:1})),{name:'Tests serveur',status:'completed',conclusion:'success',run_attempt:1}]]){

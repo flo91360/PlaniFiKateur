@@ -182,6 +182,22 @@ export function createWorker(config, dependencies = {}) {
       if (pr.head.sha !== submission.headSha || pr.head.repo?.full_name?.toLowerCase() !== run.repository.toLowerCase()) { log(`Exécution ${run.id} : le commit de la PR a changé.`); continue; }
       if (await github.behindMain(run.repository, pr.head.sha, signal)) return run;
       if (!pr.labels.some(l => l.name === 'planifikateur-agent')) await github.label(run.repository, pr.number, signal);
+      let merged;
+      try { merged = await github.mergeWhenReady(run.repository, pr, data => site.mergeEligible(data, signal), signal); }
+      catch (error) {
+        const message = clean(error.message);
+        if (job.mergeReason !== message) {
+          job.mergeReason = message; await state.put(job);
+          log(`Exécution ${run.id} : fusion automatique bloquée : ${message}. Le worker réessaiera sans relancer Codex.`);
+        }
+        continue;
+      }
+      if (merged.merged) {
+        log(`Exécution ${run.id} : PR #${pr.number} fusionnée après réussite des tests GitHub, notification du site attendue.`);
+      } else if (job.mergeReason !== merged.reason) {
+        job.mergeReason = merged.reason; await state.put(job);
+        log(`Exécution ${run.id} : fusion en attente (${merged.reason}).`);
+      }
     }
     return null;
   }

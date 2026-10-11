@@ -150,7 +150,11 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
           if (run.state !== 'merging' || pr?.repository !== repository.toLowerCase() || pr.headSha !== check.head_sha) continue;
           if (run.githubChecks?.runId > check.id || (run.githubChecks?.runId === check.id && run.githubChecks?.attempt >= check.run_attempt)) continue;
           run.githubChecks = { runId: check.id, attempt: check.run_attempt, conclusion: check.conclusion, url: check.html_url };
-          if (check.conclusion !== 'success') { run.state = 'ready'; run.updates.push({ text: 'Les contrôles GitHub ont échoué ou ont été interrompus. Corrigez puis soumettez à nouveau la PR.', date: new Date().toISOString() }); }
+          // Labeling a newly opened PR starts another CI run and supersedes the
+          // first one. A cancelled run must not send the task back to Codex.
+          if (check.conclusion === 'cancelled') {
+            run.updates.push({ text: 'Une exécution des contrôles GitHub a été annulée. La tâche reste en attente des tests et de la fusion.', date: new Date().toISOString() });
+          } else if (check.conclusion !== 'success') { run.state = 'ready'; run.updates.push({ text: 'Les contrôles GitHub ont échoué. Le worker reprend la tâche pour corriger puis soumettre à nouveau la PR.', date: new Date().toISOString() }); }
           save(run, { id: 'github', name: 'GitHub' }, 'checks'); updated = true;
         }
         return { updated };

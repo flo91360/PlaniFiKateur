@@ -51,13 +51,33 @@ async function fixture(t, options = {}) {
     if (command[0] === 'git') command = ['git', '-c', `url.${bare}.insteadOf=https://github.com/${repository}.git`, ...command.slice(1)];
     return runCommand(command, args);
   };
-  let pr, labels = 0, branch, behind = false;
+  let pr, labels = 0, branch, behind = false, testsReady = false, merges = 0, mergeFailure = false;
+  const mergeClient = createGithubClient('github-test-token', async (url, request) => {
+    const path = new URL(url).pathname;
+    const run = { id: 1, workflow_id: 2, event: 'pull_request', status: 'completed', conclusion: 'success', head_repository: { full_name: repository }, head_sha: pr.head.sha, head_branch: branch, run_attempt: 1 };
+    let data;
+    if (path.endsWith('/ci.yml/runs')) data = { workflow_runs: testsReady ? [run] : [] };
+    else if (path.endsWith('/ci.yml')) data = { id: 2 };
+    else if (path.endsWith('/actions/runs/1/jobs')) data = { jobs: requiredJobs.map(name => ({ name, status: 'completed', conclusion: 'success', run_attempt: 1 })), total_count: 2 };
+    else if (path.endsWith('/actions/runs/1')) data = run;
+    else if (path.endsWith('/pulls/1/merge')) {
+      if (mergeFailure) return Response.json({ message: 'Forbidden' }, { status: 403 });
+      assert.equal(request.method, 'PUT'); assert.equal(JSON.parse(request.body).sha, pr.head.sha);
+      await git(['update-ref', 'refs/heads/main', pr.head.sha], bare);
+      merges++; pr.merged = true; pr.state = 'closed'; data = { merged: true, sha: pr.head.sha };
+    } else if (path.endsWith('/pulls/1')) data = pr;
+    else if (path.endsWith('/pulls')) data = [pr];
+    else if (path.endsWith('/branches/main')) data = { commit: { sha: await git(['rev-parse', 'main'], bare) } };
+    else if (path.includes('/compare/')) data = { status: behind ? 'diverged' : 'ahead' };
+    else throw new Error(`Unexpected GitHub request: ${path}`);
+    return Response.json(data);
+  });
   const github = {
     async ensurePullRequest(repo, name, title, body) {
       assert.equal(repo, repository); branch = name;
       const sha = await git(['rev-parse', `refs/heads/${branch}`], bare);
       pr ||= { number: 1, state: 'open', html_url: `https://github.com/${repository}/pull/1`, base: { ref: 'main' }, head: { repo: { full_name: repository } }, labels: [] };
-      pr.head.sha = sha; pr.title = title; pr.body = body; return structuredClone(pr);
+      pr.head.sha = sha; pr.head.ref = branch; pr.title = title; pr.body = body; return structuredClone(pr);
     },
     async pull() { pr.head.sha = await git(['rev-parse', `refs/heads/${branch}`], bare); return structuredClone(pr); },
     async label() {
@@ -68,6 +88,7 @@ async function fixture(t, options = {}) {
     },
     async unlabel() { pr.labels = []; },
     async behindMain() { return behind; },
+    mergeWhenReady: mergeClient.mergeWhenReady,
   };
   const modelCalls = [];
   const model = { async run(input) {
@@ -86,8 +107,30 @@ async function fixture(t, options = {}) {
     const response = await fetch(`${origin}/api/v1/github/webhook`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-GitHub-Event': 'pull_request', 'X-Hub-Signature-256': 'sha256=' + createHmac('sha256', webhookSecret).update(raw).digest('hex') }, body: raw });
     assert.equal(response.status, 200); return response.json();
   };
-  return { root, store, user, project, card, credentials, config, state, worker, site, prepare, current, github, dependencies, calls, modelCalls, logs, git, bare, source, webhook, get pr() { return pr; }, setBehind(value) { behind = value; } };
+  return { root, store, user, project, card, credentials, config, state, worker, site, prepare, current, github, dependencies, calls, modelCalls, logs, git, bare, source, webhook, get pr() { return pr; }, get merges() { return merges; }, setMergeFailure(value) { mergeFailure = value; }, setTestsReady(value) { testsReady = value; }, setBehind(value) { behind = value; } };
 }
+
+test('worker merges only after GitHub CI and site eligibility, without Actions secrets or another model call', async t => {
+  const f = await fixture(t); f.prepare();
+  const submission = await f.worker.tick();
+  await f.worker.tick(); assert.equal(f.merges, 0); assert.equal(f.modelCalls.length, 1);
+  f.setTestsReady(true);
+  assert.equal((await f.worker.tick()).status, 'idle');
+  assert.equal(f.merges, 1); assert.equal(f.modelCalls.length, 1);
+  assert.equal(f.current().state, 'merging', 'the signed webhook alone completes the card');
+  assert.ok(f.logs.some(line => line.includes('fusionnée après réussite des tests GitHub')));
+  await f.webhook({ action: 'closed', repository: { full_name: repository }, pull_request: { number: 1, merged: true, merged_at: new Date().toISOString(), merge_commit_sha: submission.sha, head: { sha: submission.sha, repo: { full_name: repository } }, base: { ref: 'main' } } });
+  await f.worker.tick(); assert.equal(f.current().state, 'done'); assert.equal(f.merges, 1);
+});
+
+test('a refused merge automatically retries without consuming another model attempt or replacing the PR', async t => {
+  const f = await fixture(t); f.prepare(); await f.worker.tick(); f.setTestsReady(true); f.setMergeFailure(true);
+  await f.worker.tick(); await f.worker.tick();
+  assert.equal(f.merges, 0); assert.equal(f.current().state, 'merging'); assert.equal(f.modelCalls.length, 1);
+  assert.equal(f.logs.filter(line => line.includes('fusion automatique bloquée')).length, 1);
+  f.setMergeFailure(false); await f.worker.tick();
+  assert.equal(f.merges, 1); assert.equal(f.modelCalls.length, 1); assert.equal(f.pr.number, 1);
+});
 
 test('local end-to-end from ready card status: real API, Git changes, passing tests, PR simulation, gated merge and signed completion', async t => {
   const f = await fixture(t), snapshot = f.store.read();
