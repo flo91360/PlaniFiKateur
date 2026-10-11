@@ -5,10 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /opt/worker
 COPY --chown=node:node worker/package.json worker/package-lock.json ./
-RUN --mount=type=secret,id=build_ca,target=/tmp/build-ca.pem \
-    if [ -s /tmp/build-ca.pem ]; then \
-      NODE_EXTRA_CA_CERTS=/tmp/build-ca.pem npm ci --omit=dev --no-audit --no-fund; \
-    else npm ci --omit=dev --no-audit --no-fund; fi
+RUN npm ci --omit=dev --no-audit --no-fund
 COPY --chown=node:node worker/ ./
 # Windows checkouts may contain CRLF even before .gitattributes is applied.
 RUN sed -i 's/\r$//' git-askpass.mjs entrypoint.sh \

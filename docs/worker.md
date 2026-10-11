@@ -121,6 +121,9 @@ le traitement des cartes avant d’avoir réussi le contrôle ci-dessous.
    au plus une relance pour cet essai. Supprimer une éventuelle commande de build
    personnalisée du site. Ne pas ajouter de domaine public ni de vérification
    HTTP. Vérifier dans les logs de construction que ce Dockerfile est utilisé.
+   Le builder Metal de Railway n’accepte pas les montages Docker de type
+   `secret` dans les instructions `RUN` : le Dockerfile du worker installe
+   directement les dépendances avec `npm ci`, sans ce montage.
 
    **Config as Code est déprécié** : selon le message affiché par Railway,
    les services ne l’ayant jamais utilisé ne peuvent plus l’activer depuis le
