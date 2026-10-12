@@ -90,10 +90,12 @@ test('an incomplete or corrupted download is never uploaded and is retried later
   let [entry] = archive.status('flo91360/DefilOrdi').releases;
   assert.equal(entry.state, 'error'); assert.match(entry.message, /empreinte/); assert.equal(google.uploads, 0);
   await archive.refresh(); assert.equal(downloads.length, 1);
-  clock.now += 16 * 60000; serve = () => bytes.subarray(0, 3);
+  await archive.refresh({ force: true }); assert.equal(downloads.length, 2);
+  // The manual retry counted as a second attempt: the next one waits 30 minutes.
+  clock.now += 31 * 60000; serve = () => bytes.subarray(0, 3);
   await archive.refresh();
   [entry] = archive.status('flo91360/DefilOrdi').releases; assert.match(entry.message, /incomplet/); assert.equal(google.uploads, 0);
-  clock.now += 31 * 60000; serve = () => bytes;
+  clock.now += 61 * 60000; serve = () => bytes;
   await archive.refresh();
   assert.equal(archive.status('flo91360/DefilOrdi').releases[0].state, 'archived'); assert.equal(google.uploads, 1);
 });
@@ -148,4 +150,18 @@ test('project members read the archive status and only the administrator starts 
   const after = await (await fetch(`${base}/api/v1/projects/${first.id}/drive`, { headers: { Cookie } })).json();
   assert.equal(after.data.releases[0].tag, 'v1.0.0'); assert.equal(google.uploads, 1);
   assert.equal((await fetch(`${base}/api/v1/projects/unknown/drive`, { headers: { Cookie } })).status, 404);
+});
+
+test('a network failure names the unreachable service and cause instead of marking every release failed', async t => {
+  const releases = [{ tag_name: 'v1.0.0', draft: false, assets: [asset(91, 'App.exe', Buffer.from('app'))] }, { tag_name: 'v1.1.0', draft: false, assets: [asset(92, 'Next.exe', Buffer.from('next'))] }];
+  const { archive, google } = await fixture(t, releases);
+  const transport = google.transport;
+  google.transport = async () => { throw new TypeError('fetch failed', { cause: Object.assign(new Error('getaddrinfo ENOTFOUND oauth2.googleapis.com'), { code: 'ENOTFOUND' }) }); };
+  await archive.refresh();
+  const status = archive.status('flo91360/DefilOrdi');
+  assert.match(status.error, /^Google injoignable depuis le serveur \(oauth2\.googleapis\.com : ENOTFOUND : getaddrinfo ENOTFOUND/);
+  assert.deepEqual(status.releases, []);
+  google.transport = transport; await archive.refresh();
+  assert.deepEqual(archive.status('flo91360/DefilOrdi').releases.map(release => release.state), ['archived', 'archived']);
+  assert.equal(archive.status('flo91360/DefilOrdi').error, '');
 });

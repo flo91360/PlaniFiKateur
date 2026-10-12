@@ -17,6 +17,19 @@ const executable = asset => asset && typeof asset.name === 'string' && /^[^\x00-
 export const assetSignature = assets => assets.map(asset => `${asset.id}:${asset.size}:${asset.updated_at || ''}`).sort().join('|');
 const retryDelay = attempts => Math.min(24 * 3600000, 15 * 60000 * 2 ** Math.max(0, attempts - 1));
 
+// Node reports every connection failure as "fetch failed": name the service,
+// the host and the system cause so the project settings explain what to fix.
+export function describedTransport(transport, service) {
+  return async (url, options) => {
+    try { return await transport(url, options); }
+    catch (error) {
+      const host = (() => { try { return new URL(url).host; } catch { return 'serveur inconnu'; } })();
+      const detail = error?.name === 'TimeoutError' ? 'délai dépassé' : [error?.cause?.code, error?.cause?.message].filter(Boolean).join(' : ') || error?.message || 'erreur inconnue';
+      throw Object.assign(new Error(`${service} injoignable depuis le serveur (${host} : ${detail}). Nouvel essai à la prochaine vérification.`), { network: true });
+    }
+  };
+}
+
 export function readDriveConfig(env = process.env) {
   const raw = env.PLANIFIKATEUR_GOOGLE_DRIVE_CREDENTIALS || '', folder = env.PLANIFIKATEUR_GOOGLE_DRIVE_FOLDER || '';
   if (!raw && !folder) return { enabled: false };
@@ -29,6 +42,9 @@ export function readDriveConfig(env = process.env) {
 
 export function createDriveArchive(store, { drive = { enabled: false }, token = '', directory, transport = fetch, driveDependencies, intervalMs = 15 * 60000, maxBytes = 2 * 1024 ** 3, releasesPerRepository = 10, now = Date.now, start = true, log = console.log } = {}) {
   let running = null, again = false, closed = false;
+  transport = describedTransport(transport, 'GitHub');
+  // Read per publication so a replaced transport (tests) is used on the next run.
+  const google = () => ({ ...driveDependencies, transport: describedTransport(driveDependencies?.transport || fetch, 'Google') });
   const state = { lastRun: '', error: drive.error || '' };
   const github = async (path, accept = 'application/vnd.github+json') => {
     const response = await transport(`https://api.github.com${path}`, {
@@ -47,7 +63,11 @@ export function createDriveArchive(store, { drive = { enabled: false }, token = 
       size += chunk.length; sha256.update(chunk);
       done(size > asset.size || size > maxBytes ? new Error(`${asset.name} dépasse la taille annoncée par GitHub.`) : null, chunk);
     } });
-    await pipeline(Readable.fromWeb(response.body), meter, createWriteStream(target, { flags: 'wx', mode: 0o600 }));
+    try { await pipeline(Readable.fromWeb(response.body), meter, createWriteStream(target, { flags: 'wx', mode: 0o600 })); }
+    catch (error) {
+      if (error.message.includes('taille annoncée')) throw error;
+      throw Object.assign(new Error(`Téléchargement de ${asset.name} interrompu (${[error.cause?.code, error.cause?.message || error.message].filter(Boolean).join(' : ')}). Nouvel essai à la prochaine vérification.`), { network: true });
+    }
     if (size !== asset.size) throw new Error(`${asset.name} est incomplet (${size} octets sur ${asset.size}).`);
     const digest = /^sha256:([a-f0-9]{64})$/.exec(asset.digest || '')?.[1];
     if (digest && sha256.digest('hex') !== digest) throw new Error(`L’empreinte de ${asset.name} ne correspond pas à celle de GitHub.`);
@@ -60,12 +80,12 @@ export function createDriveArchive(store, { drive = { enabled: false }, token = 
     try {
       const paths = [];
       for (const asset of assets) { const path = join(folder, asset.name); await download(repository, asset, path); paths.push(path); }
-      return await publishDrive({ credentials: drive.credentials, rootFolder: drive.folder, repository, version: release.tag_name, commit, paths }, driveDependencies);
+      return await publishDrive({ credentials: drive.credentials, rootFolder: drive.folder, repository, version: release.tag_name, commit, paths }, google());
     } finally { await rm(folder, { recursive: true, force: true }); }
   };
   // Keep the configured spelling: it names the project folder in Drive.
   const repositories = () => [...new Map(store.read().projects.map(project => store.workflows.githubProject(project.id)).filter(Boolean).map(repo => [repo.toLowerCase(), repo])).values()];
-  const run = async () => {
+  const run = async force => {
     if (!drive.enabled || drive.error || closed) return;
     state.error = '';
     for (const repository of repositories()) {
@@ -79,14 +99,15 @@ export function createDriveArchive(store, { drive = { enabled: false }, token = 
         const assets = (release.assets || []).filter(executable).slice(0, 10);
         if (!assets.length) continue;
         const signature = assetSignature(assets), previous = store.driveArchive(repository, release.tag_name);
-        if (previous?.signature === signature && (previous.state === 'archived' || Date.parse(previous.retryAt) > now())) continue;
+        // A manual check retries failed versions now; conflicts wait for new files.
+        if (previous?.signature === signature && (previous.state === 'archived' || previous.state === 'conflict' || (!force && Date.parse(previous.retryAt) > now()))) continue;
         try {
           const result = await archive(repository, release, assets);
           store.recordDriveArchive(repository, release.tag_name, { signature, state: 'archived', message: '', attempts: 0, folderId: result.folderId, files: result.files.map(({ name, size }) => ({ name, size })), date: new Date(now()).toISOString() });
           store.recordDriveRelease(repository, result);
           log(`Archivage Drive : ${repository} ${release.tag_name} (${result.files.length} exécutable(s)).`);
         } catch (error) {
-          if (/Authentification Google|GOOGLE_DRIVE_CREDENTIALS|dossier fourni est absent/.test(error.message)) {
+          if (error.network || /Authentification Google|GOOGLE_DRIVE_CREDENTIALS|dossier fourni est absent/.test(error.message)) {
             // A global Drive failure would fail every release; report it once and retry later.
             state.error = error.message; return;
           }
@@ -99,10 +120,12 @@ export function createDriveArchive(store, { drive = { enabled: false }, token = 
       }
     }
   };
-  const refresh = () => {
+  let forced = false;
+  const refresh = ({ force = false } = {}) => {
+    forced ||= force;
     if (running) { again = true; return running; }
     running = (async () => {
-      try { do { again = false; await run(); } while (again && !closed); }
+      try { do { again = false; const force = forced; forced = false; await run(force); } while (again && !closed); }
       catch (error) { state.error = error.message; }
       finally { state.lastRun = new Date(now()).toISOString(); running = null; }
     })();

@@ -91,7 +91,7 @@ export function createApi(store, config = {}) {
         if (req.method === 'POST') {
           requireAdmin(req);
           if (!config.driveArchive) throw httpError(503, 'drive_disabled', 'L’archivage Google Drive n’est pas configuré sur le serveur.');
-          void config.driveArchive.refresh();
+          void config.driveArchive.refresh({ force: true });
         } else if (req.method !== 'GET') throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
         send(res, req.method === 'POST' ? 202 : 200, { data: config.driveArchive ? config.driveArchive.status(repository) : { enabled: false, repository: repository || '', releases: [] } });
         return true;
