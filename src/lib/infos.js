@@ -14,16 +14,32 @@ export function withInfos(project, version) {
   const description = preserve ? card.description : (version.repository ? `Dépôt : ${version.repository}\n` : '') + (validDate
     ? `Date de push du tag : ${new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long', timeStyle: 'short', timeZone: 'Europe/Paris' }).format(new Date(version.date))} (Europe/Paris).`
     : version.tag === 'Aucun tag disponible' ? 'Associez un dépôt GitHub au projet pour afficher sa dernière version.' : version.tag === 'Aucun tag publié' ? 'Aucun tag publié dans ce dépôt.' : 'Date de push du tag indisponible dans l’historique GitHub.');
+  const cards = card
+    ? project.cards.map(item => {
+      if (item.id !== cardId) return item;
+      const { downloads, ...previous } = item;
+      const current = preserve ? downloads : version.downloads;
+      return { ...previous, listId: list?.id || listId, title: version.tag, description, status: 'done', ...(current ? { downloads: current } : {}) };
+    })
+    : [...project.cards, { id: cardId, listId: list?.id || listId, title: version.tag, description, status: 'done', priority: 'normal', tags: ['Version'], comments: [], checklist: [], ...(version.downloads ? { downloads: version.downloads } : {}) }];
   return {
     ...project,
     lists: list ? project.lists : [...project.lists, { id: listId, name: 'Infos', color: 'purple' }],
-    cards: card
-      ? project.cards.map(item => {
-        if (item.id !== cardId) return item;
-        const { downloads, ...previous } = item;
-        const current = preserve ? downloads : version.downloads;
-        return { ...previous, listId: list?.id || listId, title: version.tag, description, status: 'done', ...(current ? { downloads: current } : {}) };
-      })
-      : [...project.cards, { id: cardId, listId: list?.id || listId, title: version.tag, description, status: 'done', priority: 'normal', tags: ['Version'], comments: [], checklist: [], ...(version.downloads ? { downloads: version.downloads } : {}) }],
+    cards: withReadme(project.id, cards, list?.id || listId, preserve ? undefined : version.repository || ''),
   };
+}
+
+export const readmeUrl = repository => `https://github.com/${repository}#readme`;
+
+// Without a repository argument (navigator), the server-provided link is kept.
+function withReadme(projectId, cards, listId, repository) {
+  const cardId = `${projectId}-readme`;
+  const card = cards.find(item => item.id === cardId);
+  if (repository === undefined) repository = card?.readme || '';
+  const description = repository
+    ? `Ce que fait le projet, comment l’installer, l’utiliser et le tester : ${readmeUrl(repository)}`
+    : 'Associez un dépôt GitHub au projet pour afficher le lien vers son mode d’emploi (README).';
+  const { readme, ...previous } = card || { id: cardId, priority: 'normal', tags: ['Mode d’emploi'], comments: [], checklist: [] };
+  const next = { ...previous, listId, title: 'Mode d’emploi du projet', description, status: 'done', ...(repository ? { readme: repository } : {}) };
+  return card ? cards.map(item => item.id === cardId ? next : item) : [...cards, next];
 }
