@@ -91,8 +91,9 @@ supprimer sa discussion. Une erreur GitHub conserve la dernière valeur connue.
 
 La même colonne contient aussi une carte **Mode d’emploi du projet**, créée par
 défaut pour chaque projet. Dès qu’un dépôt GitHub est associé, elle affiche le
-lien vers son README (`https://github.com/<dépôt>#readme`) et le bouton
-**Consulter le mode d’emploi (README)** dans son détail : une personne qui teste
+lien vers son README (`https://github.com/<dépôt>#readme`), cliquable directement
+sous la carte du tableau (**Lire le mode d’emploi (README)**) et dans son détail
+(**Consulter le mode d’emploi (README)**) : une personne qui teste
 le projet y trouve ce qui a été réalisé et comment l’utiliser. Pour un dépôt
 privé, la lecture du README demande un accès GitHub au dépôt.
 
