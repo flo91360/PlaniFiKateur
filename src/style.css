@@ -243,3 +243,5 @@ input::placeholder, textarea::placeholder { color: #96aca3; }
 .download-release a { overflow-wrap: anywhere; }
 .download-release .secondary-button { display: inline-flex; align-items: center; gap: 8px; }
 .download-release li { margin: 8px 0; font-size: 13px; }
+.drive-releases { margin: 8px 0; padding-left: 18px; font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.drive-message { color: var(--muted); }

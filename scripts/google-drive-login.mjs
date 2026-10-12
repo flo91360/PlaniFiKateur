@@ -54,6 +54,6 @@ export async function login(args = process.argv.slice(2)) {
   await createDriveClient(credentials, options['--folder']).validateRoot();
   try { await writeFile(resolve(options['--output']), JSON.stringify(credentials), { mode: 0o600, flag: 'wx' }); }
   catch { throw new Error('Impossible de créer le fichier privé. Choisissez un nouveau chemin de sortie accessible.'); }
-  console.log(`Dossier vérifié. Authentification enregistrée dans ${resolve(options['--output'])}.\nAjoutez son contenu au secret GitHub GOOGLE_DRIVE_CREDENTIALS des deux dépôts. Ne partagez pas ce fichier.`);
+  console.log(`Dossier vérifié. Authentification enregistrée dans ${resolve(options['--output'])}.\nCopiez son contenu dans la variable PLANIFIKATEUR_GOOGLE_DRIVE_CREDENTIALS du service Railway du site. Ne partagez pas ce fichier.`);
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) login().catch(error => { console.error(error.message); process.exitCode = 1; });

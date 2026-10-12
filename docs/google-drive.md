@@ -1,103 +1,99 @@
-# Exécutables dans votre Google Drive
+# Archivage des exécutables dans votre Google Drive
 
-Après les tests et la compilation sur GitHub, les dépôts DefilOrdi et FunKart
-peuvent envoyer leurs exécutables dans **un dossier existant de votre compte** :
+Le serveur PlaniFiKateur copie automatiquement les `.exe` publiés dans les
+Releases GitHub de chaque projet vers **un dossier existant de votre Drive** :
 
 ```text
-Votre dossier fourni/
+Votre dossier/
   DefilOrdi/v0.7.1/DefilOrdi-Installation-0.7.1.exe
-                  DefilOrdi-Portable-0.7.1.exe
-  FunKart/v0.1.1/FunKart.exe
+                   DefilOrdi-Portable-0.7.1.exe
+  FunKart/v0.2.0/FunKart.exe
 ```
 
-Le programme vérifie ce dossier et vos droits avant toute création. Il crée
-seulement ses sous-dossiers, conserve les anciennes versions et refuse de
-remplacer une version par celle d’un autre commit. Une relance réutilise les
-fichiers déjà présents après vérification de leur taille et empreinte MD5.
-Les transferts utilisent des blocs de 8 Mo ; les exécutables ne transitent ni par
-le worker AWS ni par la base SQLite du site.
+Le sous-dossier du projet porte le nom de son dépôt GitHub, celui de la version
+le tag de la Release. Les anciennes versions sont conservées.
 
-## Connecter votre compte une fois
+## Ajouter un projet
+
+1. Dans **Paramètres du projet**, renseigner son dépôt GitHub (`propriétaire/dépôt`).
+2. Le dépôt publie une **Release GitHub** dont le tag est une version
+   (`v1.2.3` ou `1.2.3`) avec ses `.exe` en pièces jointes.
+
+C’est tout : aucun secret ni workflow Drive n’est nécessaire dans le dépôt du projet.
+
+Le serveur consulte les dix dernières Releases de chaque dépôt toutes les quinze
+minutes, au démarrage et à chaque enregistrement d’un dépôt. Pour un archivage
+immédiat, cocher aussi l’événement **Releases** dans le webhook GitHub signé vers
+PlaniFiKateur (voir [le guide GitHub](github.md)). Les brouillons, les tags qui ne
+sont pas des numéros de version et les fichiers autres que `.exe` sont ignorés ;
+au plus dix `.exe` par Release.
+
+Une Release doit correspondre à une version : publier une nouvelle version pour
+chaque nouvelle compilation. Si les `.exe` d’une version déjà archivée sont
+remplacés sur GitHub, l’archive existante est conservée et le panneau indique
+« fichiers différents pour une version existante ». Augmenter la version pour
+archiver la nouvelle compilation.
+
+## Suivre l’archivage
+
+**Paramètres du projet → Archivage des .exe sur Google Drive** affiche, pour les
+dernières versions, leur état, le lien du dossier Drive et l’erreur éventuelle.
+L’administrateur peut **Vérifier les Releases maintenant**. Une erreur passagère
+(téléchargement interrompu, Google indisponible) est retentée automatiquement,
+avec un délai croissant de 15 minutes à 24 heures. La carte **Infos** affiche le
+lien de la version courante une fois archivée.
+
+## Fonctionnement et sécurité
+
+- Chaque `.exe` est téléchargé sur le volume du serveur, dans un dossier temporaire
+  supprimé après l’envoi. Sa taille et son empreinte SHA-256 annoncées par GitHub
+  sont vérifiées avant tout envoi.
+- L’envoi se fait par blocs de 8 Mo ; Google confirme ensuite la taille et
+  l’empreinte MD5 du fichier reçu.
+- Une version déjà archivée pour un autre commit n’est jamais remplacée. Une
+  relance réutilise les fichiers identiques déjà présents.
+- Les dépôts publics ne demandent aucun accès GitHub. Pour un dépôt privé,
+  définir `PLANIFIKATEUR_GITHUB_TOKEN` sur le serveur, avec la lecture du contenu
+  (Contents: Read) de ce dépôt.
+
+## Connecter votre compte Google (une seule fois)
 
 L’accès est celui de **votre compte Google**, avec vos fichiers et votre quota.
-Un compte de service n’est pas utilisé pour stocker des fichiers dans votre Drive
-personnel. Cette connexion requiert votre consentement dans un navigateur.
 
-1. Dans [Google Cloud Console](https://console.cloud.google.com/), créez ou
-   sélectionnez un projet, puis activez **Google Drive API** dans la bibliothèque
-   des API.
-2. Dans **Google Auth Platform**, configurez l’application OAuth et votre adresse
-   de contact. Pour un compte Gmail personnel, choisissez une audience externe.
-   Pendant les essais, ajoutez votre compte aux utilisateurs de test.
-3. Créez un client OAuth de type **Application de bureau**, puis téléchargez son
-   fichier JSON. Gardez-le en dehors du dépôt Git.
-4. Pour l’accès durable, passez le statut de publication de l’application en
-   **Production** dans la section Audience avant l’autorisation finale. En mode
-   Test, Google expire généralement les refresh tokens après sept jours pour
-   les scopes Drive. Les règles Google de vérification s’appliquent si vous
-   distribuez cette application à d’autres utilisateurs ; ici, vous autorisez
-   votre propre compte.
-5. Depuis votre clone de PlaniFiKateur, exécutez dans PowerShell (adaptez les
-   chemins et utilisez le lien du dossier que vous avez choisi) :
+1. Dans [Google Cloud Console](https://console.cloud.google.com/), créer ou
+   sélectionner un projet, puis activer **Google Drive API**.
+2. Dans **Google Auth Platform**, configurer l’application OAuth (audience
+   externe pour un compte Gmail personnel) et ajouter votre compte aux
+   utilisateurs de test.
+3. Créer un client OAuth de type **Application de bureau** et télécharger son
+   fichier JSON, en dehors du dépôt Git.
+4. Passer le statut de publication de l’application en **Production** avant
+   l’autorisation finale. En mode Test, Google expire l’accès après environ sept
+   jours et l’archivage s’arrête avec « Authentification Google refusée ».
+5. Depuis un clone de PlaniFiKateur, dans PowerShell :
 
    ```powershell
    node scripts/google-drive-login.mjs --client "$env:USERPROFILE\Downloads\client_secret.json" --folder "https://drive.google.com/drive/folders/IDENTIFIANT" --output "$env:USERPROFILE\google-drive-credentials.json"
    ```
 
-   Ouvrez le lien affiché dans le navigateur sur **le même ordinateur**, choisissez
-   votre compte puis autorisez l’accès. Le programme vérifie le dossier et écrit
-   le fichier privé ; il ne montre aucun token dans le terminal.
+   Ouvrir le lien affiché dans le navigateur du même ordinateur et autoriser
+   l’accès. Le programme vérifie le dossier et écrit le fichier privé.
+6. Dans le service Railway du site, onglet **Variables** :
+   - `PLANIFIKATEUR_GOOGLE_DRIVE_CREDENTIALS` : le contenu du fichier privé ;
+   - `PLANIFIKATEUR_GOOGLE_DRIVE_FOLDER` : le lien ou l’identifiant du dossier.
 
-L’autorisation Google demandée est le scope `https://www.googleapis.com/auth/drive`.
-Google n’offre pas de scope OAuth limité à un dossier existant fourni par son
-lien ; `drive.file` exige un accès préalablement accordé à ce dossier, par exemple
-avec Google Picker. Le programme restreint ses opérations au dossier configuré
-et à ses descendants, mais le token OAuth possède un accès plus large au niveau
-de votre compte. Vous pouvez révoquer l’application dans les autorisations de
-votre compte Google. Aucun partage public n’est ajouté : les droits du dossier
-continuent de s’appliquer.
+   Railway redéploie le site ; le panneau d’archivage indique alors son état.
 
-## Activer les deux dépôts
+Le scope demandé est `https://www.googleapis.com/auth/drive` : Google n’offre pas
+de scope limité à un dossier existant. Le serveur n’opère que dans le dossier
+configuré et ses sous-dossiers, mais le jeton a un accès plus large à votre Drive :
+ne le placez jamais dans une carte, un dépôt ou un journal. Vous pouvez révoquer
+l’application dans les autorisations de votre compte Google ; il faut ensuite
+refaire l’étape 5 et remplacer la variable Railway.
 
-Dans **chacun** des dépôts `flo91360/DefilOrdi` et `flo91360/FunKart`, ouvrez
-**Settings → Secrets and variables → Actions** :
+## API
 
-- Onglet **Secrets** : créez `GOOGLE_DRIVE_CREDENTIALS` avec le contenu du fichier
-  privé généré. Ne mettez pas ce contenu dans une carte, un commentaire ou Git.
-- Onglet **Variables** : créez `GOOGLE_DRIVE_FOLDER_ID` avec l’identifiant de votre
-  dossier existant (la partie du lien située après `/folders/`). Utilisez le même
-  identifiant dans les deux dépôts.
-
-Les secrets sont transmis uniquement au job de publication sur `main` après
-réussite de la fabrication des exécutables. Les branches de travail et PR ne
-reçoivent pas l’authentification Drive. Les publications d’un même dépôt sont
-sérialisées pour éviter les créations simultanées de dossiers homonymes.
-
-Pour le premier essai, lancez **Actions → Windows .exe / Construire le jeu →
-Run workflow**, branche `main`. La case « publier » de FunKart peut rester décochée.
-Les futures mises à jour de `main` déclenchent automatiquement fabrication et
-archivage. Sans configuration Drive, le job indique que la publication n’est
-pas activée et les tests du projet continuent de fonctionner.
-
-Le worker augmente automatiquement la version corrective des profils DefilOrdi
-et FunKart lorsqu’il livre du code, avant les tests. Les modifications manuelles
-doivent aussi augmenter `package.json` et son lockfile, ou `config/version` dans
-`project.godot`, pour publier de nouveaux exécutables sans écraser les anciens.
-Une demande de fichier uniquement joint à une carte n’augmente pas la version.
-
-## Retrouver une version et reprendre un envoi
-
-Le dossier de version contient les `.exe` directement téléchargeables et la
-Release GitHub reçoit le lien du dossier Drive. La carte **Infos** du projet
-affiche ce lien et les fichiers de la version correspondant à son tag.
-Le serveur retrouve ces métadonnées toutes les quinze minutes. Pour une mise à
-jour immédiate, activez aussi **Releases** dans les événements du webhook signé
-GitHub vers PlaniFiKateur. La date de publication d’une Release ne remplace jamais
-la date de push du tag lorsque celle-ci est inconnue.
-
-Si une publication échoue après un envoi partiel, relancez le job de publication
-avec **Re-run failed jobs** : les fichiers validés sont réutilisés. Les erreurs de
-Drive sont indépendantes des tests des PR et ne relancent pas le modèle IA.
-Si Google refuse l’authentification, reconnectez le compte et remplacez le secret
-dans les deux dépôts. Si une version existe pour un autre commit, augmentez la
-version dans le code au lieu d’effacer son archive.
+- `GET /api/v1/projects/{id}/drive` (membre connecté) : état de l’archivage du
+  dépôt du projet et des dernières versions, sans aucun secret.
+- `POST` sur cette route (administrateur) : lance une vérification immédiate des
+  Releases ; répond `202` avec l’état courant.

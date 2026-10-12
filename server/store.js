@@ -24,7 +24,9 @@ export function createStore(filename) {
     CREATE INDEX IF NOT EXISTS activity_project ON activity(project_id, id);
     CREATE INDEX IF NOT EXISTS activity_card ON activity(card_id, id);
     CREATE TABLE IF NOT EXISTS github_downloads (repository TEXT NOT NULL, tag TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(repository,tag));
-    CREATE TABLE IF NOT EXISTS github_versions (repository TEXT PRIMARY KEY, data TEXT NOT NULL);`);
+    CREATE TABLE IF NOT EXISTS github_versions (repository TEXT PRIMARY KEY, data TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS drive_archives (repository TEXT NOT NULL, tag TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(repository,tag));
+    CREATE TABLE IF NOT EXISTS drive_repositories (repository TEXT PRIMARY KEY, data TEXT NOT NULL);`);
   db.prepare('INSERT OR IGNORE INTO workspace VALUES (1, 1, ?, ?)').run(JSON.stringify(validateWorkspace(seed)), new Date().toISOString());
   const transaction = fn => { db.exec('BEGIN IMMEDIATE'); try { const result = fn(); db.exec('COMMIT'); return result; } catch (error) { db.exec('ROLLBACK'); throw error; } };
   const synchronizeInfos = () => {
@@ -72,6 +74,19 @@ export function createStore(filename) {
         db.prepare('INSERT INTO github_downloads VALUES(?,?,?) ON CONFLICT(repository,tag) DO UPDATE SET data=excluded.data').run(repository, release.version, JSON.stringify(release));
         synchronizeInfos(); return { updated: true };
       });
+    },
+    driveArchive(repository, tag) { const row = db.prepare('SELECT data FROM drive_archives WHERE repository=? AND tag=?').get(repository.toLowerCase(), tag); return row ? JSON.parse(row.data) : null; },
+    recordDriveArchive(repository, tag, data) { db.prepare('INSERT INTO drive_archives VALUES(?,?,?) ON CONFLICT(repository,tag) DO UPDATE SET data=excluded.data').run(repository.toLowerCase(), tag, JSON.stringify(data)); },
+    recordDriveRepository(repository, data) { db.prepare('INSERT INTO drive_repositories VALUES(?,?) ON CONFLICT(repository) DO UPDATE SET data=excluded.data').run(repository.toLowerCase(), JSON.stringify(data)); },
+    driveStatus(repository) {
+      repository = repository.toLowerCase();
+      const checked = db.prepare('SELECT data FROM drive_repositories WHERE repository=?').get(repository);
+      const { error = '', checkedAt = '' } = checked ? JSON.parse(checked.data) : {};
+      const releases = db.prepare('SELECT tag,data FROM drive_archives WHERE repository=?').all(repository).map(row => {
+        const { state, message, folderId, files, date } = JSON.parse(row.data);
+        return { tag: row.tag, state, message, date, files: files || [], ...(folderId ? { folderUrl: `https://drive.google.com/drive/folders/${folderId}` } : {}) };
+      }).sort((a, b) => Date.parse(b.date) - Date.parse(a.date)).slice(0, 10);
+      return { checkedAt, repositoryError: error, releases };
     },
     githubVersion(repository) { const row = db.prepare('SELECT data FROM github_versions WHERE repository=?').get(repository.toLowerCase()); return row ? JSON.parse(row.data) : null; },
     refreshInfos() { return transaction(synchronizeInfos); },

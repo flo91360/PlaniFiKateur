@@ -15,13 +15,14 @@ const readToken = 'agent-browser-test-key';
 const test = base.extend({
   githubEnabled: [false, { option: true }],
   initialAccounts: [true, { option: true }],
-  appServer: async ({ initialAccounts, githubEnabled }, use) => {
+  driveArchive: [null, { option: true }],
+  appServer: async ({ initialAccounts, githubEnabled, driveArchive }, use) => {
     const store = createStore(':memory:');
     const user = initialAccounts ? seedAccount(store) : null;
     if (githubEnabled) { const initial = store.read(); initial.projects.forEach(p => p.cards.forEach(c => { c.status = 'draft'; })); store.write(initial.projects, initial.revision, user); }
     const dir = mkdtempSync(join(tmpdir(), 'planifikateur-browser-backups-'));
     const backups = createBackups(store, { directory: dir });
-    const server = createAppServer({ store, config: { ownerToken, readToken, backups, githubWebhookSecret: githubEnabled ? 'browser-github-secret' : '' } });
+    const server = createAppServer({ store, config: { ownerToken, readToken, backups, githubWebhookSecret: githubEnabled ? 'browser-github-secret' : '', ...(driveArchive ? { driveArchive } : {}) } });
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     await use(`http://127.0.0.1:${server.address().port}`);
     server.closeAllConnections();
@@ -726,5 +727,33 @@ test.describe('automatic GitHub delivery', () => {
     await page.getByRole('button', { name: 'Terminé', exact: true }).click();
     await page.getByRole('heading', { name: card.title, exact: true }).click();
     await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('done');
+  });
+});
+
+test.describe('Google Drive archive', () => {
+  const runs = [];
+  test.use({ driveArchive: {
+    refresh: () => { runs.push(Date.now()); return Promise.resolve(); },
+    status: repository => ({ enabled: true, configurationError: '', error: '', lastRun: '2026-10-12T10:00:00Z', running: false, repository: repository || '', checkedAt: '', repositoryError: '', releases: repository ? [
+      { tag: 'v0.7.2', state: 'conflict', message: 'Un fichier différent existe déjà dans cette version. Aucun exécutable n’a été remplacé.', date: '2026-10-12T10:00:00Z', files: [] },
+      { tag: 'v0.7.1', state: 'archived', message: '', date: '2026-10-11T10:00:00Z', files: [{ name: 'DefilOrdi-Portable-0.7.1.exe', size: 10 }], folderUrl: 'https://drive.google.com/drive/folders/drive-version-folder' },
+    ] : [] }),
+  } });
+  test('project settings show each archived version, its Drive folder and the reason a version was skipped', async ({ page, appServer }) => {
+    await login(page, appServer);
+    const project = seed[0];
+    await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
+    await page.getByText('Archivage des .exe sur Google Drive', { exact: true }).click();
+    await expect(page.getByText('Associez un dépôt GitHub au projet : ses Releases', { exact: false })).toBeVisible();
+    await page.getByRole('button', { name: 'Fermer', exact: true }).click();
+    await page.request.put(`${appServer}/api/v1/projects/${project.id}/github`, { data: { repository: 'flo91360/DefilOrdi' } });
+    await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
+    await page.getByText('Archivage des .exe sur Google Drive', { exact: true }).click();
+    await expect(page.getByText('DefilOrdi/<version>/', { exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Ouvrir le dossier', exact: true })).toHaveAttribute('href', 'https://drive.google.com/drive/folders/drive-version-folder');
+    await expect(page.getByText('Non archivée : fichiers différents pour une version existante', { exact: false })).toBeVisible();
+    const before = runs.length;
+    await page.getByRole('button', { name: 'Vérifier les Releases maintenant', exact: true }).click();
+    await expect.poll(() => runs.length).toBeGreaterThan(before);
   });
 });

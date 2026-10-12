@@ -1,57 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtemp, writeFile, readFile, rm, symlink, mkdir } from 'node:fs/promises';
+import { mkdtemp, writeFile, readFile, rm, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { publishDrive, createDriveClient } from '../scripts/google-drive.mjs';
-import { executablePaths, updateGithubRelease } from '../scripts/publish-google-drive.mjs';
+import { fakeDrive, root, credentials } from './helpers/fake-drive.mjs';
 import { authorizeGoogle } from '../scripts/google-drive-login.mjs';
 import { driveFolderId, driveReleaseBody, driveReleaseFromBody } from '../src/lib/drive-release.js';
 import { bumpProjectVersion, nextProjectVersion } from '../worker/project-version.mjs';
 
-const root = 'existing-root-12345', credentials = { client_id: 'test-client', client_secret: 'test-secret', refresh_token: 'test-refresh' };
 const commit = 'a'.repeat(40), md5 = bytes => createHash('md5').update(bytes).digest('hex');
 async function files(t, size = 3) {
   const dir = await mkdtemp(join(tmpdir(), 'planifikateur-drive-'));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const path = join(dir, 'Product.exe'); await writeFile(path, Buffer.alloc(size, 7)); return { dir, path };
-}
-function fakeDrive(options = {}) {
-  const entries = new Map([[root, { id: root, name: 'Mon dossier', mimeType: 'application/vnd.google-apps.folder', capabilities: { canAddChildren: true } }]]);
-  const calls = [], sessions = new Map(); let sequence = 0, refreshes = 0, uploads = 0;
-  const transport = async (url, request = {}) => {
-    url = new URL(url); calls.push({ url, request });
-    if (url.origin === 'https://oauth2.googleapis.com') { refreshes++; return Response.json({ access_token: 'access-test', expires_in: 3600 }); }
-    assert.equal(url.origin, 'https://www.googleapis.com');
-    assert.equal(request.redirect, 'error'); assert.equal(request.headers.Authorization, 'Bearer access-test');
-    if (options.onceUnauthorized) { options.onceUnauthorized = false; return new Response(null, { status: 401 }); }
-    if (url.pathname.startsWith('/upload/')) {
-      if (request.method === 'POST') {
-        uploads++; if (options.failUpload) return new Response(null, { status: 403 });
-        const id = `session-${++sequence}`, metadata = JSON.parse(request.body);
-        sessions.set(id, { metadata, chunks: [] });
-        return new Response(null, { headers: { location: options.foreignSession || `https://www.googleapis.com/upload/drive/v3/files?upload_id=${id}` } });
-      }
-      const session = sessions.get(url.searchParams.get('upload_id'));
-      session.chunks.push(request.body);
-      const bytes = Buffer.concat(session.chunks), total = Number(request.headers['Content-Range'].split('/')[1]);
-      if (bytes.length < total) return new Response(null, { status: 308, headers: { range: `bytes=0-${bytes.length - 1}` } });
-      const file = { ...session.metadata, id: `drive-file-${++sequence}`, size: String(total), md5Checksum: md5(bytes) };
-      entries.set(file.id, file); return Response.json(file);
-    }
-    if (url.pathname === '/drive/v3/files') {
-      if (request.method === 'POST') {
-        const data = { id: `drive-folder-${++sequence}`, ...JSON.parse(request.body) };
-        entries.set(data.id, data); return Response.json(data);
-      }
-      const query = /^'([^']+)' in parents and name = '([^']+)'/.exec(url.searchParams.get('q'));
-      return Response.json({ files: [...entries.values()].filter(file => file.parents?.includes(query[1]) && file.name === query[2]) });
-    }
-    const file = entries.get(url.pathname.split('/').at(-1));
-    return file ? Response.json(file) : new Response(null, { status: 404 });
-  };
-  return { entries, calls, options, transport, wait: async () => {}, get uploads() { return uploads; }, get refreshes() { return refreshes; } };
 }
 const input = paths => ({ credentials, rootFolder: root, repository: 'flo91360/DefilOrdi', version: 'v0.7.1', commit, paths });
 
@@ -116,32 +79,12 @@ test('ambiguous project folders are rejected without uploading files', async t =
   for (const suffix of ['one', 'two']) drive.entries.set(suffix, { id: suffix, name: 'DefilOrdi', mimeType: 'application/vnd.google-apps.folder', parents: [root] });
   await assert.rejects(publishDrive(input([path]), drive), /Plusieurs éléments/); assert.equal(drive.uploads, 0);
 });
-test('artifact collection rejects symlinks and returns only executable files', async t => {
-  const { dir, path } = await files(t); await writeFile(join(dir, 'notes.txt'), 'readme');
-  assert.deepEqual(await executablePaths(dir), [path]);
-  await symlink(path, join(dir, 'linked.exe')); await assert.rejects(executablePaths(dir), /symboliques/);
-});
-test('a release keeps its previous notes, updates its Drive link once and validates metadata', async t => {
+test('a release body keeps its previous notes, carries the Drive link once and validates metadata', async t => {
   const { path } = await files(t), release = await publishDrive(input([path]), fakeDrive());
   const body = driveReleaseBody('Release notes', release); assert.equal(driveReleaseBody(body, release), body);
   assert.deepEqual(driveReleaseFromBody(body, 'flo91360/DefilOrdi', 'v0.7.1'), release);
   assert.equal(driveReleaseFromBody(body, 'owner/another', 'v0.7.1'), null);
   assert.equal(driveReleaseFromBody(body, 'flo91360/DefilOrdi', 'v0.7.2'), null);
-  const calls = [];
-  await updateGithubRelease('flo91360/DefilOrdi', release, 'github-test', async (url, options) => {
-    calls.push({ url, options }); assert.equal(options.headers.Authorization, 'Bearer github-test');
-    if (options.method === 'GET') return Response.json({ id: 42, body: 'Release notes', draft: false });
-    assert.equal(options.method, 'PATCH'); assert.equal(JSON.parse(options.body).body, body); return Response.json({ id: 42 });
-  });
-  assert.equal(calls.length, 2); assert.ok(calls.every(call => new URL(call.url).origin === 'https://api.github.com'));
-});
-test('a missing GitHub release is created for the uploaded version and source commit', async t => {
-  const { path } = await files(t), release = await publishDrive(input([path]), fakeDrive());
-  await updateGithubRelease('flo91360/DefilOrdi', release, 'github-test', async (url, options) => {
-    if (options.method === 'GET') return new Response(null, { status: 404 });
-    assert.equal(options.method, 'POST'); const body = JSON.parse(options.body);
-    assert.equal(body.target_commitish, commit); assert.equal(body.tag_name, 'v0.7.1'); return Response.json({ id: 1 });
-  });
 });
 test('personal OAuth validates the callback state and binds the code to PKCE', async () => {
   let challenge;

@@ -71,7 +71,9 @@ export function createApi(store, config = {}) {
           const repository = data.repository?.full_name, release = data.release;
           const downloads = ['published','released','edited'].includes(data.action) && repository && !release?.draft && driveReleaseFromBody(release?.body, repository, release?.tag_name);
           send(res, 200, { data: downloads ? store.recordDriveRelease(repository, downloads) : { updated: false } });
-          if (downloads) void config.versions?.refresh(); return true;
+          if (downloads) void config.versions?.refresh();
+          if (['published','released','edited'].includes(data.action) && !release?.draft) void config.driveArchive?.refresh();
+          return true;
         }
         if (event === 'push') {
           const tag = tagPushVersion(data);
@@ -81,6 +83,19 @@ export function createApi(store, config = {}) {
       }
       const githubProject = /^\/api\/v1\/projects\/([a-zA-Z0-9_-]+)\/github$/.exec(path);
       const aiProject = /^\/api\/v1\/projects\/([a-zA-Z0-9_-]+)\/ai$/.exec(path);
+      const driveProject = /^\/api\/v1\/projects\/([a-zA-Z0-9_-]+)\/drive$/.exec(path);
+      if (driveProject) {
+        requireAccount(req);
+        if (!store.read().projects.some(project => project.id === driveProject[1])) throw httpError(404, 'project_not_found', 'Projet inexistant.');
+        const repository = store.workflows.githubProject(driveProject[1]);
+        if (req.method === 'POST') {
+          requireAdmin(req);
+          if (!config.driveArchive) throw httpError(503, 'drive_disabled', 'L’archivage Google Drive n’est pas configuré sur le serveur.');
+          void config.driveArchive.refresh();
+        } else if (req.method !== 'GET') throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
+        send(res, req.method === 'POST' ? 202 : 200, { data: config.driveArchive ? config.driveArchive.status(repository) : { enabled: false, repository: repository || '', releases: [] } });
+        return true;
+      }
       const executionProject = /^\/api\/v1\/projects\/([a-zA-Z0-9_-]+)\/(execution|worker-status)$/.exec(path);
       if (executionProject) {
         requireAccount(req);
@@ -106,6 +121,7 @@ export function createApi(store, config = {}) {
           send(res, 200, { data: store.workflows.configureGithub(githubProject[1], data?.repository, requireAdmin(req)) });
           store.refreshInfos();
           void config.versions?.refresh();
+          void config.driveArchive?.refresh();
         } else throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
         return true;
       }
