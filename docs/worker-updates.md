@@ -82,6 +82,14 @@ zéro, ce qui la rend plus longue. Un déploiement échoué ne nettoie rien, et 
 prochain déploiement. Les autres images, les conteneurs et les volumes ne sont
 jamais supprimés ; aucun `docker system prune` n’est exécuté.
 
+Avant chaque construction, les anciennes images inutilisées et le cache sont
+aussi supprimés, puis le programme exige au moins 2,5 Go libres (option
+`--min-free-gb`). Sinon il s’arrête avec « Espace disque insuffisant… » sans
+toucher au worker actif ni rejeter la révision : la mise à jour reprend
+automatiquement une fois l’espace libéré. Le paquet Chromium et les outils de
+compilation demandent à eux seuls plus d’un gigaoctet pendant leur installation ;
+un disque de 8 Go est juste, 16 Go ou plus est recommandé.
+
 Lors de la première vérification avec ce programme, un worker déjà à jour est
 nettoyé une fois. Pour libérer l’espace immédiatement :
 

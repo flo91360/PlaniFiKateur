@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import time
 import urllib.error
@@ -104,8 +105,9 @@ def tested(request, sha, repository):
 
 
 class Updater:
-    def __init__(self, options, request, run=command, log=print, sleep=time.sleep, clock=time.monotonic):
-        self.options, self.request, self.run = options, request, run
+    def __init__(self, options, request, run=command, log=print, sleep=time.sleep, clock=time.monotonic,
+                 disk_free=lambda path: shutil.disk_usage(path).free):
+        self.options, self.request, self.run, self.disk_free = options, request, run, disk_free
         self.log, self.sleep, self.clock = log, sleep, clock
         self.root, self.env_file = Path(options.repo_dir), Path(options.env_file)
         self.state_path = Path(options.state_dir) / "deployment.json"
@@ -168,8 +170,17 @@ class Updater:
         self.state.update(pending=None, failed_sha=pending)
         self.save()
 
-    def cleanup(self, sha):
-        """Free disk after a confirmed deployment; never blocks or undoes it."""
+    def free_bytes(self):
+        code, root = self.run(["docker", "info", "--format", "{{.DockerRootDir}}"], optional=True)
+        for path in ([root] if not code and root.startswith("/") else []) + ["/"]:
+            try:
+                return self.disk_free(path)
+            except OSError:
+                continue
+        return None
+
+    def cleanup(self, sha, record=True):
+        """Free disk around a deployment; never blocks or undoes it."""
         # Keep the running image and the previous one, which a rollback restarts.
         keep = {self.inspect(name, ".Image") for name in (self.name, self.backup)} - {None}
         code, listing = self.run(["docker", "image", "ls", "--no-trunc", "--format",
@@ -183,9 +194,10 @@ class Updater:
         # Untagged layers left by a rebuilt revision, then the whole build cache.
         self.run(["docker", "image", "prune", "--force"], optional=True, timeout=600)
         self.run(["docker", "builder", "prune", "--all", "--force"], optional=True, timeout=600)
-        self.state["cleaned_sha"] = sha
-        self.save()
-        self.log(f"Nettoyage : {removed} ancienne(s) image(s) du worker et le cache de construction supprimés.")
+        if record:
+            self.state["cleaned_sha"] = sha
+            self.save()
+        self.log(f"Nettoyage{'' if record else ' avant construction'} : {removed} ancienne(s) image(s) du worker et le cache de construction supprimés.")
 
     def ready(self, name):
         deadline = self.clock() + self.options.startup_timeout
@@ -243,13 +255,23 @@ class Updater:
             return
         self.cmd("git", "merge", "--ff-only", sha)
         image = "planifikateur-worker:" + sha
+        # Debian packages need room while unpacking: free old images first, then
+        # refuse to build on a full disk (an external cause, retried automatically).
+        self.cleanup(sha, record=False)
+        free, needed = self.free_bytes(), self.options.min_free_gb * 1e9
+        if free is not None and free < needed:
+            raise UpdateError(f"Espace disque insuffisant pour construire l’image : {free / 1e9:.1f} Go libres, "
+                              f"{self.options.min_free_gb:g} Go nécessaires. Libérez de l’espace ou agrandissez le disque.")
         try:
             self.log("Construction de l’image " + sha[:7] + ". L’ancien worker reste actif.")
             self.cmd("docker", "build", "-f", "worker/Dockerfile", "-t", image, ".")
             self.cmd("docker", "run", "--rm", *self.security(), image, "node", "sandbox-check.mjs", timeout=90)
         except UpdateError:
             self.state["failed_sha"] = sha
-            self.save()
+            try:
+                self.save()
+            except OSError:
+                pass  # A full disk must not hide the build failure being reported.
             raise
         if self.busy() or not tested(self.request, sha, self.options.repository):
             self.log("Remplacement différé : tâche démarrée ou contrôles GitHub modifiés.")
@@ -288,6 +310,7 @@ def main():
     parser.add_argument("--volume", default="planifikateur-worker-data")
     parser.add_argument("--apparmor-profile", default="unconfined")
     parser.add_argument("--startup-timeout", type=int, default=60)
+    parser.add_argument("--min-free-gb", type=float, default=2.5, help="Free disk required before building")
     parser.add_argument("--retry", action="store_true", help="Retry a revision previously rejected at deployment")
     options = parser.parse_args()
     directory = Path(options.state_dir)
@@ -308,7 +331,9 @@ if __name__ == "__main__":
     except UpdateError as error:
         print(str(error), flush=True)
         raise SystemExit(1)
-    except Exception:
-        # Never leak secret file contents or command output through a traceback.
-        print("Mise à jour interrompue : consulter la configuration du service.", flush=True)
+    except Exception as error:
+        # Never leak secret file contents or command output through a traceback:
+        # report only the error type and, for system errors, the system message.
+        detail = type(error).__name__ + (" : " + error.strerror if isinstance(error, OSError) and error.strerror else "")
+        print(f"Mise à jour interrompue ({detail}) : consulter la configuration du service.", flush=True)
         raise SystemExit(1)

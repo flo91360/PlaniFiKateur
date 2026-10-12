@@ -87,6 +87,8 @@ class Commands:
             if "--entrypoint" in args:
                 return 0, "busy" if self.busy.pop(0) else "idle"
             return 0, "Sandbox Codex OK"
+        if action == "info":
+            return 0, "/var/lib/docker"
         if action == "build":
             self.images["image-" + SHA] = "planifikateur-worker:" + SHA
             return 0, ""
@@ -132,18 +134,19 @@ class DeploymentTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.options = SimpleNamespace(repo_dir=str(self.root), env_file=str(self.root / "private.env"),
             state_dir=str(self.root), container="planifikateur-worker", volume="planifikateur-worker-data",
-            repository=REPO, apparmor_profile="unconfined", startup_timeout=10, retry=False)
+            repository=REPO, apparmor_profile="unconfined", startup_timeout=10, retry=False, min_free_gb=2.5)
         self.commands = Commands()
         self.checks = Checks()
         self.logs = []
         self.now = 0
+        self.free = 10e9
 
     def sleep(self, seconds):
         self.now += seconds
 
     def make(self):
         return updater.Updater(self.options, self.checks, run=self.commands, log=self.logs.append,
-                               clock=lambda: self.now, sleep=self.sleep)
+                               clock=lambda: self.now, sleep=self.sleep, disk_free=lambda path: self.free)
 
     def assert_old(self):
         c = self.commands.containers["planifikateur-worker"]
@@ -170,19 +173,37 @@ class DeploymentTests(unittest.TestCase):
         self.make().update()
         self.assertEqual(set(self.commands.images), {"image-" + SHA, "image-" + OLD, "image-base"})
         self.assertIn(["docker", "builder", "prune", "--all", "--force"], self.commands.calls)
-        self.assertTrue(any("Nettoyage : 1 ancienne(s) image(s)" in line for line in self.logs))
+        self.assertTrue(any("Nettoyage avant construction : 1 ancienne(s) image(s)" in line for line in self.logs))
+        self.assertTrue(any(line.startswith("Nettoyage : ") for line in self.logs))
         # Later checks of the same revision do not prune again.
         calls = len(self.commands.calls)
         self.make().update()
         self.assertFalse(any(c[:2] == ["docker", "builder"] for c in self.commands.calls[calls:]))
 
-    def test_failed_deployment_keeps_every_image_and_cache(self):
+    def test_failed_deployment_keeps_the_running_image_and_is_not_marked_cleaned(self):
         self.commands.boot_failure = True
         with self.assertRaises(updater.UpdateError):
             self.make().update()
         self.assert_old()
-        self.assertIn("image-" + "c" * 40, self.commands.images)
-        self.assertFalse(any(c[:2] in (["docker", "builder"], ["docker", "image"]) for c in self.commands.calls))
+        self.assertIn("image-" + OLD, self.commands.images)
+        self.assertNotIn("cleaned_sha", json.loads((self.root / "deployment.json").read_text()))
+
+    def test_old_images_are_removed_before_building_and_a_full_disk_blocks_without_rejecting_the_revision(self):
+        self.free = 1e9
+        self.commands.busy = [False] * 4
+        with self.assertRaisesRegex(updater.UpdateError, "Espace disque insuffisant.*1.0 Go libres, 2.5 Go"):
+            self.make().update()
+        calls = self.commands.calls
+        self.assertNotIn("image-" + "c" * 40, self.commands.images)
+        self.assertFalse(any(c[:2] == ["docker", "build"] for c in calls))
+        self.assert_old()
+        state = self.root / "deployment.json"
+        self.assertFalse(state.exists() and json.loads(state.read_text()).get("failed_sha"))
+        self.free = 10e9
+        self.make().update()
+        self.assertEqual(self.commands.containers["planifikateur-worker"]["revision"], SHA)
+        build = next(i for i, c in enumerate(self.commands.calls) if c[:2] == ["docker", "build"])
+        self.assertLess(max(i for i, c in enumerate(self.commands.calls[:build]) if c[:3] == ["docker", "builder", "prune"]), build)
 
     def test_cleanup_failure_never_fails_a_deployment_and_existing_backlog_is_cleaned_once(self):
         self.commands.image_rm_fails = True
