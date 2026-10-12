@@ -10,6 +10,14 @@ export function tagPushVersion(data) {
   return { repository: data.repository.full_name, version: { tag, date: Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : '' } };
 }
 
+// GitHub lists tags by name (v0.1.9 before v0.1.16): prefer the highest version.
+export function latestTag(tags) {
+  const parse = name => /^v?(\d+)\.(\d+)\.(\d+)$/.exec(name)?.slice(1).map(Number);
+  const compare = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+  const versions = tags.map(tag => ({ name: tag.name, version: parse(tag.name) })).filter(tag => tag.version);
+  return versions.length ? versions.reduce((best, tag) => compare(tag.version, best.version) > 0 ? tag : best).name : tags[0].name;
+}
+
 export function releaseDate(release) {
   return release && !release.draft && typeof release.published_at === 'string' && Number.isFinite(Date.parse(release.published_at)) ? new Date(release.published_at).toISOString() : '';
 }
@@ -51,7 +59,7 @@ export function createVersionSync(store, { transport = fetch, intervalMs = 15 * 
           const published = Array.isArray(events) ? events.filter(event => event.type === 'CreateEvent' && event.payload?.ref_type === 'tag'
             && tags.some(tag => tag.name === event.payload.ref) && Number.isFinite(Date.parse(event.created_at)))
             .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0] : null;
-          const tag = published?.payload.ref || tags[0].name;
+          const tag = published?.payload.ref || latestTag(tags);
           // Tags created by a Release (for example from GitHub Actions) are not
           // pushed with Git: the Release publication date is then their date.
           const releases = new Map();

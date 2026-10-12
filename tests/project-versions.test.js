@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createStore } from '../server/store.js';
 import { createAppServer } from '../server/index.js';
-import { createVersionSync, releaseVersion, tagPushVersion } from '../server/project-versions.js';
+import { createVersionSync, latestTag, releaseVersion, tagPushVersion } from '../server/project-versions.js';
 import { withInfos } from '../src/lib/infos.js';
 import { driveReleaseBody } from '../src/lib/drive-release.js';
 
@@ -104,7 +104,7 @@ test('GitHub synchronization recovers publication dates and never substitutes co
   await sync.refresh();
   assert.equal(card(store, first).title, 'v2.0.0');
   assert.match(card(store, first).description, /09:32/);
-  assert.equal(card(store, second).title, 'v1.0.0');
+  assert.equal(card(store, second).title, 'v2.0.0');
   assert.match(card(store, second).description, /Date de publication indisponible/);
   assert.ok(calls.every(c => new URL(c.url).origin === 'https://api.github.com' && c.options.redirect === 'error'));
   assert.deepEqual(withInfos(store.read().projects[0]), store.read().projects[0]);
@@ -170,4 +170,10 @@ test('a tag created by a GitHub Release takes the Release publication date, by p
   await send({ ...event, release: { ...event.release, tag_name: 'v0.7.1', published_at: '2026-10-01T06:00:00Z' } });
   assert.equal(card(store, first).title, 'v0.7.3');
   assert.equal(releaseVersion({ ...event, release: { ...event.release, published_at: null } }), null);
+});
+
+test('without a creation event the highest version tag is chosen, not the first listed by name', () => {
+  assert.equal(latestTag([{ name: 'v0.1.9' }, { name: 'v0.1.16' }, { name: 'v0.1.10' }, { name: 'nightly' }]), 'v0.1.16');
+  assert.equal(latestTag([{ name: 'v2.0.0' }, { name: '10.0.0' }]), '10.0.0');
+  assert.equal(latestTag([{ name: 'nightly' }, { name: 'beta' }]), 'nightly');
 });
