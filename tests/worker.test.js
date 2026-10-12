@@ -232,6 +232,65 @@ test('questions pause publication and an answer resumes the persisted conversati
   assert.equal(f.modelCalls.length, 2);
 });
 
+const qtForm = '<?xml version="1.0"?><ui version="4.0"><class>PersonForm</class><widget class="QWidget" name="PersonForm"><layout class="QFormLayout" name="formLayout"><item row="0" column="0"><widget class="QLabel" name="nameLabel"><property name="text"><string>Nom</string></property></widget></item><item row="0" column="1"><widget class="QLineEdit" name="nameEdit"/></item></layout></widget><resources/><connections/></ui>';
+test('a model question is relayed literally, a card reply resumes the thread and the generated Qt file is delivered without a PR', async t => {
+  const question = 'Quels champs souhaitez-vous dans le formulaire Qt ?';
+  const f = await fixture(t, { model: async (input, number) => {
+    if (number === 1) return { status: 'question', summary: '', question, files: [] };
+    assert.equal(input.job.threadId, 'fixture-thread');
+    assert.equal(input.run.exchanges.at(-1).answer.text, 'Un champ Nom suffit.');
+    await mkdir(join(input.cwd, '.planifikateur', 'generated'), { recursive: true });
+    await writeFile(join(input.cwd, '.planifikateur', 'generated', 'personne.ui'), qtForm);
+    return { status: 'result', summary: 'Le formulaire Qt est prêt à télécharger.', question: '', files: ['.planifikateur/generated/personne.ui'] };
+  } });
+  const initial = f.store.read(); initial.projects[0].cards[0].description = 'Génère un fichier Qt .ui avec un formulaire sur la personne.'; f.store.write(initial.projects, initial.revision, f.user);
+  f.prepare(); assert.equal((await f.worker.tick()).status, 'waiting');
+  let snapshot = f.store.read(), card = snapshot.projects[0].cards[0];
+  assert.equal(card.status, 'clarify'); assert.equal(card.comments.at(-1).text, question);
+  assert.equal(card.attachments.length, 0);
+  card.comments.push({ id: 'form-answer', author: f.user.name, text: 'Un champ Nom suffit.', date: new Date().toISOString() });
+  f.store.write(snapshot.projects, snapshot.revision, f.user);
+  const restarted = createWorker(f.config, f.dependencies);
+  assert.equal((await restarted.tick()).status, 'done');
+  snapshot = f.store.read(); card = snapshot.projects[0].cards[0];
+  assert.equal(card.status, 'done'); assert.equal(card.attachments.length, 1);
+  assert.equal(card.attachments[0].name, 'personne.ui');
+  assert.equal(Buffer.from(card.attachments[0].data, 'base64').toString('utf8'), qtForm);
+  assert.ok(card.comments.at(-1).text.includes('personne.ui'));
+  assert.equal(f.pr, undefined);
+  assert.equal(f.calls.some(call => call.command[0] === 'git' && call.command[1] === 'push'), false);
+  assert.equal(f.calls.some(call => call.command.includes('--test')), false);
+});
+
+test('generated files alongside repository changes remain bound to the tested PR and do not cancel its execution', async t => {
+  const f = await fixture(t, { model: async input => {
+    await writeFile(join(input.cwd, 'greet.mjs'), "export const greet = () => 'bonjour';\n");
+    await mkdir(join(input.cwd, '.planifikateur', 'generated'), { recursive: true });
+    await writeFile(join(input.cwd, '.planifikateur', 'generated', 'personne.ui'), qtForm);
+    return { status: 'result', summary: 'Code corrigé et formulaire livré.', question: '', files: ['.planifikateur/generated/personne.ui'] };
+  } });
+  f.prepare(); assert.equal((await f.worker.tick()).status, 'merging');
+  assert.equal(f.store.read().projects[0].cards[0].attachments.length, 1);
+  assert.equal(f.current().state, 'merging');
+  f.setTestsReady(true); await f.worker.tick(); assert.equal(f.merges, 1);
+});
+
+test('missing output declarations and malformed Qt XML are corrected before any file is delivered', async t => {
+  const f = await fixture(t, { model: async (input, number) => {
+    if (number === 2) assert.match(input.feedback, /indique son chemin dans files/);
+    if (number === 3) assert.match(input.feedback, /Corrige les fichiers/);
+    await mkdir(join(input.cwd, '.planifikateur', 'generated'), { recursive: true });
+    await writeFile(join(input.cwd, '.planifikateur', 'generated', 'personne.ui'), number === 2 ? '<ui>' : qtForm);
+    return { status: 'result', summary: 'Formulaire livré.', question: '', files: number === 1 ? [] : ['.planifikateur/generated/personne.ui'] };
+  } });
+  f.prepare(); assert.equal((await f.worker.tick()).status, 'done');
+  assert.equal(f.modelCalls.length, 3);
+  const files = f.store.read().projects[0].cards[0].attachments;
+  assert.equal(files.length, 1);
+  assert.equal(Buffer.from(files[0].data, 'base64').toString(), qtForm);
+  assert.equal(f.pr, undefined);
+});
+
 test('shutdown interrupts the card and a restart reclaims it without losing conversation', async t => {
   let started; const start = new Promise(resolve => { started = resolve; });
   const f = await fixture(t, { model: async (input, number) => {
@@ -245,7 +304,10 @@ test('shutdown interrupts the card and a restart reclaims it without losing conv
 });
 
 test('failed mandatory tests are corrected at most three times and never publish a PR', async t => {
-  const f = await fixture(t, { model: async () => ({ status: 'result', summary: 'Unverified result', question: '' }) });
+  const f = await fixture(t, { model: async input => {
+    await writeFile(join(input.cwd, 'greet.mjs'), "export const greet = () => 'hola';\n");
+    return { status: 'result', summary: 'Unverified result', question: '' };
+  } });
   f.prepare(); assert.equal((await f.worker.tick()).status, 'interrupted');
   assert.equal(f.modelCalls.length, 3); assert.equal(f.pr, undefined); assert.equal(f.current().state, 'interrupted');
   assert.equal(f.calls.some(c => c.command[0] === 'git' && c.command[1] === 'push'), false);

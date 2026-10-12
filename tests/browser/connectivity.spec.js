@@ -4,7 +4,7 @@ import { createAppServer } from '../../server/index.js';
 import { createStore } from '../../server/store.js';
 import { seed } from '../../src/data/demo.js';
 import { createBackups } from '../../server/backups.js';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { seedAccount, testEmail, testPassword } from '../helpers/accounts.mjs';
@@ -353,6 +353,46 @@ test('follows an existing card without being its author and keeps the setting af
 
 test.describe('project task execution', () => {
   test.use({ githubEnabled: true });
+  test('a question appears in the open card and its answer leads to a downloadable generated Qt file', async ({ page, request, appServer }) => {
+    await login(page, appServer);
+    const project = seed[0], card = project.cards[0];
+    expect((await page.request.put(`${appServer}/api/v1/projects/${project.id}/github`, { data: { repository: 'owner/forms' } })).status()).toBe(200);
+    const credentials = await page.request.post(`${appServer}/api/v1/agents`, { data: { name: 'Form agent', projectIds: [project.id] } });
+    const token = (await credentials.json()).data.token;
+    const base = `${appServer}/api/v1/projects/${project.id}/cards/${card.id}/work`;
+    const prepared = await page.request.post(base, { data: { delivery: 'github' } });
+    let run = (await prepared.json()).data, leaseToken;
+    const headers = { Authorization: `Bearer ${token}` };
+    const action = async (name, data = {}) => {
+      const response = await request.post(`${base}/${run.id}/${name}`, { headers, data: { version: run.version, leaseToken, ...data } });
+      expect(response.status()).toBe(200);
+      run = (await response.json()).data;
+      if (run.leaseToken) leaseToken = run.leaseToken;
+    };
+    await page.reload();
+    await page.getByRole('heading', { name: card.title, exact: true }).click();
+    await action('claim');
+    await action('question', { message: 'Quels champs souhaitez-vous dans votre formulaire Qt ?' });
+    await expect(page.locator('.comments-section')).toContainText('Quels champs souhaitez-vous dans votre formulaire Qt ?', { timeout: 15000 });
+    await page.getByLabel('Votre commentaire', { exact: true }).fill('Un champ Nom suffit.');
+    await page.getByRole('button', { name: 'Publier', exact: true }).click();
+    await expect.poll(async () => {
+      const history = (await (await request.get(base, { headers })).json()).data;
+      run = history.find(item => item.id === run.id);
+      return run.state;
+    }).toBe('ready');
+    expect(run.exchanges.at(-1).answer.text).toBe('Un champ Nom suffit.');
+    await action('claim');
+    const xml = '<ui version="4.0"><class>PersonForm</class><widget class="QWidget" name="PersonForm"/></ui>';
+    await action('submit', { artifactOnly: true, summary: 'Votre formulaire Qt est prêt.', checks: 'Structure XML vérifiée.', links: [], files: [{ id: `generated-${run.id}-ui`, name: 'personne.ui', type: 'application/xml', size: Buffer.byteLength(xml), data: Buffer.from(xml).toString('base64') }] });
+    const link = page.getByRole('link', { name: 'personne.ui', exact: true });
+    await expect(link).toBeVisible({ timeout: 15000 });
+    await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('done');
+    const downloading = page.waitForEvent('download'); await link.click();
+    const download = await downloading;
+    expect(download.suggestedFilename()).toBe('personne.ui');
+    expect(readFileSync(await download.path(), 'utf8')).toBe(xml);
+  });
   test('agent questions and human replies use the card discussion through automatic merge', async ({ page, request, appServer }) => {
     await login(page, appServer);
     const project = seed[0], card = project.cards[0];

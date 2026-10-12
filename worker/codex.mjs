@@ -7,12 +7,15 @@ export const resultSchema = {
   properties: {
     status: { type: 'string', enum: ['result', 'question'] },
     summary: { type: 'string' }, question: { type: 'string' },
-  }, required: ['status', 'summary', 'question'],
+    files: { type: 'array', items: { type: 'string' }, maxItems: 10 },
+  }, required: ['status', 'summary', 'question', 'files'],
 };
 
 export function taskPrompt(run, feedback = '', attachments = []) {
   return `Tu traites une carte PlaniFiKateur. Lis les instructions du dépôt et réalise la demande ci-dessous.
 La description est suffisante : déduis le résultat attendu et les tests pertinents. Si une ambiguïté essentielle empêche de travailler, réponds avec status=question et une question précise ; ne devine pas cette décision.
+Une question doit être écrite intégralement dans le champ question, avec status=question et files=[]. Elle sera publiée dans la discussion de la carte. Arrête ce tour dès que tu attends une réponse : ne simule pas de réponse, ne demande pas de saisie dans le terminal et ne prétends pas avoir livré un résultat. À la reprise, lis les réponses humaines dans Échanges et continue la même demande.
+Si la carte demande un fichier téléchargeable (par exemple un formulaire Qt Designer .ui), crée-le dans .planifikateur/generated/ et indique ses chemins relatifs dans files. Ce dossier sert à la livraison et n'est pas ajouté au commit. Pour Qt, produis un véritable document XML ui version 4.0, ouvrable dans Qt Designer, avec les champs demandés. Ne te limite pas à décrire le fichier ou à afficher son code dans le résumé. Si la demande porte aussi sur le code du dépôt, réalise ces changements normalement et référence les fichiers à livrer dans files. Utilise files=[] si aucun fichier n'est demandé.
 Tu travailles dans une branche gérée par le worker. Ne fais aucun commit, push, PR, merge ou appel à l’API du site. Le worker réalise lui-même les tests obligatoires puis publie la PR. Ne modifie ni l’origine Git ni les accès du service. Ne délègue pas à d’autres agents.
 Réponds en JSON conforme au schéma, avec status=result une fois les modifications prêtes.
 
@@ -63,8 +66,16 @@ export function createCodexRunner(config, dependencies = {}) {
         if (event.type === 'turn.completed') completed = true;
       }
       if (!completed) throw new Error('Codex s’est arrêté sans résultat.');
-      let result; try { result = JSON.parse(response); } catch { throw new Error('Réponse Codex non conforme au JSON attendu.'); }
+      let result; try { result = JSON.parse(response); } catch {
+        // Preserve a genuine final question from older/resumed conversations.
+        // Intermediate agent messages are never treated as a request to pause.
+        const question = response.trim();
+        if (question && question.length <= 10000 && question.endsWith('?')) return { status: 'question', summary: '', question, files: [] };
+        throw new Error('Réponse Codex non conforme au JSON attendu.');
+      }
+      if (typeof result.question === 'string' && result.question.trim()) { result.status = 'question'; result.files = []; }
       if (!['question', 'result'].includes(result.status) || typeof result.summary !== 'string' || result.summary.length > 20000 || typeof result.question !== 'string' || (result.status === 'question' && (!result.question.trim() || result.question.length > 10000)) || (result.status === 'result' && !result.summary.trim())) throw new Error('Résultat Codex incomplet.');
+      if (result.files !== undefined && (!Array.isArray(result.files) || result.files.length > 10 || result.files.some(file => typeof file !== 'string' || !file.trim() || file.length > 1024))) throw new Error('Liste des fichiers générés invalide.');
       return result;
     },
   };

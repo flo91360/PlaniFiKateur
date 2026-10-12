@@ -6,6 +6,7 @@ import { ApiError, PublicationPendingError, createSiteClient, createGithubClient
 import { createState } from './state.mjs';
 import { commandEnvironment, runCommand } from './commands.mjs';
 import { createCodexRunner } from './codex.mjs';
+import { collectOutputs } from './outputs.mjs';
 
 export function createWorker(config, dependencies = {}) {
   const site = dependencies.site || createSiteClient(config);
@@ -122,7 +123,7 @@ export function createWorker(config, dependencies = {}) {
       const merged = await execute(['git', 'merge', '--no-edit', 'origin/main'], { cwd, env: gitEnv, signal });
       let feedback = merged.code ? `Résous les conflits avec main avant de terminer : ${clean(merged.output)}` : '';
       for (const install of config.installCommands) await command(install);
-      let result, checks = [];
+      let result, checks = [], outputs = [], artifactOnly = false;
       for (let round = 0; round < 3; round++) {
         result = await model.run({ run: { ...run, leaseToken: undefined }, job, cwd, signal, feedback, onThread: async id => { job.threadId = id; await state.put(job); } });
         if (result.status === 'question') {
@@ -130,7 +131,24 @@ export function createWorker(config, dependencies = {}) {
           return { status: 'waiting' };
         }
         checks = []; let failure;
-        for (const test of config.testCommands) {
+        try {
+          outputs = await collectOutputs(cwd, result.files || [], run.id);
+          const retained = (run.cardSnapshot.attachments || []).filter(file => !outputs.some(next => next.id === file.id));
+          if (retained.length + outputs.length > 10 || [...retained, ...outputs].reduce((sum, file) => sum + file.size, 0) > 2 * 1024 * 1024) throw new Error('La carte manque de place pour ces fichiers : dix pièces jointes maximum et 2 Mo au total.');
+          for (const file of outputs) {
+            if (file.name.endsWith('.ui')) {
+              await command(['python3', '-c', 'import sys,xml.etree.ElementTree as ET; r=ET.parse(sys.argv[1]).getroot(); w=r.find("widget"); assert r.tag=="ui" and r.get("version")=="4.0" and r.findtext("class") and w is not None and w.get("class") and w.get("name"), "Document Qt Designer .ui incomplet"', file.path]);
+              checks.push(`${file.name} : structure XML Qt Designer vérifiée`);
+            } else if (file.name.endsWith('.json')) {
+              JSON.parse(Buffer.from(file.data, 'base64').toString('utf8'));
+              checks.push(`${file.name} : JSON valide`);
+            } else checks.push(`${file.name} : fichier généré (${file.size} octets)`);
+          }
+          const repositoryChanged = !!await command(['git', 'status', '--porcelain']) || !!await command(['git', 'diff', 'origin/main...HEAD', '--name-only']);
+          if (!outputs.length && !repositoryChanged) throw new Error('Aucun fichier ni modification livré. Pour une demande de fichier, crée le fichier dans .planifikateur/generated/ et indique son chemin dans files. Si tu ne peux pas réaliser la demande, pose une question précise avec status=question.');
+          artifactOnly = outputs.length > 0 && !previous && !repositoryChanged;
+        } catch (error) { failure = `Corrige les fichiers à livrer : ${clean(error.message)}`; }
+        for (const test of failure || artifactOnly ? [] : config.testCommands) {
           const outcome = await execute(test, { cwd, env, signal });
           if (outcome.code !== 0) { failure = `${test.join(' ')} a échoué : ${clean(outcome.output)}`; break; }
           checks.push(`${test.join(' ')} : réussi`);
@@ -141,6 +159,13 @@ export function createWorker(config, dependencies = {}) {
       }
       await action('heartbeat');
       if (await command(['git', 'config', '--get', 'remote.origin.url']) !== url || await command(['git', 'branch', '--show-current']) !== job.branch) throw new Error('La branche ou l’origine a été modifiée par l’agent.');
+      const deliveredFiles = outputs.map(({ path, ...file }) => file);
+      if (artifactOnly) {
+        await action('submit', { summary: result.summary, checks: checks.join('\n'), links: [], files: deliveredFiles, artifactOnly: true });
+        job.phase = 'done'; job.attempts = 0; await state.put(job);
+        log(`Exécution ${run.id} : fichiers livrés dans la carte, tâche terminée.`);
+        return { status: 'done', files: deliveredFiles.map(file => file.name) };
+      }
       await command(['git', 'add', '--all']);
       if (await command(['git', 'diff', '--cached', '--name-only'])) await command(['git', 'commit', '-m', `Carte ${run.cardSnapshot.title.slice(0, 120)} (${run.id})`]);
       const changed = await command(['git', 'diff', 'origin/main...HEAD', '--name-only']);
@@ -155,7 +180,7 @@ export function createWorker(config, dependencies = {}) {
       const pr = await github.ensurePullRequest(job.repository, job.branch, run.cardSnapshot.title.slice(0, 140), `${result.summary}\n\nCarte PlaniFiKateur : ${run.cardId}\nExécution : ${run.id}\n\nVérifications locales :\n${checks.map(c => `- ${c}`).join('\n')}`, signal, sha);
       if (pr.head.sha !== sha) throw new Error('La PR ne pointe pas sur le commit testé.');
       job.pullRequest = { number: pr.number, url: pr.html_url, headSha: sha }; job.phase = 'pr'; await state.put(job);
-      await action('submit', { summary: result.summary, checks: checks.join('\n'), links: [pr.html_url], pullRequest: { url: pr.html_url, headSha: sha } });
+      await action('submit', { summary: result.summary, checks: checks.join('\n'), links: [pr.html_url], pullRequest: { url: pr.html_url, headSha: sha }, files: deliveredFiles });
       job.phase = 'merging'; job.attempts = 0; await state.put(job);
       await github.label(job.repository, pr.number, signal);
       log(`Exécution ${run.id} : PR #${pr.number}, tests GitHub et fusion en attente.`);

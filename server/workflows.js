@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { pullRequestLink } from './github.js';
 import { tokenHash } from './accounts.js';
+import { validateWorkspace } from '../src/lib/workspace.js';
 
 const fail = (status, code, message) => { throw Object.assign(new Error(message), { status, code }); };
 const text = (value, name, max = 20000) => {
@@ -64,7 +65,7 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
       if (['interrupt', 'interrupted'].includes(action)) message = run.interruption;
       if (action === 'submit') {
         const result = run.submissions.at(-1);
-        message = `${result.pullRequest ? `PR : ${result.pullRequest.url}\n\n` : ''}${result.summary}\n\nVérifications : ${result.checks}`;
+        message = `${result.pullRequest ? `PR : ${result.pullRequest.url}\n\n` : ''}${result.summary}${result.files?.length ? `\n\nFichiers disponibles dans les pièces jointes : ${result.files.map(file => file.name).join(', ')}` : ''}\n\nVérifications : ${result.checks}`;
       }
       if (action === 'merged') message = `La PR a été fusionnée. La tâche est terminée.\n${run.submissions.at(-1).pullRequest.url}`;
       if (action === 'checks' && run.state === 'ready') message = run.updates.at(-1)?.text;
@@ -282,13 +283,31 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
           if (run.submissions.length >= 50) fail(400, 'submission_limit', 'Limite de soumissions atteinte.');
           if (!Array.isArray(data?.links) || data.links.length > 20 || data.links.some(link => { try { return !['http:','https:'].includes(new URL(link).protocol) || link.length > 2048; } catch { return true; } })) fail(400, 'invalid_links', 'Les livrables doivent être des liens HTTP ou HTTPS (20 maximum).');
           run.githubChecks = null;
-          const pullRequest = run.delivery === 'github' ? pullRequestLink(data.pullRequest, run.repository) : null;
+          const files = data.files ?? [];
+          if (!Array.isArray(files) || files.length > 10 || files.some(file => typeof file?.id !== 'string' || !file.id.startsWith(`generated-${run.id}-`))) fail(400, 'invalid_files', 'Pièces jointes générées invalides.');
+          const artifactOnly = data.artifactOnly === true;
+          if (artifactOnly && (!files.length || data.pullRequest || run.submissions.some(submission => submission.pullRequest))) fail(400, 'invalid_delivery', 'Une livraison de fichiers doit contenir un fichier et ne pas remplacer une PR existante.');
+          const pullRequest = run.delivery === 'github' && !artifactOnly ? pullRequestLink(data.pullRequest, run.repository) : null;
           if (pullRequest) {
             const binding = db.prepare('SELECT execution_id FROM github_pr_bindings WHERE repository=? AND number=?').get(pullRequest.repository, pullRequest.number);
             if (binding && binding.execution_id !== run.id) fail(409, 'pr_already_linked', 'Cette PR est déjà liée à une autre exécution.');
             db.prepare('INSERT OR IGNORE INTO github_pr_bindings VALUES(?,?,?)').run(pullRequest.repository, pullRequest.number, run.id);
           }
-          run.submissions.push({ summary: text(data.summary, 'Résultat'), checks: text(data.checks, 'Vérifications'), links: data.links, pullRequest, date: new Date().toISOString(), decision: null }); run.state = pullRequest ? 'merging' : 'review';
+          if (files.length) {
+            const row = db.prepare('SELECT projects FROM workspace WHERE id=1').get(), projects = JSON.parse(row.projects);
+            const card = projects.find(project => project.id === projectId).cards.find(card => card.id === cardId);
+            card.attachments = [...(card.attachments || []).filter(file => !files.some(next => next.id === file.id)), ...files];
+            let clean;
+            try { clean = validateWorkspace(projects); } catch (error) { fail(400, 'invalid_files', error.message); }
+            const delivered = clean.find(project => project.id === projectId).cards.find(card => card.id === cardId);
+            // Generated outputs become part of the card without invalidating the
+            // run that produced them. Subsequent human changes remain protected.
+            run.source = source(delivered);
+            run.cardSnapshot = { ...run.cardSnapshot, attachments: delivered.attachments };
+            db.prepare('UPDATE workspace SET projects=? WHERE id=1').run(JSON.stringify(clean));
+            audit(agent, 'card.updated', { projectId, cardId, cardTitle: card.title, executionId: run.id, details: { fields: ['attachments'] }, recipientIds: recipients(card, agent, [run.requestedBy.id]) }, db.prepare('SELECT revision FROM workspace WHERE id=1').get().revision + 1);
+          }
+          run.submissions.push({ summary: text(data.summary, 'Résultat'), checks: text(data.checks, 'Vérifications'), links: data.links, pullRequest, files: files.map(({ id, name, size, type }) => ({ id, name, size, type })), date: new Date().toISOString(), decision: null }); run.state = artifactOnly ? 'done' : pullRequest ? 'merging' : 'review';
         } else if (action === 'interrupt') { run.state = 'interrupted'; run.interruption = text(data?.message, 'Motif', 10000); }
         else fail(400, 'invalid_action', 'Action agent inconnue.');
         return save(run, agent, action);
@@ -308,7 +327,7 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
         if (run.state === 'waiting' && card && actor && !restore) {
           const previous = before.find(p => p.id === run.projectId)?.cards.find(c => c.id === run.cardId);
           const oldIds = new Set(previous?.comments.map(comment => comment.id));
-          const reply = card.comments.find(comment => !oldIds.has(comment.id));
+          const reply = card.comments.find(comment => !oldIds.has(comment.id) && comment.text.trim());
           if (reply) {
             run.exchanges.at(-1).answer = { text: reply.text.trim(), actor: { id: actor.id, name: actor.name }, date: new Date().toISOString(), commentId: reply.id };
             run.state = 'ready';

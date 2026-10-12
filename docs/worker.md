@@ -264,6 +264,35 @@ Le worker la détecte automatiquement ; aucun bouton de lancement n’est néces
 Le premier passage complet à travers GitHub exige les accès externes réellement
 configurés. Les tests locaux ne remplacent pas cet essai.
 
+## Questions et fichiers générés
+
+Le modèle publie ses questions dans la discussion de la carte et s’arrête avec
+le statut **À préciser**. Une réponse dans cette discussion remet la tâche dans
+la file. Le worker conserve l’identifiant de conversation Codex et transmet les
+questions et réponses au tour suivant ; il ne crée pas une nouvelle conversation.
+Les questions finales des anciennes conversations, même hors JSON, sont relayées
+si elles sont clairement formulées comme une question. Les messages de réflexion
+intermédiaires ne déclenchent pas une demande de précision.
+
+Pour demander un fichier, décrire son format et le contenu attendu dans la carte,
+par exemple : **« Génère un fichier Qt Designer `personne.ui` avec les champs
+nom, prénom, adresse e-mail et un bouton Valider. »** Le modèle crée le fichier
+dans `.planifikateur/generated/` et fournit son chemin dans le champ `files` de
+son résultat. Le worker lit les fichiers explicitement déclarés, vérifie leur
+présence et leur taille, puis les ajoute aux pièces jointes de la carte. Un fichier
+Qt `.ui` est contrôlé comme XML avec une structure Qt Designer 4.0 ; ce contrôle
+ne remplace pas un essai d’ouverture avec votre version de Qt Designer.
+
+Une livraison composée uniquement de fichiers termine directement la carte et
+publie un commentaire avec leurs noms. Les tests du dépôt et une PR ne sont pas
+nécessaires pour cette livraison. Si le modèle modifie aussi le dépôt, les tests
+obligatoires, la PR et la fusion automatique restent nécessaires ; les fichiers
+sont joints lors de la soumission. Les pièces jointes générées sont attribuées à
+l’agent dans l’historique et enregistrées dans SQLite. Les limites existantes
+restent applicables : dix fichiers par carte, 1 Mo par fichier et 2 Mo au total
+dans les projets. Les chemins hors du dépôt, liens symboliques et fichiers internes
+de Git ou de connexion ne peuvent pas être déclarés comme livrables.
+
 ## Vérification reproductible locale
 
 Le worker exécute les tests navigateur avec un seul processus Playwright à la
