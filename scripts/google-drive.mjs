@@ -28,7 +28,9 @@ export function createDriveClient(credentials, folder, { transport = fetch, wait
     if (target.origin !== 'https://www.googleapis.com' || !/^\/(?:upload\/)?drive\/v3\//.test(target.pathname)) throw new Error('Destination Google Drive non autorisée.');
     for (let attempt = 0; attempt < 4; attempt++) {
       if (!token || Date.now() >= expires) await refresh();
-      const response = await transport(target, { ...options, redirect: 'error', signal: AbortSignal.timeout(60000), headers: { ...options.headers, Authorization: `Bearer ${token}` } });
+      // Resumable uploads answer 308 "Resume Incomplete": read it, never follow it
+      // (redirect: 'error' makes fetch throw on any 3xx; other 3xx stay non-ok errors).
+      const response = await transport(target, { ...options, redirect: 'manual', signal: AbortSignal.timeout(60000), headers: { ...options.headers, Authorization: `Bearer ${token}` } });
       if (response.status === 401) { expires = 0; continue; }
       // A failed folder/file creation may have reached Google already. A new
       // publication will list existing children before attempting it again.

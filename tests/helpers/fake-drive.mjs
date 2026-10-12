@@ -7,11 +7,17 @@ const md5 = bytes => createHash('md5').update(bytes).digest('hex');
 export function fakeDrive(options = {}) {
   const entries = new Map([[root, { id: root, name: 'Mon dossier', mimeType: 'application/vnd.google-apps.folder', capabilities: { canAddChildren: true } }]]);
   const calls = [], sessions = new Map(); let sequence = 0, refreshes = 0, uploads = 0;
+  // Like Node's fetch: redirect: 'error' throws on any 3xx, including the 308 of resumable uploads.
   const transport = async (url, request = {}) => {
+    const response = await serve(url, request);
+    if (request.redirect === 'error' && response.status >= 300 && response.status < 400) throw new TypeError('fetch failed', { cause: new Error('unexpected redirect') });
+    return response;
+  };
+  const serve = async (url, request = {}) => {
     url = new URL(url); calls.push({ url, request });
     if (url.origin === 'https://oauth2.googleapis.com') { refreshes++; return Response.json({ access_token: 'access-test', expires_in: 3600 }); }
     assert.equal(url.origin, 'https://www.googleapis.com');
-    assert.equal(request.redirect, 'error'); assert.equal(request.headers.Authorization, 'Bearer access-test');
+    assert.equal(request.redirect, 'manual'); assert.equal(request.headers.Authorization, 'Bearer access-test');
     if (options.onceUnauthorized) { options.onceUnauthorized = false; return new Response(null, { status: 401 }); }
     if (url.pathname.startsWith('/upload/')) {
       if (request.method === 'POST') {
