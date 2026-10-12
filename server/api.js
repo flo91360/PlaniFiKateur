@@ -1,5 +1,5 @@
 import { githubEvent } from './github.js';
-import { tagPushVersion } from './project-versions.js';
+import { releaseVersion, tagPushVersion } from './project-versions.js';
 import { driveReleaseFromBody } from '../src/lib/drive-release.js';
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { STATUSES, validateWorkspace } from '../src/lib/workspace.js';
@@ -70,7 +70,9 @@ export function createApi(store, config = {}) {
         if (event === 'release') {
           const repository = data.repository?.full_name, release = data.release;
           const downloads = ['published','released','edited'].includes(data.action) && repository && !release?.draft && driveReleaseFromBody(release?.body, repository, release?.tag_name);
-          send(res, 200, { data: downloads ? store.recordDriveRelease(repository, downloads) : { updated: false } });
+          const published = releaseVersion(data);
+          const version = published ? store.recordGithubVersion(published.repository, published.version) : { updated: false };
+          send(res, 200, { data: downloads ? store.recordDriveRelease(repository, downloads) : version });
           if (downloads) void config.versions?.refresh();
           if (['published','released','edited'].includes(data.action) && !release?.draft) void config.driveArchive?.refresh();
           return true;

@@ -17,7 +17,7 @@ test('Infos reuses an existing list and updates a single version card without lo
   assert.equal(first.lists.length, 1);
   assert.equal(first.cards[0].listId, 'custom');
   assert.equal(first.cards[0].title, version.tag);
-  assert.match(first.cards[0].description, /Date de push du tag : 11 octobre 2026 à 14:00/);
+  assert.match(first.cards[0].description, /Publiée le 11 octobre 2026 à 14:00/);
   first.cards[0].comments.push({ id: 'comment', text: 'Conserver' });
   const next = withInfos(first, { ...version, tag: 'v1.2.4' });
   assert.equal(next.cards.length, 1);
