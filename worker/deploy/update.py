@@ -168,6 +168,25 @@ class Updater:
         self.state.update(pending=None, failed_sha=pending)
         self.save()
 
+    def cleanup(self, sha):
+        """Free disk after a confirmed deployment; never blocks or undoes it."""
+        # Keep the running image and the previous one, which a rollback restarts.
+        keep = {self.inspect(name, ".Image") for name in (self.name, self.backup)} - {None}
+        code, listing = self.run(["docker", "image", "ls", "--no-trunc", "--format",
+                                  "{{.ID}} {{.Repository}}:{{.Tag}}", "planifikateur-worker"], optional=True)
+        removed = 0
+        for line in (listing.splitlines() if not code else []):
+            image_id, _, reference = line.partition(" ")
+            if image_id in keep or not reference.startswith("planifikateur-worker:"):
+                continue
+            removed += not self.run(["docker", "image", "rm", reference], optional=True)[0]
+        # Untagged layers left by a rebuilt revision, then the whole build cache.
+        self.run(["docker", "image", "prune", "--force"], optional=True, timeout=600)
+        self.run(["docker", "builder", "prune", "--all", "--force"], optional=True, timeout=600)
+        self.state["cleaned_sha"] = sha
+        self.save()
+        self.log(f"Nettoyage : {removed} ancienne(s) image(s) du worker et le cache de construction supprimés.")
+
     def ready(self, name):
         deadline = self.clock() + self.options.startup_timeout
         stable = None
@@ -204,6 +223,8 @@ class Updater:
         deployed = labels.get(REVISION_LABEL)
         if deployed == sha:
             self.log("Worker déjà à jour.")
+            if self.state.get("cleaned_sha") != sha:
+                self.cleanup(sha)
             return
         if self.state.get("failed_sha") == sha and not self.options.retry:
             self.log("Cette révision a échoué au déploiement ; nouvelle tentative suspendue.")
@@ -254,6 +275,7 @@ class Updater:
         except UpdateError:
             self.recover()
             raise
+        self.cleanup(sha)
 
 
 def main():

@@ -54,6 +54,9 @@ class Commands:
         self.boot_failure = False
         self.connection_failure = False
         self.changed = "worker/index.mjs"
+        self.images = {"image-" + OLD: "planifikateur-worker:" + OLD, "image-" + "c" * 40: "planifikateur-worker:" + "c" * 40,
+                       "image-base": "node:24-bookworm-slim"}
+        self.image_rm_fails = False
 
     @staticmethod
     def container(revision, running=False):
@@ -84,7 +87,22 @@ class Commands:
             if "--entrypoint" in args:
                 return 0, "busy" if self.busy.pop(0) else "idle"
             return 0, "Sandbox Codex OK"
-        if action == "build": return 0, ""
+        if action == "build":
+            self.images["image-" + SHA] = "planifikateur-worker:" + SHA
+            return 0, ""
+        if action == "image":
+            if args[2] == "ls":
+                return 0, "\n".join(f"{i} {ref}" for i, ref in self.images.items() if ref.startswith(args[-1] + ":"))
+            if args[2] == "rm":
+                if self.image_rm_fails: return 1, ""
+                used = {c["image"] for c in self.containers.values()}
+                image = next(i for i, ref in self.images.items() if ref == args[-1])
+                assert image not in used, "image in use removed"
+                del self.images[image]
+            return 0, ""
+        if action == "builder":
+            assert args[2:] == ["prune", "--all", "--force"], args
+            return 0, ""
         if action == "create":
             name = args[args.index("--name") + 1]
             revision = args[args.index("--label") + 1].split("=", 1)[1]
@@ -147,6 +165,36 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn(str(self.root / "private.env"), create)
         self.assertNotIn("--privileged", create)
         self.assertIsNone(json.loads((self.root / "deployment.json").read_text())["pending"])
+
+    def test_confirmed_deployment_removes_unused_worker_images_and_build_cache_only(self):
+        self.make().update()
+        self.assertEqual(set(self.commands.images), {"image-" + SHA, "image-" + OLD, "image-base"})
+        self.assertIn(["docker", "builder", "prune", "--all", "--force"], self.commands.calls)
+        self.assertTrue(any("Nettoyage : 1 ancienne(s) image(s)" in line for line in self.logs))
+        # Later checks of the same revision do not prune again.
+        calls = len(self.commands.calls)
+        self.make().update()
+        self.assertFalse(any(c[:2] == ["docker", "builder"] for c in self.commands.calls[calls:]))
+
+    def test_failed_deployment_keeps_every_image_and_cache(self):
+        self.commands.boot_failure = True
+        with self.assertRaises(updater.UpdateError):
+            self.make().update()
+        self.assert_old()
+        self.assertIn("image-" + "c" * 40, self.commands.images)
+        self.assertFalse(any(c[:2] in (["docker", "builder"], ["docker", "image"]) for c in self.commands.calls))
+
+    def test_cleanup_failure_never_fails_a_deployment_and_existing_backlog_is_cleaned_once(self):
+        self.commands.image_rm_fails = True
+        self.make().update()
+        self.assertEqual(self.commands.containers["planifikateur-worker"]["revision"], SHA)
+        self.assertIn("image-" + "c" * 40, self.commands.images)
+        # An up-to-date worker that was never cleaned (e.g. before this feature) is cleaned at the next check.
+        updater_state = self.root / "deployment.json"
+        state = json.loads(updater_state.read_text()); state.pop("cleaned_sha"); updater_state.write_text(json.dumps(state))
+        self.commands.image_rm_fails = False
+        self.make().update()
+        self.assertNotIn("image-" + "c" * 40, self.commands.images)
 
     def test_first_unlabelled_worker_can_be_adopted(self):
         self.commands.containers["planifikateur-worker"]["revision"] = None

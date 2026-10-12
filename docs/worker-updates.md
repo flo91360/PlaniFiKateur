@@ -73,9 +73,23 @@ Le volume contenant les tâches et la connexion Codex n’est jamais supprimé. 
 retour arrière de conteneur ne restaure pas une ancienne copie des données du
 volume : les nouvelles versions doivent rester compatibles avec l’état persistant.
 
-Les images et le dernier conteneur précédent sont conservés. Surveiller l’espace
-disque du VPS ; ce programme n’effectue pas de `docker system prune` ni de
-nettoyage des volumes.
+Après un déploiement confirmé, le programme libère l’espace disque : il supprime
+les images `planifikateur-worker` qui ne sont ni celle du worker actif ni celle
+du conteneur précédent (conservée pour le retour arrière), les couches sans tag
+et tout le cache de construction Docker. La construction suivante repart donc de
+zéro, ce qui la rend plus longue. Un déploiement échoué ne nettoie rien, et un
+échec du nettoyage ne remet pas en cause la mise à jour : il sera retenté au
+prochain déploiement. Les autres images, les conteneurs et les volumes ne sont
+jamais supprimés ; aucun `docker system prune` n’est exécuté.
+
+Lors de la première vérification avec ce programme, un worker déjà à jour est
+nettoyé une fois. Pour libérer l’espace immédiatement :
+
+```sh
+sudo systemctl start planifikateur-worker-update.service
+sudo journalctl -u planifikateur-worker-update.service -n 20 --no-pager
+sudo docker system df
+```
 
 ## En cas d’échec
 
