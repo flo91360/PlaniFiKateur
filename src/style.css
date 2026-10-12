@@ -93,6 +93,11 @@ h1 { font-family: Manrope, sans-serif; font-size: 29px; letter-spacing: -1.2px; 
 .card { border: 1px solid #dfe8e4; border-radius: 8px; background: #fbfdfb; padding: 15px 14px 0; text-align: left; width: 100%; box-shadow: 0 2px 2px #3c504805; }
 .card:hover { border-color: #b0cbc0; box-shadow: 0 5px 15px #3950470a; transform: translateY(-2px); }
 .card.dragging { opacity: .4; }
+.card-group:hover .card { border-color: #b0cbc0; }
+.card.with-link { border-radius: 8px 8px 0 0; }
+.card.with-link:hover { transform: none; }
+.card-link { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: -1px; padding: 9px 14px; border: 1px solid #dfe8e4; border-radius: 0 0 8px 8px; background: #f2f7f4; color: #395147; font-size: 11px; font-weight: 550; text-decoration: none; }
+.card-link:hover, .card-link:focus-visible { background: #e6f0eb; border-color: #b0cbc0; }
 .card-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 11px; }
 .tag { display: inline-block; border-radius: 4px; font-size: 8px; font-weight: 500; padding: 4px 7px; }
 .tag.green { background: #eaf1e5; color: #749164; }.tag.purple { background: #efebf6; color: #9480b2; }.tag.orange { background: #fbede3; color: #b18b6a; }

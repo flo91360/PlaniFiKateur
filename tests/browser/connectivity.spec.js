@@ -643,6 +643,7 @@ test.describe('automatic GitHub delivery', () => {
     await expect(infos.locator('.card')).toHaveCount(2);
     await page.reload();
     await expect(version.locator('h3')).toHaveText('v2.0.0');
+    await expect(infos.getByRole('link', { name: 'Lire le mode d’emploi (README)' })).toHaveAttribute('href', 'https://github.com/owner/first#readme');
     await infos.locator('.card').filter({ hasText: 'Mode d’emploi du projet' }).click();
     await expect(page.getByRole('link', { name: 'Consulter le mode d’emploi (README)' })).toHaveAttribute('href', 'https://github.com/owner/first#readme');
     await page.getByRole('button', { name: 'Terminé', exact: true }).click();
