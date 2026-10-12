@@ -12,8 +12,8 @@ export function withInfos(project, version) {
   version ||= { tag: card?.title || 'Aucun tag disponible', date: '' };
   const validDate = version.date && Number.isFinite(Date.parse(version.date));
   const description = preserve ? card.description : (version.repository ? `Dépôt : ${version.repository}\n` : '') + (validDate
-    ? `Date de push du tag : ${new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long', timeStyle: 'short', timeZone: 'Europe/Paris' }).format(new Date(version.date))} (Europe/Paris).`
-    : version.tag === 'Aucun tag disponible' ? 'Associez un dépôt GitHub au projet pour afficher sa dernière version.' : version.tag === 'Aucun tag publié' ? 'Aucun tag publié dans ce dépôt.' : 'Date de push du tag indisponible dans l’historique GitHub.');
+    ? `Publiée le ${new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long', timeStyle: 'short', timeZone: 'Europe/Paris' }).format(new Date(version.date))} (Europe/Paris).`
+    : version.tag === 'Aucun tag disponible' ? 'Associez un dépôt GitHub au projet pour afficher sa dernière version.' : version.tag === 'Aucun tag publié' ? 'Aucun tag publié dans ce dépôt.' : 'Date de publication indisponible dans l’historique GitHub.');
   const cards = card
     ? project.cards.map(item => {
       if (item.id !== cardId) return item;

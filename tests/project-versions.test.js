@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createStore } from '../server/store.js';
 import { createAppServer } from '../server/index.js';
-import { createVersionSync, tagPushVersion } from '../server/project-versions.js';
+import { createVersionSync, latestTag, releaseVersion, tagPushVersion } from '../server/project-versions.js';
 import { withInfos } from '../src/lib/infos.js';
 import { driveReleaseBody } from '../src/lib/drive-release.js';
 
@@ -35,7 +35,7 @@ test('signed release events publish downloads for the matching repository/versio
   };
   assert.equal((await send(event, 'wrong')).status, 401); assert.equal(card(store, first).downloads, undefined);
   assert.equal((await send(event)).status, 200); assert.deepEqual(card(store, first).downloads, driveDownload);
-  assert.equal(card(store, second).downloads, undefined); assert.match(card(store, first).description, /Date de push du tag indisponible/);
+  assert.equal(card(store, second).downloads, undefined); assert.match(card(store, first).description, /Date de publication indisponible/);
   const snapshot = store.read(); await send(event); store.refreshInfos(); assert.deepEqual(store.read(), snapshot);
   await send({ ...event, release: { ...event.release, body: driveReleaseBody('', { ...driveDownload, commit: 'c'.repeat(40) }) } });
   assert.deepEqual(store.read(), snapshot);
@@ -104,8 +104,8 @@ test('GitHub synchronization recovers publication dates and never substitutes co
   await sync.refresh();
   assert.equal(card(store, first).title, 'v2.0.0');
   assert.match(card(store, first).description, /09:32/);
-  assert.equal(card(store, second).title, 'v1.0.0');
-  assert.match(card(store, second).description, /Date de push du tag indisponible/);
+  assert.equal(card(store, second).title, 'v2.0.0');
+  assert.match(card(store, second).description, /Date de publication indisponible/);
   assert.ok(calls.every(c => new URL(c.url).origin === 'https://api.github.com' && c.options.redirect === 'error'));
   assert.deepEqual(withInfos(store.read().projects[0]), store.read().projects[0]);
 });
@@ -136,4 +136,44 @@ test('the repository tag and exact push timestamp survive a server restart witho
   store.close(); store = createStore(filename);
   assert.deepEqual(store.read(), snapshot);
   assert.deepEqual(store.githubVersion('owner/first'), { tag: 'v2.0.0', date });
+});
+
+test('a tag created by a GitHub Release takes the Release publication date, by polling or signed webhook', async t => {
+  const { store, first, second } = fixture(t);
+  const releaseDate = '2026-10-12T08:15:00Z';
+  const sync = createVersionSync(store, { start: false, transport: async url => {
+    if (url.includes('/tags?')) return Response.json([{ name: 'v0.7.2' }]);
+    if (url.includes('/events?')) return Response.json([]);
+    if (url.includes('/first/releases/tags/v0.7.2')) return Response.json({ draft: false, tag_name: 'v0.7.2', published_at: releaseDate, body: '' });
+    return new Response('{}', { status: 404 });
+  } });
+  t.after(() => sync.close());
+  await sync.refresh();
+  assert.equal(card(store, first).title, 'v0.7.2');
+  assert.match(card(store, first).description, /Publiée le 12 octobre 2026 à 10:15/);
+  assert.match(card(store, second).description, /Date de publication indisponible/);
+
+  const server = createAppServer({ store, config: { githubWebhookSecret: secret } });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
+  const send = async data => {
+    const raw = JSON.stringify(data);
+    return fetch(`http://127.0.0.1:${server.address().port}/api/v1/github/webhook`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-GitHub-Event': 'release', 'X-Hub-Signature-256': 'sha256=' + createHmac('sha256', secret).update(raw).digest('hex') }, body: raw });
+  };
+  const event = { action: 'published', repository: { full_name: 'owner/first' }, release: { draft: false, tag_name: 'v0.7.3', published_at: '2026-10-13T06:00:00Z', body: 'Notes' } };
+  await send({ ...event, release: { ...event.release, draft: true } });
+  await send({ ...event, action: 'edited' });
+  assert.equal(card(store, first).title, 'v0.7.2');
+  assert.deepEqual((await (await send(event)).json()).data, { updated: true });
+  assert.equal(card(store, first).title, 'v0.7.3');
+  assert.match(card(store, first).description, /Publiée le 13 octobre 2026 à 08:00/);
+  await send({ ...event, release: { ...event.release, tag_name: 'v0.7.1', published_at: '2026-10-01T06:00:00Z' } });
+  assert.equal(card(store, first).title, 'v0.7.3');
+  assert.equal(releaseVersion({ ...event, release: { ...event.release, published_at: null } }), null);
+});
+
+test('without a creation event the highest version tag is chosen, not the first listed by name', () => {
+  assert.equal(latestTag([{ name: 'v0.1.9' }, { name: 'v0.1.16' }, { name: 'v0.1.10' }, { name: 'nightly' }]), 'v0.1.16');
+  assert.equal(latestTag([{ name: 'v2.0.0' }, { name: '10.0.0' }]), '10.0.0');
+  assert.equal(latestTag([{ name: 'nightly' }, { name: 'beta' }]), 'nightly');
 });
