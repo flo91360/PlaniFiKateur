@@ -20,10 +20,25 @@ test('Infos reuses an existing list and updates a single version card without lo
   assert.match(first.cards[0].description, /Publiée le 11 octobre 2026 à 14:00/);
   first.cards[0].comments.push({ id: 'comment', text: 'Conserver' });
   const next = withInfos(first, { ...version, tag: 'v1.2.4' });
-  assert.equal(next.cards.length, 1);
+  assert.equal(next.cards.length, 2);
   assert.equal(next.cards[0].title, 'v1.2.4');
   assert.deepEqual(next.cards[0].comments, first.cards[0].comments);
   assert.deepEqual(withInfos(next, { ...version, tag: 'v1.2.4' }), next);
+});
+
+test('Infos links the README of the associated repository and keeps it on navigator refreshes', () => {
+  const project = { id: 'project', lists: [], cards: [] };
+  const empty = withInfos(project);
+  assert.equal(empty.cards[1].id, 'project-readme');
+  assert.equal(empty.cards[1].readme, undefined);
+  const linked = withInfos(empty, { ...version, repository: 'owner/repo' });
+  assert.equal(linked.cards.length, 2);
+  assert.equal(linked.cards[1].readme, 'owner/repo');
+  assert.match(linked.cards[1].description, /https:\/\/github\.com\/owner\/repo#readme/);
+  assert.deepEqual(validateWorkspace([{ ...linked, name: 'P', description: '', emoji: '◈', color: '#fff' }])[0].cards, linked.cards.map(card => ({ ...card, createdBy: null, createdAt: null, updatedBy: null, updatedAt: null, attachments: [] })));
+  assert.deepEqual(withInfos(linked), linked);
+  assert.equal(withInfos(linked, { tag: 'Aucun tag disponible', date: '' }).cards[1].readme, undefined);
+  assert.throws(() => validateWorkspace([{ ...linked, name: 'P', description: '', emoji: '◈', color: '#fff', cards: [{ ...linked.cards[1], readme: 'evil.com/x/../y' }] }]), /mode d’emploi/);
 });
 
 test('existing databases receive Infos once and retain their other cards on restart', t => {
@@ -32,7 +47,7 @@ test('existing databases receive Infos once and retain their other cards on rest
   const file = join(dir, 'workspace.sqlite');
   let store = createStore(file);
   try {
-    const legacy = validateWorkspace(structuredClone(seed).map(project => ({ ...project, lists: project.lists.filter(list => list.name !== 'Infos'), cards: project.cards.filter(card => card.id !== `${project.id}-git-version`) })));
+    const legacy = validateWorkspace(structuredClone(seed).map(project => ({ ...project, lists: project.lists.filter(list => list.name !== 'Infos'), cards: project.cards.filter(card => ![`${project.id}-git-version`, `${project.id}-readme`].includes(card.id)) })));
     store.write(legacy, store.getRevision());
     const previousRevision = store.getRevision();
     store.close(); store = createStore(file);
@@ -41,10 +56,11 @@ test('existing databases receive Infos once and retain their other cards on rest
     for (const project of snapshot.projects) {
       const before = legacy.find(item => item.id === project.id);
       assert.equal(project.lists.length, before.lists.length + 1);
-      assert.equal(project.cards.length, before.cards.length + 1);
-      assert.equal(project.cards.at(-1).title, 'Aucun tag disponible');
-      assert.match(project.cards.at(-1).description, /Associez un dépôt GitHub/);
-      assert.deepEqual(project.cards.slice(0, -1), before.cards);
+      assert.equal(project.cards.length, before.cards.length + 2);
+      assert.equal(project.cards.at(-2).title, 'Aucun tag disponible');
+      assert.match(project.cards.at(-2).description, /Associez un dépôt GitHub/);
+      assert.equal(project.cards.at(-1).title, 'Mode d’emploi du projet');
+      assert.deepEqual(project.cards.slice(0, -2), before.cards);
     }
     store.close(); store = createStore(file);
     assert.deepEqual(store.read(), snapshot);

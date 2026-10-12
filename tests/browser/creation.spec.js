@@ -35,9 +35,9 @@ for (const mode of ['standalone', 'sandbox-with-storage', 'sandbox-without-stora
     await expect(app.locator('.project-title p')).toHaveText('test');
     await expect(app.locator('.list-column')).toHaveCount(4);
     const infos = app.locator('.list-column').filter({ has: app.getByRole('heading', { name: 'Infos', exact: true }) });
-    await expect(infos.locator('.card')).toHaveCount(1);
-    await expect(infos.locator('.card h3')).toHaveText('Aucun tag disponible');
-    await expect(infos.locator('.card p')).toHaveText('Associez un dépôt GitHub au projet pour afficher sa dernière version.');
+    await expect(infos.locator('.card')).toHaveCount(2);
+    await expect(infos.locator('.card h3')).toHaveText(['Aucun tag disponible', 'Mode d’emploi du projet']);
+    await expect(infos.locator('.card p')).toHaveText(['Associez un dépôt GitHub au projet pour afficher sa dernière version.', 'Associez un dépôt GitHub au projet pour afficher le lien vers son mode d’emploi (README).']);
 
     await app.getByRole('button', { name: 'Ajouter une liste', exact: true }).click();
     await app.getByLabel('Nom de la liste', { exact: true }).fill('Ma liste');
