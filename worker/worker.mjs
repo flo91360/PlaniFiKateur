@@ -1,5 +1,5 @@
 import { access, appendFile, mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validId, validRepository } from './config.mjs';
 import { ApiError, PublicationPendingError, createSiteClient, createGithubClient, connectionDiagnostic, temporaryConnectionError } from './clients.mjs';
@@ -9,7 +9,7 @@ import { createCodexRunner } from './codex.mjs';
 import { collectOutputs } from './outputs.mjs';
 import { createClaudeRunner } from './claude.mjs';
 import { validateAi, efforts, effortLabels } from './ai-settings.mjs';
-import { defaultExecutionProfile, validateExecutionProfile } from './execution-profile.mjs';
+import { defaultExecutionProfile, validateExecutionProfile, resolveWorkerCommand } from './execution-profile.mjs';
 import { runtimeEnvironment, checkRuntime, projectDiagnostic } from './runtime.mjs';
 import { bumpProjectVersion } from './project-version.mjs';
 
@@ -150,7 +150,8 @@ export function createWorker(config, dependencies = {}) {
       const merged = await execute(['git', 'merge', '--no-edit', `origin/${targetBranch}`], { cwd, env: gitEnv, signal });
       let feedback = merged.code ? `Résous les conflits avec ${targetBranch} avant de terminer : ${clean(merged.output)}` : '';
       await action('progress', { message: `Préparation des dépendances du profil ${profile.preset}.` });
-      for (const install of run.legacyExecutionProfile ? config.installCommands : profile.installCommands) await command(install);
+      const workerDirectory = dirname(fileURLToPath(import.meta.url));
+      for (const install of run.legacyExecutionProfile ? config.installCommands : profile.installCommands) await command(resolveWorkerCommand(install, workerDirectory));
       await action('progress', { message: 'Le dépôt est prêt. L’agent réalise la demande avant les vérifications locales.' });
       let result, checks = [], outputs = [], artifactOnly = false;
       for (let round = 0; round < 3; round++) {
@@ -183,7 +184,7 @@ export function createWorker(config, dependencies = {}) {
         } catch (error) { failure = `Corrige les fichiers à livrer : ${clean(error.message)}`; }
         for (const test of failure || artifactOnly ? [] : run.legacyExecutionProfile ? config.testCommands : profile.testCommands) {
           await action('progress', { message: `Vérification locale : ${test.join(' ')}.` });
-          const outcome = await execute(test, { cwd, env, signal });
+          const outcome = await execute(resolveWorkerCommand(test, workerDirectory), { cwd, env, signal });
           if (outcome.code !== 0) { failure = `${test.join(' ')} a échoué : ${clean(outcome.output)}`; break; }
           checks.push(`${test.join(' ')} : réussi`);
         }

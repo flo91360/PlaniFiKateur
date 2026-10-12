@@ -1,4 +1,4 @@
-import { readFile, writeFile, lstat } from 'node:fs/promises';
+import { readFile, writeFile, lstat, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const parse = version => {
@@ -13,6 +13,7 @@ export function nextProjectVersion(base, current) {
   before[2]++; parse(before.join('.')); return before.join('.');
 }
 export async function bumpProjectVersion(cwd, profile, command) {
+  if (profile.preset === 'trameergo') return bumpQmakeVersion(cwd, profile, command);
   if (!['defilordi', 'funkart'].includes(profile.preset)) return null;
   const npm = profile.preset === 'defilordi', file = npm ? 'package.json' : 'project.godot';
   const regular = async name => { const details = await lstat(join(cwd, name)); if (!details.isFile()) throw new Error(`Le fichier de version ${name} doit être un fichier ordinaire.`); };
@@ -30,5 +31,19 @@ export async function bumpProjectVersion(cwd, profile, command) {
     await writeFile(join(cwd, file), JSON.stringify(json, null, 2) + '\n');
     await writeFile(join(cwd, 'package-lock.json'), JSON.stringify(lock, null, 2) + '\n');
   } else await writeFile(join(cwd, file), current.replace(/^config\/version="[^"]+"$/m, `config/version="${version}"`));
+  return version;
+}
+
+// qmake : "VERSION = x.y.z" dans l'unique fichier .pro, qui fixe aussi la version de l'exe Windows.
+const qmakeVersion = source => /^VERSION\s*=\s*(\S+)\s*$/m.exec(source)?.[1];
+async function bumpQmakeVersion(cwd, profile, command) {
+  const projects = (await readdir(cwd)).filter(name => name.endsWith('.pro'));
+  if (projects.length !== 1) return null;
+  const [file] = projects, details = await lstat(join(cwd, file));
+  if (!details.isFile()) throw new Error(`Le fichier de version ${file} doit être un fichier ordinaire.`);
+  const current = await readFile(join(cwd, file), 'utf8'), base = qmakeVersion(await command(['git', 'show', `origin/${profile.branch}:${file}`]));
+  if (!base || !qmakeVersion(current)) return null;
+  const version = nextProjectVersion(base, qmakeVersion(current));
+  await writeFile(join(cwd, file), current.replace(/^VERSION\s*=\s*\S+\s*$/m, `VERSION = ${version}`));
   return version;
 }

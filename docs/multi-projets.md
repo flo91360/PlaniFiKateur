@@ -1,6 +1,6 @@
 # Améliorer les projets depuis PlaniFiKateur
 
-Le même worker AWS peut traiter PlaniFiKateur, DefilOrdi et FunKart, une tâche à
+Le même worker AWS peut traiter PlaniFiKateur, DefilOrdi, FunKart et TrameErgo, une tâche à
 la fois. Le projet fournit le dépôt, le moteur IA, le modèle et le profil
 d’exécution ; la carte fournit le titre, la description, les pièces jointes et
 l’effort. Les secrets restent dans l’environnement privé du worker.
@@ -12,8 +12,8 @@ Dans **Paramètres du projet** :
 1. Associer le dépôt GitHub.
 2. Choisir le moteur et le modèle IA.
 3. Dans **Exécution et connexion du projet**, choisir le profil et la branche
-   cible, puis enregistrer. Sans réglage explicite, les dépôts nommés DefilOrdi
-   et FunKart reçoivent automatiquement leur profil ; les autres utilisent le
+   cible, puis enregistrer. Sans réglage explicite, les dépôts nommés DefilOrdi,
+   FunKart et TrameErgo reçoivent automatiquement leur profil ; les autres utilisent le
    profil PlaniFiKateur.
 4. Dans **Connexion de l’agent**, autoriser ce projet pour l’identité du worker.
 5. Consulter le diagnostic du worker. Il vérifie les outils, la présence d’une
@@ -35,6 +35,17 @@ fusionne automatiquement. Le webhook signé termine la carte.
 | PlaniFiKateur | Node 24 ; `npm ci`, `npm test`, `npm run test:browser` | `ci.yml`, nom **Tests**, jobs **Tests serveur** et **Tests navigateur** |
 | DefilOrdi | Node 22 ; `npm ci`, `npm run typecheck`, `npm test`, `npm run build` | `build-windows.yml`, nom **Windows .exe**, job **build** |
 | FunKart | Godot 4.4.1 ; import, `tests/test_profiles.gd`, `tests/autoplay.gd -- --fast` | `build.yml`, nom **Construire le jeu**, job **export** |
+| TrameErgo | Python 3 ; contrôle `worker/checks/qt_project.py` du worker | `build-windows.yml`, nom **Windows .exe**, job **build** |
+
+TrameErgo est une application Qt 6 qui pilote Word par ActiveQt : elle ne se
+compile que sous Windows. Le worker Linux vérifie donc seulement la cohérence du
+projet avant la PR (fichiers déclarés dans le `.pro` présents et uniques,
+formulaires `.ui` valides sans widgets homonymes, parenthèses et accolades
+équilibrées, classes `Q_OBJECT` déclarées dans `HEADERS`, `VERSION` au format
+`x.y.z`). La compilation complète est le job **build** du workflow Windows,
+exigé avant la fusion. Le contrôle est un fichier installé avec le worker
+(`@worker/checks/…` dans le profil), jamais un script du dépôt modifié. Le worker
+augmente la ligne `VERSION = x.y.z` du `.pro` à chaque livraison de code.
 
 Le conteneur contient Node 22 et 24, Chromium et le binaire officiel Godot 4.4.1
 avec vérification SHA-512. La fabrication des exécutables Windows de DefilOrdi
