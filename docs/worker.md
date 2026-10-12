@@ -30,6 +30,9 @@ humaine autorise un nouveau cycle de tentatives.
 
 ## Connexion
 
+Pour plusieurs dépôts, suivre [le guide des profils par projet](multi-projets.md).
+Le worker découvre automatiquement les projets autorisés depuis le site.
+
 Pour le VPS AWS déjà configuré, les [mises à jour automatiques](worker-updates.md)
 se configurent avec un timer systemd : tests GitHub, construction, contrôle du
 sandbox puis remplacement avec retour au conteneur précédent en cas d’échec.
@@ -46,8 +49,8 @@ sandbox puis remplacement avec retour au conteneur précédent en cas d’échec
 | `PLANIFIKATEUR_AGENT_TOKEN` | Clé active créée dans le site |
 | `PLANIFIKATEUR_GITHUB_TOKEN` | Token GitHub App ou token personnel dédié au dépôt, avec lecture Actions, écriture Contents, Issues et Pull requests |
 | `OPENAI_API_KEY` | Authentification Codex par API ; consommation facturée à l’API |
-| `PLANIFIKATEUR_WORKER_PROJECTS` | Identifiant du projet, ou identifiants séparés par des virgules |
-| `PLANIFIKATEUR_WORKER_REPOSITORIES` | Dépôts explicitement autorisés, par exemple `flo91360/PlaniFiKateur` |
+| `PLANIFIKATEUR_WORKER_PROJECTS` | Facultatif : identifiants du périmètre supplémentaire en mode `manual` |
+| `PLANIFIKATEUR_WORKER_REPOSITORIES` | Facultatif : dépôts autorisés en mode `manual` |
 | `PLANIFIKATEUR_WORKER_STATE_DIR` | Répertoire persistant des copies et états, `/data` dans Docker |
 
 L’identifiant du projet est visible dans **Paramètres du projet**, ainsi que
@@ -157,7 +160,7 @@ le traitement des cartes avant d’avoir réussi le contrôle ci-dessous.
    option d’isolation de Codex (`use_legacy_landlock`) a aussi été essayée dans
    Docker : la version 0.162.1 exige toujours bubblewrap pour isoler les sockets
    de l’app-server, et cette option ne constitue donc pas une solution validée.
-5. Si le contrôle réussit, renseigner les cinq variables obligatoires du tableau
+5. Si le contrôle réussit, renseigner les variables de connexion obligatoires du tableau
    **Connexion**, puis l’authentification Codex. Une clé API se configure dans
    `OPENAI_API_KEY`. Pour utiliser une connexion ChatGPT, se connecter sur ce
    service via SSH Railway et lancer, dans `/opt/worker` :
@@ -172,7 +175,7 @@ le traitement des cartes avant d’avoir réussi le contrôle ci-dessous.
 6. Arrêter le worker sur votre ordinateur, effacer la commande temporaire
    **Start Command**, puis redéployer. L’image utilise alors `node index.mjs`.
    Le worker vérifie de nouveau son isolation avant de consulter les cartes.
-   Le message **Worker Codex démarré : une tâche à la fois.** confirme que le
+   Le message **Worker IA démarré : une tâche à la fois.** confirme que le
    contrôle a réussi ; une carte de test prête permet de vérifier le parcours
    jusqu’à la fusion et au webhook.
 

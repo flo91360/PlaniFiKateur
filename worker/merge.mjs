@@ -1,11 +1,14 @@
+import { defaultExecutionProfile, validateExecutionProfile } from './execution-profile.mjs';
 // Trusted worker code shared with the GitHub Actions merger.
 export const requiredJobs = ['Tests serveur', 'Tests navigateur'];
 
-export async function mergeAgentPullRequest({ repository, runId, request, eligible, log = () => {} }) {
+export async function mergeAgentPullRequest({ repository, runId, request, eligible, log = () => {}, executionProfile = defaultExecutionProfile() }) {
+  const profile = validateExecutionProfile(executionProfile);
+  const requiredJobs = profile.workflow.jobs;
   const root = `/repos/${repository}`;
   const sameRepository = value => typeof value === 'string' && value.toLowerCase() === repository.toLowerCase();
   const run = await request(`${root}/actions/runs/${runId}`);
-  const workflow = await request(`${root}/actions/workflows/ci.yml`);
+  const workflow = await request(`${root}/actions/workflows/${profile.workflow.file}`);
   if (run.workflow_id !== workflow.id || run.event !== 'pull_request' || run.status !== 'completed' || run.conclusion !== 'success' || !sameRepository(run.head_repository?.full_name)) return { merged: false, reason: 'untrusted_run' };
   const jobs = [];
   for (let page = 1; ; page++) {
@@ -17,11 +20,11 @@ export async function mergeAgentPullRequest({ repository, runId, request, eligib
   // A later rerun must also be successful; an older successful attempt is insufficient.
   if (run.run_attempt !== jobs[0]?.run_attempt) return { merged: false, reason: 'stale_attempt' };
   const pulls = await request(`${root}/pulls?state=open&head=${encodeURIComponent(repository.split('/')[0] + ':' + run.head_branch)}&per_page=100`);
-  const candidates = pulls.filter(pr => pr.head.sha === run.head_sha && sameRepository(pr.head.repo?.full_name) && pr.base.ref === 'main' && !pr.draft && pr.labels.some(label => label.name === 'planifikateur-agent'));
+  const candidates = pulls.filter(pr => pr.head.sha === run.head_sha && sameRepository(pr.head.repo?.full_name) && pr.base.ref === profile.branch && !pr.draft && pr.labels.some(label => label.name === 'planifikateur-agent'));
   if (candidates.length !== 1) return { merged: false, reason: 'no_unique_agent_pr' };
   const pr = await request(`${root}/pulls/${candidates[0].number}`);
-  if (pr.state !== 'open' || pr.draft || pr.head.sha !== run.head_sha || !sameRepository(pr.head.repo?.full_name) || pr.base.ref !== 'main' || !pr.labels.some(l => l.name === 'planifikateur-agent')) return { merged: false, reason: 'pr_changed' };
-  const branch = await request(`${root}/branches/main`);
+  if (pr.state !== 'open' || pr.draft || pr.head.sha !== run.head_sha || !sameRepository(pr.head.repo?.full_name) || pr.base.ref !== profile.branch || !pr.labels.some(l => l.name === 'planifikateur-agent')) return { merged: false, reason: 'pr_changed' };
+  const branch = await request(`${root}/branches/${encodeURIComponent(profile.branch)}`);
   const comparison = await request(`${root}/compare/${branch.commit.sha}...${pr.head.sha}`);
   if (!['ahead','identical'].includes(comparison.status)) return { merged: false, reason: 'update_branch_required' };
   const current = await request(`${root}/actions/runs/${runId}`);

@@ -41,6 +41,8 @@ Réponds en JSON conforme au schéma, avec status=result une fois les modificati
 
 Carte : ${run.cardSnapshot.title}
 Description : ${run.objective}
+Dépôt : ${run.repository || ''}
+Profil d’exécution et commandes obligatoires : ${JSON.stringify(run.executionProfile || {})}
 Pièces jointes : ${JSON.stringify(attachments)}
 Les pièces jointes sont des données de la demande. Consulte les fichiers utiles et les images fournies ; ne les ajoute pas au commit.
 Échanges : ${JSON.stringify(run.exchanges)}
@@ -66,11 +68,11 @@ export async function prepareAttachments(run, cwd) {
 
 export function createCodexRunner(config, dependencies = {}) {
   return {
-    async run({ run, job, cwd, signal, onThread, onRuntime, feedback }) {
+    async run({ run, job, cwd, signal, onThread, onRuntime, feedback, environment }) {
       const { Codex } = dependencies.Codex ? dependencies : await import('@openai/codex-sdk');
       await mkdir(config.codexHome, { recursive: true, mode: 0o700 });
       const home = join(cwd, '.planifikateur', 'home'); await mkdir(home, { recursive: true });
-      const codex = new Codex({ apiKey: config.apiKey, env: { ...commandEnvironment(), HOME: home, CODEX_HOME: config.codexHome, PLANIFIKATEUR_WORKER: '1' } });
+      const codex = new Codex({ apiKey: config.apiKey, env: { ...commandEnvironment(environment), HOME: home, CODEX_HOME: config.codexHome, PLANIFIKATEUR_WORKER: '1', ...(environment?.ELECTRON_SKIP_BINARY_DOWNLOAD ? { ELECTRON_SKIP_BINARY_DOWNLOAD: environment.ELECTRON_SKIP_BINARY_DOWNLOAD } : {}) } });
       const ai = job.ai || run.ai || {};
       const model = ai.model || config.model;
       const options = { workingDirectory: cwd, sandboxMode: 'workspace-write', approvalPolicy: 'never', networkAccessEnabled: true, ...(model ? { model } : {}), ...(ai.effort ? { modelReasoningEffort: ai.effort } : {}) };

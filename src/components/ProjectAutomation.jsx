@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import GithubSetup from './GithubSetup.jsx';
 import AgentSetup, { workRequest } from './AgentSetup.jsx';
 import AiSettings from './AiSettings.jsx';
+import ExecutionSettings from './ExecutionSettings.jsx';
 
 export default function ProjectAutomation({ project, user, onAiConfigured }) {
   const [configuration, setConfiguration] = useState(null), [error, setError] = useState('');
@@ -18,6 +19,7 @@ export default function ProjectAutomation({ project, user, onAiConfigured }) {
     {configuration && <>
       <p>Le dépôt, le moteur et le modèle s’appliquent au projet. L’effort se choisit dans chaque carte. Les changements du dépôt passent par une PR fusionnée automatiquement ; les fichiers seuls sont livrés dans la carte.</p>
       <AiSettings projectId={project.id} user={user} onConfigured={onAiConfigured} />
+      <ExecutionSettings projectId={project.id} repository={configuration.repository} user={user} />
       {user.role === 'admin' ? <><GithubSetup projectId={project.id} configuration={configuration} onConfigured={setConfiguration} /><AgentSetup projectId={project.id} /></> : <p>Dépôt : {configuration.repository || 'non configuré'}. Un administrateur peut modifier ces paramètres.</p>}
     </>}
   </div>;

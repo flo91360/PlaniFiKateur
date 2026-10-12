@@ -353,6 +353,30 @@ test('follows an existing card without being its author and keeps the setting af
 
 test.describe('project task execution', () => {
   test.use({ githubEnabled: true });
+  test('project execution profiles survive reload and worker diagnostics appear without configuration files', async ({ page, request, appServer }) => {
+    await login(page, appServer);
+    const project = seed[0];
+    await page.request.put(`${appServer}/api/v1/projects/${project.id}/github`, { data: { repository: 'flo91360/DefilOrdi' } });
+    await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
+    await page.getByText('Exécution et connexion du projet', { exact: true }).click();
+    await expect(page.getByLabel('Profil d’exécution', { exact: true })).toHaveValue('defilordi');
+    await page.getByLabel('Profil d’exécution', { exact: true }).selectOption('funkart');
+    await page.getByRole('button', { name: 'Enregistrer le profil', exact: true }).click();
+    await expect(page.getByRole('status')).toHaveText('Profil enregistré pour les prochaines tâches.');
+    await page.reload();
+    await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
+    await page.getByText('Exécution et connexion du projet', { exact: true }).click();
+    await expect(page.getByLabel('Profil d’exécution', { exact: true })).toHaveValue('funkart');
+    await expect(page.getByText('Fusion automatique après réussite des contrôles : export.', { exact: true })).toBeVisible();
+    const credentials = await page.request.post(`${appServer}/api/v1/agents`, { data: { name: 'Worker', projectIds: [project.id] } });
+    const token = (await credentials.json()).data.token;
+    const report = await request.post(`${appServer}/api/v1/agent/projects/${project.id}/diagnostic`, { headers: { Authorization: `Bearer ${token}` }, data: { state: 'blocked', checks: [{ name: 'Godot', state: 'blocked', message: 'Godot 4.4.1 doit être installé sur le worker.' }] } });
+    expect(report.status()).toBe(200);
+    await page.reload();
+    await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
+    await page.getByText('Exécution et connexion du projet', { exact: true }).click();
+    await expect(page.getByText('Godot 4.4.1 doit être installé sur le worker.', { exact: false })).toBeVisible();
+  });
   test('engine and model are project settings while effort persists on each card and is locked during a conversation', async ({ page, request, appServer }) => {
     await login(page, appServer);
     const project = seed[0], card = project.cards[0];

@@ -3,6 +3,7 @@ import { pullRequestLink } from './github.js';
 import { tokenHash } from './accounts.js';
 import { validateWorkspace } from '../src/lib/workspace.js';
 import { validateAi, efforts } from '../worker/ai-settings.mjs';
+import { defaultExecutionProfile, validateExecutionProfile } from '../worker/execution-profile.mjs';
 
 const fail = (status, code, message) => { throw Object.assign(new Error(message), { status, code }); };
 const text = (value, name, max = 20000) => {
@@ -15,7 +16,9 @@ const source = card => JSON.stringify([card.title, card.description, card.tags, 
 export const LEASE_MS = 5 * 60000;
 
 export function createWorkflows(db, { transaction, audit, findCard }) {
-  db.exec(`CREATE TABLE IF NOT EXISTS project_ai (project_id TEXT PRIMARY KEY, data TEXT NOT NULL);
+  db.exec(`CREATE TABLE IF NOT EXISTS project_worker_status (project_id TEXT NOT NULL, agent_id TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(project_id,agent_id));
+    CREATE TABLE IF NOT EXISTS project_execution (project_id TEXT PRIMARY KEY, data TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS project_ai (project_id TEXT PRIMARY KEY, data TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS github_projects (project_id TEXT PRIMARY KEY, repository TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS github_pr_bindings (repository TEXT NOT NULL, number INTEGER NOT NULL, execution_id TEXT NOT NULL, PRIMARY KEY(repository,number));
     CREATE TABLE IF NOT EXISTS agents (id TEXT PRIMARY KEY, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, projects TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1);
@@ -103,6 +106,10 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
     const row = db.prepare('SELECT data FROM project_ai WHERE project_id=?').get(projectId);
     return row ? JSON.parse(row.data) : { engine: 'codex', model: '' };
   };
+  const executionProfile = projectId => {
+    const row = db.prepare('SELECT data FROM project_execution WHERE project_id=?').get(projectId);
+    return row ? JSON.parse(row.data) : defaultExecutionProfile(githubProject(projectId) || '');
+  };
   const prepare = (projectId, cardId, data, actor) => {
     const { card } = findCard(projectId, cardId);
     if (db.prepare("SELECT id FROM executions WHERE card_id=? AND state NOT IN ('done','cancelled')").get(cardId)) fail(409, 'active_execution', 'Une exécution existe déjà. Annulez-la avant de préparer une nouvelle demande.');
@@ -110,7 +117,7 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
     if (data?.delivery !== undefined && data.delivery !== 'github') fail(400, 'invalid_delivery', 'La livraison se fait par fusion automatique GitHub.');
     const repository = githubProject(projectId);
     if (!repository) fail(400, 'github_not_configured', 'Configurez le dépôt GitHub du projet.');
-    const run = { delivery, repository, id: randomUUID(), projectId, cardId, state: 'ready', version: 0, requestSource: 'card', objective: text(card.description, 'Description de la carte'), criteria: '', context: '', requestedBy: { id: actor.id, name: actor.name }, createdAt: new Date().toISOString(), source: source(card), cardSnapshot: card, agent: null, updates: [], exchanges: [], submissions: [] };
+    const run = { delivery, repository, executionProfile: executionProfile(projectId), id: randomUUID(), projectId, cardId, state: 'ready', version: 0, requestSource: 'card', objective: text(card.description, 'Description de la carte'), criteria: '', context: '', requestedBy: { id: actor.id, name: actor.name }, createdAt: new Date().toISOString(), source: source(card), cardSnapshot: card, agent: null, updates: [], exchanges: [], submissions: [] };
     db.prepare('INSERT INTO executions(id,project_id,card_id,state,version,data) VALUES(?,?,?,?,0,?)').run(run.id, projectId, cardId, run.state, JSON.stringify(run));
     return save(run, actor, 'prepared');
   };
@@ -129,6 +136,35 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
     if (changed) db.prepare('UPDATE workspace SET projects=?,revision=revision+1,updated_at=? WHERE id=1').run(JSON.stringify(projects), new Date().toISOString());
   });
   return {
+    workerStatus(projectId) {
+      const rows = db.prepare('SELECT s.data,a.projects FROM project_worker_status s JOIN agents a ON a.id=s.agent_id WHERE s.project_id=? AND a.active=1').all(projectId);
+      const status = rows.filter(row => JSON.parse(row.projects).includes(projectId)).map(row => JSON.parse(row.data)).sort((a,b) => b.date.localeCompare(a.date))[0];
+      if (!status) return null;
+      const current = { repository: githubProject(projectId), ai: projectAi(projectId), executionProfile: executionProfile(projectId) };
+      return { ...status, stale: JSON.stringify(status.configuration) !== JSON.stringify(current) || Date.now() - Date.parse(status.date) > 5 * 60000 };
+    },
+    recordWorkerStatus(projectId, data, agent) {
+      checkAgent(agent, projectId);
+      if (!['ready','blocked'].includes(data?.state) || !Array.isArray(data.checks) || !data.checks.length || data.checks.length > 12 || data.checks.some(check => !['ok','blocked','unknown'].includes(check.state) || typeof check.name !== 'string' || !check.name || check.name.length > 100 || typeof check.message !== 'string' || check.message.length > 600)) fail(400, 'invalid_diagnostic', 'Diagnostic du worker invalide.');
+      const status = { state: data.state, checks: data.checks.map(({name,state,message}) => ({name,state,message})), date: new Date().toISOString(), agent: { id: agent.id, name: agent.name }, configuration: { repository: githubProject(projectId), ai: projectAi(projectId), executionProfile: executionProfile(projectId) } };
+      db.prepare('INSERT INTO project_worker_status VALUES(?,?,?) ON CONFLICT(project_id,agent_id) DO UPDATE SET data=excluded.data').run(projectId, agent.id, JSON.stringify(status));
+      return status;
+    },
+    executionProfile,
+    configureExecution(projectId, data, actor) {
+      return transaction(() => {
+        if (!JSON.parse(db.prepare('SELECT projects FROM workspace WHERE id=1').get().projects).some(project => project.id === projectId)) fail(404, 'project_not_found', 'Projet inexistant.');
+        let profile; try { profile = validateExecutionProfile(data); } catch (error) { fail(400, 'invalid_execution_profile', error.message); }
+        db.prepare('INSERT INTO project_execution VALUES(?,?) ON CONFLICT(project_id) DO UPDATE SET data=excluded.data').run(projectId, JSON.stringify(profile));
+        audit(actor, 'project.execution_configured', { projectId, profile }); return profile;
+      });
+    },
+    agentProjects(agent) {
+      const row = db.prepare('SELECT * FROM agents WHERE id=? AND active=1').get(agent.id);
+      if (!row) fail(401, 'agent_unauthorized', 'Agent révoqué.');
+      const ids = JSON.parse(row.projects);
+      return JSON.parse(db.prepare('SELECT projects FROM workspace WHERE id=1').get().projects).filter(project => ids.includes(project.id)).map(project => ({ id: project.id, name: project.name, repository: githubProject(project.id), ai: projectAi(project.id), executionProfile: executionProfile(project.id) }));
+    },
     projectAi,
     configureAi(projectId, data, actor) {
       return transaction(() => {
@@ -145,7 +181,7 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
         if (!projects.some(p => p.id === projectId)) fail(404, 'project_not_found', 'Projet inexistant.');
         if (typeof repository !== 'string' || !/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(repository) || repository.length > 200) fail(400, 'invalid_repository', 'Indiquez le dépôt sous la forme propriétaire/dépôt.');
         db.prepare('INSERT INTO github_projects VALUES(?,?) ON CONFLICT(project_id) DO UPDATE SET repository=excluded.repository').run(projectId, repository);
-        audit(actor, 'github.configured', { projectId, repository }); return { repository, branch: 'main' };
+        audit(actor, 'github.configured', { projectId, repository }); return { repository, branch: executionProfile(projectId).branch };
       });
     },
     mergeEligible(repository, number, headSha, agent) {
@@ -159,10 +195,12 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
     githubChecks(event) {
       return transaction(() => {
         const check = event?.workflow_run, repository = event?.repository?.full_name;
-        if (event?.action !== 'completed' || check?.name !== 'Tests' || check.event !== 'pull_request' || typeof repository !== 'string' || check.head_repository?.full_name?.toLowerCase() !== repository.toLowerCase() || check.status !== 'completed' || !Number.isSafeInteger(check.id) || !Number.isInteger(check.run_attempt) || !['success','failure','cancelled','timed_out','action_required','neutral','skipped','stale'].includes(check.conclusion)) return { updated: false };
+        if (event?.action !== 'completed' || check?.event !== 'pull_request' || typeof repository !== 'string' || check.head_repository?.full_name?.toLowerCase() !== repository.toLowerCase() || check.status !== 'completed' || !Number.isSafeInteger(check.id) || !Number.isInteger(check.run_attempt) || !['success','failure','cancelled','timed_out','action_required','neutral','skipped','stale'].includes(check.conclusion)) return { updated: false };
         let updated = false;
         for (const row of rows()) {
           const run = unpack(row), pr = run.submissions.at(-1)?.pullRequest;
+          const profile = run.executionProfile || defaultExecutionProfile();
+          if (check.name !== profile.workflow.name || check.path && check.path.split('@')[0] !== `.github/workflows/${profile.workflow.file}`) continue;
           if (run.state !== 'merging' || pr?.repository !== repository.toLowerCase() || pr.headSha !== check.head_sha) continue;
           if (run.githubChecks?.runId > check.id || (run.githubChecks?.runId === check.id && run.githubChecks?.attempt >= check.run_attempt)) continue;
           run.githubChecks = { runId: check.id, attempt: check.run_attempt, conclusion: check.conclusion, url: check.html_url };
@@ -179,11 +217,12 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
     githubMerged(event) {
       return transaction(() => {
         const pr = event?.pull_request, repository = event?.repository?.full_name;
-        if (event?.action !== 'closed' || pr?.merged !== true || typeof repository !== 'string' || !Number.isSafeInteger(pr.number) || pr.number < 1 || pr.base?.ref !== 'main' || pr.head?.repo?.full_name?.toLowerCase() !== repository.toLowerCase() || !/^[a-f0-9]{40}$/.test(pr.merge_commit_sha || '') || !Number.isFinite(Date.parse(pr.merged_at))) return { updated: false };
+        if (event?.action !== 'closed' || pr?.merged !== true || typeof repository !== 'string' || !Number.isSafeInteger(pr.number) || pr.number < 1 || pr.head?.repo?.full_name?.toLowerCase() !== repository.toLowerCase() || !/^[a-f0-9]{40}$/.test(pr.merge_commit_sha || '') || !Number.isFinite(Date.parse(pr.merged_at))) return { updated: false };
         const binding = db.prepare('SELECT execution_id FROM github_pr_bindings WHERE repository=? AND number=?').get(repository.toLowerCase(), pr.number);
         if (!binding) return { updated: false };
         const row = db.prepare('SELECT * FROM executions WHERE id=?').get(binding.execution_id);
         const run = unpack(row), submission = run.submissions.at(-1);
+        if (pr.base?.ref !== (run.executionProfile?.branch || 'main')) return { updated: false };
         if (run.state !== 'merging' || submission?.pullRequest?.headSha !== pr.head?.sha || Date.parse(pr.merged_at) + 1000 < Date.parse(submission.date)) return { updated: false };
         checkSource(run);
         run.state = 'done'; submission.pullRequest.mergeSha = pr.merge_commit_sha;
@@ -284,6 +323,8 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
             run.ai = { ...ai, effort };
           }
           if ((run.ai.engine !== 'codex' || run.ai.model || run.ai.effort) && (!data.aiSettingsSupported || !data.engines?.includes(run.ai.engine))) fail(503, 'worker_update_required', 'Ce worker ne prend pas en charge les paramètres IA de cette exécution.');
+          if (!run.executionProfile) { run.executionProfile = run.agent ? defaultExecutionProfile() : executionProfile(projectId); run.legacyExecutionProfile = !!run.agent; }
+          if (JSON.stringify(run.executionProfile) !== JSON.stringify(defaultExecutionProfile()) && !data.executionProfilesSupported) fail(503, 'worker_update_required', 'Mettez à jour le worker pour utiliser ce profil d’exécution.');
           const leaseToken = randomBytes(32).toString('hex'); run.state = 'running'; run.agent = { id: agent.id, name: agent.name }; run.interruption = null;
           save(run, agent, 'claimed', { leaseHash: tokenHash(leaseToken), expires: Date.now() + LEASE_MS });
           return { ...run, leaseToken, leaseExpiresAt: new Date(Date.now() + LEASE_MS).toISOString() };

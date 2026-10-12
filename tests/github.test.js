@@ -96,6 +96,17 @@ test('automatic merger checks both suites and merges exactly the tested head com
  const f=mergeFixture(); const result=await mergeAgentPullRequest({repository,runId:12,request:f.request,eligible:async()=>true}); assert.equal(result.merged,true);
  assert.deepEqual(f.calls.find(c=>c.method==='PUT').data,{sha,merge_method:'squash'});
 });
+test('the GitHub client creates a missing delivery label once and retries attaching it to the PR', async () => {
+ const calls=[]; let attached=0;
+ const client=createGithubClient('private',async(url,options)=>{
+  calls.push({path:new URL(url).pathname,body:JSON.parse(options.body)});
+  if(new URL(url).pathname.endsWith('/issues/1/labels') && attached++===0)return Response.json({}, {status:422});
+  return Response.json({});
+ });
+ await client.label(repository,1);
+ assert.equal(calls.length,3); assert.equal(calls[1].body.name,'planifikateur-agent');
+ assert.deepEqual(calls[2].body.labels,['planifikateur-agent']);
+});
 test('repository names differing only in case still identify the same tested PR', async () => {
  const f = mergeFixture();
  const result = await mergeAgentPullRequest({ repository: repository.toLowerCase(), runId: 12, request: f.request, eligible: async () => true });

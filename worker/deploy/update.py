@@ -14,7 +14,7 @@ import urllib.request
 
 REQUIRED_JOBS = ("Tests serveur", "Tests navigateur")
 REVISION_LABEL = "io.planifikateur.worker.revision"
-READY = "Worker Codex démarré : une tâche à la fois."
+READY = "Worker IA démarré : une tâche à la fois."
 BUSY_PROBE = """const fs=require('node:fs');
 try { const jobs=fs.readdirSync('/data/state').filter(f=>f.endsWith('.json'));
 console.log(jobs.some(f=>JSON.parse(fs.readFileSync('/data/state/'+f,'utf8')).phase==='running')?'busy':'idle'); }

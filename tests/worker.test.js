@@ -15,9 +15,11 @@ import { commandEnvironment, runCommand } from '../worker/commands.mjs';
 import { createCodexRunner, taskPrompt } from '../worker/codex.mjs';
 import { ApiError, PublicationPendingError, createSiteClient, createGithubClient, connectionDiagnostic } from '../worker/clients.mjs';
 import { mergeAgentPullRequest, requiredJobs } from '../scripts/merge-agent-pr.mjs';
+import { validateExecutionProfile } from '../worker/execution-profile.mjs';
 
 const repository = 'worker/example', webhookSecret = 'worker-test-webhook';
 async function fixture(t, options = {}) {
+  const repository = options.repository || 'worker/example';
   const root = await mkdtemp(join(tmpdir(), 'planifikateur-worker-'));
   const store = createStore(join(root, 'site.sqlite')), user = seedAccount(store);
   const snapshot = store.read(), project = snapshot.projects[0], card = project.cards[0];
@@ -40,25 +42,32 @@ async function fixture(t, options = {}) {
   await git(['add', '.']); await git(['commit', '-m', 'Fixture']); await git(['remote', 'add', 'origin', bare]); await git(['push', 'origin', 'main']);
   const config = readWorkerConfig({
     PLANIFIKATEUR_URL: origin, PLANIFIKATEUR_AGENT_TOKEN: credentials.token, PLANIFIKATEUR_GITHUB_TOKEN: 'github-test-token',
-    PLANIFIKATEUR_WORKER_PROJECTS: project.id, PLANIFIKATEUR_WORKER_REPOSITORIES: repository,
+    PLANIFIKATEUR_WORKER_DISCOVERY: options.auto ? 'auto' : 'manual', PLANIFIKATEUR_WORKER_PROJECTS: project.id, PLANIFIKATEUR_WORKER_REPOSITORIES: repository,
     PLANIFIKATEUR_WORKER_STATE_DIR: join(root, 'worker'), OPENAI_API_KEY: 'model-test-key',
     PLANIFIKATEUR_WORKER_INSTALL_COMMANDS: JSON.stringify([['node', '--version']]),
     PLANIFIKATEUR_WORKER_TEST_COMMANDS: JSON.stringify([['node', '--test', 'test.mjs'], ['node', 'browser-check.mjs']]),
   });
+  store.workflows.configureExecution(project.id, { preset: options.preset || 'planifikateur', installCommands: config.installCommands, testCommands: config.testCommands }, user);
+  const profile = store.workflows.executionProfile(project.id);
   const state = createState(config.stateRoot), calls = [], logs = [];
   const execute = async (command, args) => {
     calls.push({ command, env: args.env });
+    if (options.preset && command[0] === 'node' && command[1] === '--version') return { code: 0, output: `v${profile.nodeMajor}.0.0` };
+    if (options.preset && command[0] === 'godot' && command[1] === '--version') return { code: 0, output: '4.4.1.stable.official' };
     if (command[0] === 'git') command = ['git', '-c', `url.${bare}.insteadOf=https://github.com/${repository}.git`, ...command.slice(1)];
     return runCommand(command, args);
   };
   let pr, labels = 0, branch, behind = false, testsReady = false, merges = 0, mergeFailure = false, publications = 0;
   const mergeClient = createGithubClient('github-test-token', async (url, request) => {
     const path = new URL(url).pathname;
-    const run = { id: 1, workflow_id: 2, event: 'pull_request', status: 'completed', conclusion: 'success', head_repository: { full_name: repository }, head_sha: pr.head.sha, head_branch: branch, run_attempt: 1 };
+    if (path === `/repos/${repository}`) return Response.json({ full_name: repository });
+    if (path.endsWith(`/actions/workflows/${profile.workflow.file}`)) return Response.json({ id: 2, name: profile.workflow.name, state: 'active' });
+    if (path.includes('/contents/.github/workflows/')) return Response.json({ encoding: 'base64', content: Buffer.from('on:\n  pull_request:\n').toString('base64') });
+    const run = { id: 1, workflow_id: 2, event: 'pull_request', status: 'completed', conclusion: 'success', head_repository: { full_name: repository }, head_sha: pr?.head.sha || 'a'.repeat(40), head_branch: branch, run_attempt: 1 };
     let data;
-    if (path.endsWith('/ci.yml/runs')) data = { workflow_runs: testsReady ? [run] : [] };
+    if (path.endsWith(`/${profile.workflow.file}/runs`)) data = { workflow_runs: testsReady ? [run] : [] };
     else if (path.endsWith('/ci.yml')) data = { id: 2 };
-    else if (path.endsWith('/actions/runs/1/jobs')) data = { jobs: requiredJobs.map(name => ({ name, status: 'completed', conclusion: 'success', run_attempt: 1 })), total_count: 2 };
+    else if (path.endsWith('/actions/runs/1/jobs')) data = { jobs: profile.workflow.jobs.map(name => ({ name, status: 'completed', conclusion: 'success', run_attempt: 1 })), total_count: profile.workflow.jobs.length };
     else if (path.endsWith('/actions/runs/1')) data = run;
     else if (path.endsWith('/pulls/1/merge')) {
       if (mergeFailure) return Response.json({ message: 'Forbidden' }, { status: 403 });
@@ -73,6 +82,7 @@ async function fixture(t, options = {}) {
     return Response.json(data);
   });
   const github = {
+    request: mergeClient.request,
     async ensurePullRequest(repo, name, title, body, signal, expectedSha) {
       assert.equal(repo, repository); branch = name;
       const sha = await git(['rev-parse', `refs/heads/${branch}`], bare);
@@ -183,7 +193,7 @@ test('deleted cards in persisted jobs do not block a new task and their checkout
   const checkout = join(f.config.stateRoot, 'jobs', jobs[0].id);
   await mkdir(checkout, { recursive: true }); await writeFile(join(checkout, 'partial.txt'), 'Keep partial work');
   f.prepare();
-  assert.equal((await f.worker.tick()).status, 'merging');
+  assert.equal((await f.worker.tick()).status, 'merging', JSON.stringify(f.logs));
   for (const job of jobs) assert.deepEqual(await f.state.get(job.id), { ...job, phase: 'cancelled' });
   assert.equal(await readFile(join(checkout, 'partial.txt'), 'utf8'), 'Keep partial work');
   assert.equal(f.modelCalls.length, 1);
@@ -353,6 +363,51 @@ test('a pending PR is revised against new main and only its new tested SHA can m
   assert.equal(f.store.workflows.mergeEligible(repository, 1, initial.sha, f.credentials.agent).eligible, false);
   assert.equal(f.store.workflows.mergeEligible(repository, 1, updated.sha, f.credentials.agent).eligible, true);
   assert.equal(f.calls.some(c => c.command.includes('--force') || c.command.includes('--force-with-lease')), false);
+});
+
+for (const preset of ['defilordi', 'funkart']) test(`automatic discovery delivers ${preset} with its model, repository, tests and GitHub workflow`, async t => {
+  const repo = `flo91360/${preset}`;
+  const f = await fixture(t, { auto: true, preset, repository: repo });
+  f.config.projectIds = []; f.config.repositories = [];
+  f.store.workflows.configureAi(f.project.id, { engine: 'codex', model: 'gpt-6.1-sol' }, f.user);
+  f.prepare();
+  assert.equal((await f.worker.tick()).status, 'merging', JSON.stringify(f.logs));
+  assert.equal(f.modelCalls.length, 1);
+  assert.equal(f.modelCalls[0].job.ai.model, 'gpt-6.1-sol');
+  assert.equal(f.modelCalls[0].run.repository, repo);
+  assert.equal(f.modelCalls[0].run.executionProfile.preset, preset);
+  assert.equal(f.store.workflows.workerStatus(f.project.id).state, 'ready');
+  f.setTestsReady(true);
+  await f.worker.tick(); assert.equal(f.merges, 1);
+  const run = f.current();
+  await f.webhook({ action: 'closed', repository: { full_name: repo }, pull_request: { number: 1, merged: true, merged_at: new Date().toISOString(), merge_commit_sha: f.pr.head.sha, head: { sha: f.pr.head.sha, repo: { full_name: repo } }, base: { ref: 'main' } } });
+  assert.equal(f.current().state, 'done');
+  assert.equal(await f.git(['show', 'main:greet.mjs'], f.bare), "export const greet = () => 'bonjour';");
+  assert.equal(f.current().id, run.id);
+});
+
+test('a blocked new engine configuration does not prevent resuming an existing Codex conversation', async t => {
+  const f = await fixture(t, { auto: true, model: async (input, count) => {
+    if (count === 1) return { status: 'question', summary: '', question: 'Quelle langue ?' };
+    await writeFile(join(input.cwd, 'greet.mjs'), "export const greet = () => 'bonjour';\n");
+    return { status: 'result', summary: 'Traduction prête.', question: '' };
+  } });
+  f.prepare(); assert.equal((await f.worker.tick()).status, 'waiting');
+  f.store.workflows.configureAi(f.project.id, { engine: 'claude-code', model: 'sonnet' }, f.user);
+  const waiting = f.current();
+  f.store.workflows.human(f.project.id, f.card.id, waiting.id, 'answer', { version: waiting.version, message: 'Français' }, f.user);
+  assert.equal((await f.worker.tick()).status, 'merging', JSON.stringify(f.logs));
+  assert.equal(f.current().ai.engine, 'codex'); assert.equal(f.modelCalls.length, 2);
+  assert.equal(f.store.workflows.workerStatus(f.project.id).state, 'blocked');
+});
+
+test('withdrawn projects preserve their local conversation and cannot block another authorized project', async t => {
+  const f = await fixture(t, { auto: true });
+  const previous = { id: 'withdrawn-task', projectId: 'withdrawn-project', cardId: 'previous-card', repository: 'old/repo', phase: 'running', threadId: 'keep-thread' };
+  await f.state.put(previous);
+  f.prepare(); assert.equal((await f.worker.tick()).status, 'merging', JSON.stringify(f.logs));
+  assert.deepEqual(await f.state.get(previous.id), { ...previous, phase: 'unauthorized' });
+  assert.equal(f.modelCalls.length, 1);
 });
 
 test('worker ignores manual deliveries and repositories outside its allowlist', async t => {

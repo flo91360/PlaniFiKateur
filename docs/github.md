@@ -13,9 +13,10 @@ de la fusion par GitHub.
    les variables privées du service. Ne pas le placer dans Git.
 2. Dans **Paramètres du projet**, un administrateur ouvre **Dépôt GitHub et
    fusion automatique**, puis renseigne `propriétaire/dépôt`. La branche cible est
-   `main`. Les workflows de ce dépôt doivent être présents dans chaque dépôt
-   qui reçoit les PR de l’agent : `.github/workflows/ci.yml`.
-   Les commandes de tests devront être adaptées pour les autres applications.
+   du profil. Choisir le profil d’exécution correspondant au projet selon
+   [le guide multi-projets](multi-projets.md). Chaque dépôt conserve son propre
+   workflow et ses commandes : ne pas copier les tests PlaniFiKateur dans les
+   autres applications.
 3. Créer une identité d’agent autorisée sur ce projet. Configurer le worker avec
    l’URL du site, la clé de cet agent et son token GitHub selon
    [le guide du worker](worker.md). Le worker utilise ces accès pour vérifier
@@ -25,9 +26,9 @@ de la fusion par GitHub.
    - Type : `application/json`.
    - Secret : même valeur que `PLANIFIKATEUR_GITHUB_WEBHOOK_SECRET`.
    - Événements : **Pull requests** et **Workflow runs** ; webhook actif.
-5. Créer le label `planifikateur-agent` dans GitHub.
+5. Le worker crée le label `planifikateur-agent` s’il manque lors de la livraison.
 6. Laisser une première exécution du workflow **Tests** enregistrer les contrôles.
-   Dans la protection de `main`, exiger **Tests serveur** et **Tests navigateur**,
+   Dans la protection de la branche cible, exiger les contrôles du profil,
    ainsi qu’une branche à jour avant fusion. Ne pas exiger d’approbation humaine.
    Les restrictions du dépôt doivent permettre au workflow la fusion des PR.
 
@@ -44,10 +45,11 @@ secrets Actions `PLANIFIKATEUR_URL` et `PLANIFIKATEUR_AGENT_TOKEN`. Leur absence
 ne bloque pas la fusion par le worker. Une révocation de l’agent impose de
 remplacer sa clé dans chaque service qui l’utilise.
 
-La configuration distante n’a pas été appliquée depuis l’environnement de
-travail : les appels à l’API GitHub de configuration y sont refusés. La création
-du webhook et les règles de branche restent donc à effectuer dans
-les interfaces GitHub et Railway. Aucune fusion réelle n’a été vérifiée.
+La configuration des webhooks et des règles de branche nécessite les droits
+d’administration correspondants. Si l’intégration de l’environnement refuse
+ces appels, effectuer cette configuration initiale dans GitHub et Railway.
+Le guide multi-projets distingue les vérifications locales des livraisons
+réelles sur le VPS.
 
 ## Parcours de l’agent
 
@@ -101,8 +103,8 @@ La fusion est exécutée par le code installé du worker, hors du dépôt modifi
 par Codex. Le workflow complémentaire **Fusion des PR agent** tourne avec le
 code de `main`, jamais avec le code de la PR et ses secrets. Ils vérifient :
 
-- Une exécution terminée et réussie du bon workflow **Tests**, pour cette PR.
-- Les deux jobs requis, présents une seule fois, terminés avec `success`.
+- Une exécution terminée et réussie du workflow du profil, pour cette PR.
+- Les jobs requis du profil, présents une seule fois, terminés avec `success`.
   `skipped`, `neutral`, `cancelled`, échec ou job absent ne suffisent pas.
 - Le même dépôt, la branche `main`, une PR ouverte, sans brouillon, avec le label.
 - Le commit courant de la PR identique au commit testé et une branche à jour.

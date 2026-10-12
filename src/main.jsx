@@ -24,7 +24,7 @@ import { effortLabels } from '../worker/ai-settings.mjs';
 import Avatar, { avatarLabel } from './components/Avatar.jsx';
 import { workRequest } from './components/AgentSetup.jsx';
 
-const statuses = { draft: { label: 'À explorer', icon: Circle }, ready: { label: 'Prête à démarrer', icon: ArrowRight }, progress: { label: 'En cours', icon: Clock3 }, clarify: { label: 'À préciser', icon: CircleHelp }, review: { label: 'À valider', icon: CheckCheck }, flo: { label: 'Flo regarde', icon: CircleHelp }, done: { label: 'Terminée', icon: Check } };
+const statuses = { draft: { label: 'À explorer', icon: Circle }, ready: { label: 'Prête à démarrer', icon: ArrowRight }, progress: { label: 'En cours', icon: Clock3 }, clarify: { label: 'À préciser', icon: CircleHelp }, review: { label: 'Tests et fusion', icon: CheckCheck }, flo: { label: 'Flo regarde', icon: CircleHelp }, done: { label: 'Terminée', icon: Check } };
 const priorities = { low: 'Basse', normal: 'Normale', high: 'Haute' };
 const parseTags = text => [...new Set(text.split(',').map(tag => tag.trim()).filter(Boolean))];
 

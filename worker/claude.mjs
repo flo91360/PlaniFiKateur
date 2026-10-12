@@ -5,7 +5,7 @@ import { resultSchema, taskPrompt, prepareAttachments } from './codex.mjs';
 import { parseModelResult } from './model-result.mjs';
 
 export function createClaudeRunner(config, dependencies = {}) {
-  return { async run({ run, job, cwd, signal, onThread, onRuntime, feedback }) {
+  return { async run({ run, job, cwd, signal, onThread, onRuntime, feedback, environment }) {
     if (!config.claudeApiKey && !config.claudeOauthToken) return { status: 'question', summary: '', files: [], question: 'Claude Code n’est pas authentifié. Un administrateur doit configurer ANTHROPIC_API_KEY ou CLAUDE_CODE_OAUTH_TOKEN dans l’environnement privé du worker, puis recréer le conteneur pour charger cette variable. Répondez dans cette discussion une fois la configuration appliquée.' };
     const { query } = dependencies.query ? dependencies : await import('@anthropic-ai/claude-agent-sdk');
     const home = join(cwd, '.planifikateur', 'home');
@@ -20,7 +20,7 @@ export function createClaudeRunner(config, dependencies = {}) {
     const options = {
       cwd, abortController: controller, permissionMode: 'acceptEdits', settingSources: [],
       tools: ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash', 'AskUserQuestion'],
-      env: { ...commandEnvironment(), HOME: home, CLAUDE_CONFIG_DIR: config.claudeHome, PLANIFIKATEUR_WORKER: '1', ...(config.claudeApiKey ? { ANTHROPIC_API_KEY: config.claudeApiKey } : {}), ...(config.claudeOauthToken ? { CLAUDE_CODE_OAUTH_TOKEN: config.claudeOauthToken } : {}) },
+      env: { ...commandEnvironment(environment), HOME: home, CLAUDE_CONFIG_DIR: config.claudeHome, PLANIFIKATEUR_WORKER: '1', ...(environment?.ELECTRON_SKIP_BINARY_DOWNLOAD ? { ELECTRON_SKIP_BINARY_DOWNLOAD: environment.ELECTRON_SKIP_BINARY_DOWNLOAD } : {}), ...(config.claudeApiKey ? { ANTHROPIC_API_KEY: config.claudeApiKey } : {}), ...(config.claudeOauthToken ? { CLAUDE_CODE_OAUTH_TOKEN: config.claudeOauthToken } : {}) },
       ...(ai.model ? { model: ai.model } : {}), ...(ai.effort ? { effort: ai.effort } : {}), ...(job.threadId ? { resume: job.threadId } : {}),
       outputFormat: { type: 'json_schema', schema: resultSchema },
       sandbox: { enabled: true, failIfUnavailable: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false,

@@ -13,7 +13,7 @@ try {
   process.on('SIGINT', () => stop.abort(new Error('Arrêt du worker.')));
   const worker = createWorker(config);
   const once = process.argv.includes('--once');
-  console.log('Worker Codex démarré : une tâche à la fois.');
+  console.log('Worker IA démarré : une tâche à la fois.');
   do {
     try {
       const result = await worker.tick(stop.signal);

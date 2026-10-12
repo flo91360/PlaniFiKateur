@@ -74,6 +74,15 @@ export function createApi(store, config = {}) {
       }
       const githubProject = /^\/api\/v1\/projects\/([a-zA-Z0-9_-]+)\/github$/.exec(path);
       const aiProject = /^\/api\/v1\/projects\/([a-zA-Z0-9_-]+)\/ai$/.exec(path);
+      const executionProject = /^\/api\/v1\/projects\/([a-zA-Z0-9_-]+)\/(execution|worker-status)$/.exec(path);
+      if (executionProject) {
+        requireAccount(req);
+        if (!store.read().projects.some(project => project.id === executionProject[1])) throw httpError(404, 'project_not_found', 'Projet inexistant.');
+        if (req.method === 'GET') send(res, 200, { data: executionProject[2] === 'execution' ? store.workflows.executionProfile(executionProject[1]) : store.workflows.workerStatus(executionProject[1]) });
+        else if (req.method === 'PUT' && executionProject[2] === 'execution') { const actor = requireAdmin(req); send(res, 200, { data: store.workflows.configureExecution(executionProject[1], await body(req), actor) }); }
+        else throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
+        return true;
+      }
       if (aiProject) {
         requireAccount(req);
         if (!store.read().projects.some(project => project.id === aiProject[1])) throw httpError(404, 'project_not_found', 'Projet inexistant.');
@@ -84,7 +93,7 @@ export function createApi(store, config = {}) {
       }
       if (githubProject) {
         requireAccount(req);
-        if (req.method === 'GET') send(res, 200, { data: { repository: store.workflows.githubProject(githubProject[1]), branch: 'main', webhookConfigured: !!config.githubWebhookSecret } });
+        if (req.method === 'GET') send(res, 200, { data: { repository: store.workflows.githubProject(githubProject[1]), branch: store.workflows.executionProfile(githubProject[1]).branch, webhookConfigured: !!config.githubWebhookSecret } });
         else if (req.method === 'PUT') {
           requireAdmin(req); const data = await body(req);
           send(res, 200, { data: store.workflows.configureGithub(githubProject[1], data?.repository, requireAdmin(req)) });
@@ -160,6 +169,15 @@ export function createApi(store, config = {}) {
         if (!agent) throw httpError(401, 'agent_unauthorized', 'Une clé d’agent actif est requise.');
         return agent;
       };
+      if (path === '/api/v1/agent/projects') {
+        if (req.method !== 'GET') throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
+        send(res, 200, { data: store.workflows.agentProjects(authenticatedAgent()).map(project => ({ ...project, webhookConfigured: !!config.githubWebhookSecret })) }); return true;
+      }
+      const diagnosticRoute = /^\/api\/v1\/agent\/projects\/([a-zA-Z0-9_-]+)\/diagnostic$/.exec(path);
+      if (diagnosticRoute) {
+        if (req.method !== 'POST') throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
+        const agent = authenticatedAgent(); send(res, 200, { data: store.workflows.recordWorkerStatus(diagnosticRoute[1], await body(req), agent) }); return true;
+      }
       if (path === '/api/v1/github/merge-eligibility') {
         if (req.method !== 'GET') throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
         const repository = url.searchParams.get('repository') || '', number = Number(url.searchParams.get('number')), sha = url.searchParams.get('sha') || '';

@@ -10,7 +10,7 @@ Cette installation correspond au serveur Debian utilisé dans ce projet :
 utilisateur `admin`, dépôt `/home/admin/PlaniFiKateur`, fichier privé
 `/home/admin/planifikateur-worker.env`, conteneur `planifikateur-worker` et volume
 Docker `planifikateur-worker-data`. Le worker doit déjà être démarré et connecté
-à Codex. Les cinq variables existantes suffisent ; le token GitHub doit pouvoir
+à Codex. Les variables de connexion existantes suffisent ; le token GitHub doit pouvoir
 lire les Actions du dépôt `flo91360/PlaniFiKateur`.
 
 Depuis le terminal SSH du VPS :

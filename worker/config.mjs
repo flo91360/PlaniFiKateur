@@ -7,8 +7,11 @@ export function readWorkerConfig(env = process.env) {
   const required = name => { if (!env[name]?.trim()) throw new Error(`${name} est requis.`); return env[name].trim(); };
   const origin = new URL(required('PLANIFIKATEUR_URL'));
   if (origin.username || origin.password || origin.search || origin.hash || origin.pathname !== '/' || !['https:', 'http:'].includes(origin.protocol) || (origin.protocol === 'http:' && !['localhost', '127.0.0.1', '[::1]'].includes(origin.hostname))) throw new Error('PLANIFIKATEUR_URL : origine HTTPS requise (HTTP accepté uniquement en local).');
-  const projectIds = [...new Set(required('PLANIFIKATEUR_WORKER_PROJECTS').split(',').map(s => s.trim()))];
-  const repositories = [...new Set(required('PLANIFIKATEUR_WORKER_REPOSITORIES').split(',').map(s => s.trim().toLowerCase()))];
+  const discovery = env.PLANIFIKATEUR_WORKER_DISCOVERY || 'auto';
+  if (!['auto','manual'].includes(discovery)) throw new Error('PLANIFIKATEUR_WORKER_DISCOVERY : auto ou manual.');
+  const projectIds = [...new Set((env.PLANIFIKATEUR_WORKER_PROJECTS || '').split(',').map(s => s.trim()).filter(Boolean))];
+  const repositories = [...new Set((env.PLANIFIKATEUR_WORKER_REPOSITORIES || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean))];
+  if (discovery === 'manual' && (!projectIds.length || !repositories.length)) throw new Error('Le mode manual exige les projets et les dépôts autorisés.');
   if (projectIds.length > 100 || projectIds.some(id => !validId(id))) throw new Error('PLANIFIKATEUR_WORKER_PROJECTS : identifiants de projets séparés par des virgules.');
   if (repositories.some(repo => !validRepository(repo))) throw new Error('PLANIFIKATEUR_WORKER_REPOSITORIES : propriétaire/dépôt, séparés par des virgules.');
   const number = (name, fallback, min, max) => { const n = env[name] === undefined ? fallback : Number(env[name]); if (!Number.isSafeInteger(n) || n < min || n > max) throw new Error(`${name} invalide.`); return n; };
@@ -20,7 +23,8 @@ export function readWorkerConfig(env = process.env) {
   const stateRoot = resolve(env.PLANIFIKATEUR_WORKER_STATE_DIR || '.data/worker');
   return {
     origin: origin.origin, token: required('PLANIFIKATEUR_AGENT_TOKEN'), githubToken: required('PLANIFIKATEUR_GITHUB_TOKEN'),
-    apiKey: env.OPENAI_API_KEY || env.CODEX_API_KEY, projectIds, repositories, stateRoot,
+    apiKey: env.OPENAI_API_KEY || env.CODEX_API_KEY, projectIds, repositories, stateRoot, discovery,
+    node22Bin: resolve(env.PLANIFIKATEUR_NODE22_BIN || '/opt/node22/bin'),
     codexHome: resolve(env.CODEX_HOME || `${stateRoot}/codex`), model: env.PLANIFIKATEUR_CODEX_MODEL || undefined,
     claudeApiKey: env.ANTHROPIC_API_KEY || undefined, claudeOauthToken: env.CLAUDE_CODE_OAUTH_TOKEN || undefined,
     claudeHome: resolve(env.CLAUDE_CONFIG_DIR || `${stateRoot}/claude`),
