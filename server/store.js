@@ -3,7 +3,6 @@ import { isDeepStrictEqual } from 'node:util';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID, randomBytes } from 'node:crypto';
-import { readBuildInfo } from './build-info.js';
 import { withInfos } from '../src/lib/infos.js';
 import { seed } from '../src/data/demo.js';
 import { validateWorkspace } from '../src/lib/workspace.js';
@@ -22,18 +21,18 @@ export function createStore(filename) {
     CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS activity (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, actor_id TEXT, actor_name TEXT NOT NULL, action TEXT NOT NULL, project_id TEXT, card_id TEXT, revision INTEGER, payload TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS activity_project ON activity(project_id, id);
-    CREATE INDEX IF NOT EXISTS activity_card ON activity(card_id, id);`);
-  const version = readBuildInfo();
-  db.prepare('INSERT OR IGNORE INTO workspace VALUES (1, 1, ?, ?)').run(JSON.stringify(validateWorkspace(seed.map(project => withInfos(project, version)))), new Date().toISOString());
+    CREATE INDEX IF NOT EXISTS activity_card ON activity(card_id, id);
+    CREATE TABLE IF NOT EXISTS github_versions (repository TEXT PRIMARY KEY, data TEXT NOT NULL);`);
+  db.prepare('INSERT OR IGNORE INTO workspace VALUES (1, 1, ?, ?)').run(JSON.stringify(validateWorkspace(seed)), new Date().toISOString());
   const transaction = fn => { db.exec('BEGIN IMMEDIATE'); try { const result = fn(); db.exec('COMMIT'); return result; } catch (error) { db.exec('ROLLBACK'); throw error; } };
-  transaction(() => {
+  const synchronizeInfos = () => {
     const row = db.prepare('SELECT projects FROM workspace WHERE id = 1').get();
     const previous = JSON.parse(row.projects);
-    const projects = previous.map(project => withInfos(project, version));
+    const projects = previous.map(project => withInfos(project, versionFor(project.id)));
     // Comment migrations may reorder properties without changing their values.
     // Only an actual Infos change should increment the workspace revision.
     if (!isDeepStrictEqual(projects, previous)) db.prepare('UPDATE workspace SET projects = ?, revision = revision + 1, updated_at = ? WHERE id = 1').run(JSON.stringify(validateWorkspace(projects)), new Date().toISOString());
-  });
+  };
   const audit = (actor, action, payload = {}, revision = null) => db.prepare('INSERT INTO activity(date,actor_id,actor_name,action,project_id,card_id,revision,payload) VALUES(?,?,?,?,?,?,?,?)').run(new Date().toISOString(), actor?.id || null, actor?.name || 'Administration', action, payload.projectId || null, payload.cardId || null, revision, JSON.stringify(payload));
   const userById = id => db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   const findCard = (projectId, cardId) => {
@@ -50,8 +49,31 @@ export function createStore(filename) {
     return preference ? !!preference.following : participants(card).includes(userId);
   };
   const workflows = createWorkflows(db, { transaction, audit, findCard });
+  const versionFor = projectId => {
+    const repository = workflows.githubProject(projectId);
+    if (!repository) return { tag: 'Aucun tag disponible', date: '' };
+    const row = db.prepare('SELECT data FROM github_versions WHERE repository=?').get(repository.toLowerCase());
+    return { ...(row ? JSON.parse(row.data) : { tag: 'Version en cours de récupération', date: '' }), repository };
+  };
+  transaction(synchronizeInfos);
   return {
     workflows,
+    githubVersion(repository) { const row = db.prepare('SELECT data FROM github_versions WHERE repository=?').get(repository.toLowerCase()); return row ? JSON.parse(row.data) : null; },
+    refreshInfos() { return transaction(synchronizeInfos); },
+    recordGithubVersion(repository, version) {
+      return transaction(() => {
+        repository = repository.toLowerCase();
+        if (!this.read().projects.some(project => workflows.githubProject(project.id)?.toLowerCase() === repository)) return { updated: false };
+        if (typeof version.tag !== 'string' || !version.tag.trim() || version.tag.length > 140 || /[\u0000-\u001f]/.test(version.tag) || version.date && !Number.isFinite(Date.parse(version.date))) return { updated: false };
+        const previous = this.githubVersion(repository);
+        // Do not replace a newer signed push with a stale API response.
+        if (previous?.date && (!version.date || Date.parse(previous.date) > Date.parse(version.date))) return { updated: false };
+        if (isDeepStrictEqual(previous, version)) return { updated: false };
+        db.prepare('INSERT INTO github_versions VALUES(?,?) ON CONFLICT(repository) DO UPDATE SET data=excluded.data').run(repository, JSON.stringify(version));
+        synchronizeInfos();
+        return { updated: true };
+      });
+    },
     subscription(projectId, cardId, userId) {
       const { card } = findCard(projectId, cardId);
       return { following: following(card, userId) };

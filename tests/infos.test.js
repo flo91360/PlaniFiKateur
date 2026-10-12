@@ -17,7 +17,7 @@ test('Infos reuses an existing list and updates a single version card without lo
   assert.equal(first.lists.length, 1);
   assert.equal(first.cards[0].listId, 'custom');
   assert.equal(first.cards[0].title, version.tag);
-  assert.equal(first.cards[0].description, `Date et heure du commit : ${version.date}`);
+  assert.match(first.cards[0].description, /Date de push du tag : 11 octobre 2026 à 14:00/);
   first.cards[0].comments.push({ id: 'comment', text: 'Conserver' });
   const next = withInfos(first, { ...version, tag: 'v1.2.4' });
   assert.equal(next.cards.length, 1);
@@ -38,13 +38,12 @@ test('existing databases receive Infos once and retain their other cards on rest
     store.close(); store = createStore(file);
     const snapshot = store.read();
     assert.equal(snapshot.revision, previousRevision + 1);
-    const build = readBuildInfo();
     for (const project of snapshot.projects) {
       const before = legacy.find(item => item.id === project.id);
       assert.equal(project.lists.length, before.lists.length + 1);
       assert.equal(project.cards.length, before.cards.length + 1);
-      assert.equal(project.cards.at(-1).title, build.tag);
-      assert.equal(project.cards.at(-1).description, build.date ? `Date et heure du commit : ${build.date}` : 'Date et heure du commit indisponible.');
+      assert.equal(project.cards.at(-1).title, 'Aucun tag disponible');
+      assert.match(project.cards.at(-1).description, /Associez un dépôt GitHub/);
       assert.deepEqual(project.cards.slice(0, -1), before.cards);
     }
     store.close(); store = createStore(file);

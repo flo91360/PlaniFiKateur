@@ -504,6 +504,22 @@ test('administrator cancels then confirms account deletion and immediately revok
 
 test.describe('automatic GitHub delivery', () => {
   test.use({ githubEnabled: true });
+  test('a signed tag push updates the project Infos card automatically and survives reload', async ({ page, request, appServer }) => {
+    await login(page, appServer);
+    const configured = await page.request.put(`${appServer}/api/v1/projects/planifikateur/github`, { data: { repository: 'owner/first' } });
+    expect(configured.status()).toBe(200);
+    await page.reload();
+    const infos = page.locator('.list-column').filter({ has: page.getByRole('heading', { name: 'Infos', exact: true }) });
+    const raw = JSON.stringify({ ref: 'refs/tags/v2.0.0', deleted: false, repository: { full_name: 'owner/first', pushed_at: Date.parse('2026-10-12T07:32:00Z') / 1000 } });
+    const publish = () => request.post(`${appServer}/api/v1/github/webhook`, { headers: { 'Content-Type': 'application/json', 'X-GitHub-Event': 'push', 'X-Hub-Signature-256': 'sha256=' + createHmac('sha256', 'browser-github-secret').update(raw).digest('hex') }, data: raw });
+    expect((await publish()).status()).toBe(200);
+    await expect(infos.locator('.card h3')).toHaveText('v2.0.0', { timeout: 15000 });
+    await expect(infos.locator('.card p')).toContainText('12 octobre 2026 à 09:32');
+    expect((await publish()).status()).toBe(200);
+    await expect(infos.locator('.card')).toHaveCount(1);
+    await page.reload();
+    await expect(infos.locator('.card h3')).toHaveText('v2.0.0');
+  });
   test('repositories persist separately for each project and missing configuration blocks preparation', async ({ page, appServer }) => {
     await login(page, appServer);
     const configure = async repository => {

@@ -1,4 +1,5 @@
 import { githubEvent } from './github.js';
+import { tagPushVersion } from './project-versions.js';
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { STATUSES, validateWorkspace } from '../src/lib/workspace.js';
 import { createReadStream } from 'node:fs';
@@ -65,6 +66,10 @@ export function createApi(store, config = {}) {
       if (path === '/api/v1/github/webhook') {
         if (req.method !== 'POST') throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
         const { event, data } = await githubEvent(req, config.githubWebhookSecret);
+        if (event === 'push') {
+          const tag = tagPushVersion(data);
+          send(res, 200, { data: tag ? store.recordGithubVersion(tag.repository, tag.version) : { updated: false } }); return true;
+        }
         send(res, 200, { data: event === 'pull_request' ? store.workflows.githubMerged(data) : event === 'workflow_run' ? store.workflows.githubChecks(data) : { updated: false } }); return true;
       }
       const githubProject = /^\/api\/v1\/projects\/([a-zA-Z0-9_-]+)\/github$/.exec(path);
@@ -74,6 +79,8 @@ export function createApi(store, config = {}) {
         else if (req.method === 'PUT') {
           requireAdmin(req); const data = await body(req);
           send(res, 200, { data: store.workflows.configureGithub(githubProject[1], data?.repository, requireAdmin(req)) });
+          store.refreshInfos();
+          void config.versions?.refresh();
         } else throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
         return true;
       }

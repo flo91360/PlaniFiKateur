@@ -5,6 +5,7 @@ import { createApi } from './server/api.js';
 import { createStore } from './server/store.js';
 import { readConfig } from './server/config.js';
 import { createBackups } from './server/backups.js';
+import { createVersionSync } from './server/project-versions.js';
 
 const buildInfo = readBuildInfo();
 
@@ -21,9 +22,10 @@ export default defineConfig({
         if (!config.ownerToken || !config.readToken) throw new Error('Une exposition réseau nécessite les clés propriétaire et lecture.');
       }
       const store = createStore(config.database);
+      config.versions = createVersionSync(store, { token: process.env.PLANIFIKATEUR_GITHUB_TOKEN || '' });
       config.backups = createBackups(store, { directory: config.backupDirectory, intervalMs: config.backupIntervalMs, keep: config.backupKeep });
       server.middlewares.use(createApi(store, config));
-      server.httpServer?.once('close', () => { config.backups.close(); store.close(); });
+      server.httpServer?.once('close', () => { config.versions.close(); config.backups.close(); store.close(); });
     },
   }],
 });

@@ -134,7 +134,7 @@ test('the server stamps card and comment authors, preserves creators, and record
 
 test('migration preserves legacy data and content restoration preserves current accounts and history', async t => {
   const dir = mkdtempSync(join(tmpdir(), 'planifikateur-legacy-')); t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const filename = join(dir, 'legacy.sqlite'); const legacy = new DatabaseSync(filename); legacy.exec('CREATE TABLE workspace (id INTEGER PRIMARY KEY, revision INTEGER, projects TEXT, updated_at TEXT)'); legacy.prepare('INSERT INTO workspace VALUES(1,5,?,?)').run(JSON.stringify(seed), '2026-10-09T00:00:00Z'); legacy.close();
+  const filename = join(dir, 'legacy.sqlite'); const legacy = new DatabaseSync(filename); legacy.exec('CREATE TABLE workspace (id INTEGER PRIMARY KEY, revision INTEGER, projects TEXT, updated_at TEXT)'); legacy.prepare('INSERT INTO workspace VALUES(1,5,?,?)').run(JSON.stringify(seed.map(project => ({ ...project, lists: project.lists.filter(list => list.id !== `${project.id}-infos`), cards: project.cards.filter(card => card.id !== `${project.id}-git-version`) }))), '2026-10-09T00:00:00Z'); legacy.close();
   const store = createStore(filename); t.after(() => store.close()); assert.equal(store.getRevision(), 6); assert.equal(store.read().projects[0].cards[0].title, seed[0].cards[0].title);
   const admin = seedAccount(store); const backups = createBackups(store, { directory: join(dir, 'backups') }); t.after(() => backups.close()); const source = backups.list()[0].name;
   store.write(store.read().projects, 5, admin); assert.equal(store.read().projects[0].cards[0].createdBy, null);

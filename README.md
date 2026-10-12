@@ -72,6 +72,21 @@ npm run export:preview
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 
+La colonne **Info / Infos** contient une carte de version propre au dépôt associé
+au projet : son titre est le dernier tag publié et sa description indique la date
+de push, en heure de Paris. Le serveur consulte GitHub au démarrage, après une
+configuration de dépôt et toutes les quinze minutes. Les pushs de tags reçus par
+le webhook signé mettent la carte à jour immédiatement. Pour les dépôts privés,
+la variable serveur `PLANIFIKATEUR_GITHUB_TOKEN` doit avoir un accès en lecture
+aux dépôts concernés ; elle n’est jamais transmise au navigateur.
+
+Dans les événements du webhook GitHub, activer **Pushes** en plus des événements
+existants. Pour un ancien tag dont GitHub ne conserve plus l’événement de création,
+la date de push est indiquée comme indisponible : la date du commit ou la date de
+création d’un tag annoté ne sont pas des dates de push. Les métadonnées sont
+conservées dans SQLite et la carte est actualisée sans dupliquer son contenu ni
+supprimer sa discussion. Une erreur GitHub conserve la dernière valeur connue.
+
 ## Évolutions suivantes
 
 Héberger le serveur sur une origine HTTPS avec un volume de données persistant. Le parcours d’un seul agent est disponible : préparation, réservation exclusive, questions, résultats et validation humaine. Connecter un service agent externe avec sa clé dédiée ; voir [le guide agent](docs/agents.md). Les droits des membres par projet, les notifications et la délégation restent à ajouter.

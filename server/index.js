@@ -6,6 +6,7 @@ import { createApi } from './api.js';
 import { createStore } from './store.js';
 import { readConfig } from './config.js';
 import { createBackups } from './backups.js';
+import { createVersionSync } from './project-versions.js';
 
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.woff': 'font/woff', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.json': 'application/json' };
 
@@ -35,9 +36,10 @@ export function createAppServer({ store, config = {}, dist = resolve('dist') }) 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const config = readConfig();
   const store = createStore(config.database);
+  config.versions = createVersionSync(store, { token: process.env.PLANIFIKATEUR_GITHUB_TOKEN || '' });
   config.backups = createBackups(store, { directory: config.backupDirectory, intervalMs: config.backupIntervalMs, keep: config.backupKeep });
   const server = createAppServer({ store, config });
   server.listen(config.port, config.host, () => console.log(`PlaniFiKateur : serveur actif sur ${config.host}:${server.address().port}`));
-  const stop = () => server.close(() => { config.backups.close(); store.close(); process.exit(0); });
+  const stop = () => server.close(() => { config.versions.close(); config.backups.close(); store.close(); process.exit(0); });
   process.on('SIGINT', stop); process.on('SIGTERM', stop);
 }

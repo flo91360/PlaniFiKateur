@@ -2,7 +2,6 @@ import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 
 const { version } = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
-const buildInfo = JSON.parse(readFileSync(new URL('../../dist/build-info.json', import.meta.url), 'utf8'));
 const html = readFileSync(new URL(`../../dist/PlaniFiKateur-apercu-v${version}.html`, import.meta.url), 'utf8');
 
 for (const mode of ['standalone', 'sandbox-with-storage', 'sandbox-without-storage']) {
@@ -36,8 +35,8 @@ for (const mode of ['standalone', 'sandbox-with-storage', 'sandbox-without-stora
     await expect(app.locator('.list-column')).toHaveCount(4);
     const infos = app.locator('.list-column').filter({ has: app.getByRole('heading', { name: 'Infos', exact: true }) });
     await expect(infos.locator('.card')).toHaveCount(1);
-    await expect(infos.locator('.card h3')).toHaveText(buildInfo.tag);
-    await expect(infos.locator('.card p')).toHaveText(buildInfo.date ? `Date et heure du commit : ${buildInfo.date}` : 'Date et heure du commit indisponible.');
+    await expect(infos.locator('.card h3')).toHaveText('Aucun tag disponible');
+    await expect(infos.locator('.card p')).toHaveText('Associez un dépôt GitHub au projet pour afficher sa dernière version.');
 
     await app.getByRole('button', { name: 'Ajouter une liste', exact: true }).click();
     await app.getByLabel('Nom de la liste', { exact: true }).fill('Ma liste');
