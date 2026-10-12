@@ -8,6 +8,7 @@ import '@fontsource/manrope/latin-600.css';
 import '@fontsource/manrope/latin-700.css';
 import '@fontsource/manrope/latin-800.css';
 import './style.css';
+import { version as appVersion } from '../package.json';
 import { withInfos } from './lib/infos.js';
 import { createId as uid } from './lib/id.js';
 import { useWorkspace, offlineMode, exportWorkspace } from './lib/use-workspace.js';
@@ -120,7 +121,7 @@ function App() {
       <nav aria-label="Projets">{projects.map(p => <button key={p.id} className={`project-link ${project?.id === p.id ? 'active' : ''}`} onClick={() => chooseProject(p.id)}><span className="project-symbol" style={{ color: p.color }}>{p.emoji}</span><span>{p.name}</span><span className="project-count">{p.cards.length}</span></button>)}</nav>
       <button className="new-project" onClick={() => setModal('project')}><Plus size={16} />Nouveau projet</button>
       <div className="sidebar-tip"><span className="tip-icon"><Sparkles size={19} /></span><h3>Les idées d’abord.<br />Les agents, bientôt.</h3><p>Préparez vos demandes aujourd’hui. Vos agents pourront prendre le relais demain.</p><span className="coming-soon">EN PRÉPARATION</span></div>
-      <div className="sidebar-footer"><Avatar name={workspace.user?.name} /><div>{workspace.user?.name || 'Votre espace'}<small>v0.1.7 · {offlineMode ? 'données locales' : 'connecté au serveur'}</small></div><span className="online-dot" /></div>
+      <div className="sidebar-footer"><Avatar name={workspace.user?.name} /><div>{workspace.user?.name || 'Votre espace'}<small>v{appVersion} · {offlineMode ? 'données locales' : 'connecté au serveur'}</small></div><span className="online-dot" /></div>
     </aside>
     <main>
       <header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" aria-label="Ouvrir les projets" onClick={() => setSidebar(true)}><Menu size={20} /></button><FolderKanban size={17} /><span>Mes projets</span><ChevronRight size={14} /><strong>{project?.name || 'Votre espace'}</strong></div><div className="topbar-right"><span className="save-indicator"><span className={saveStatus === 'error' || saveStatus === 'conflict' ? 'error-dot' : 'online-dot'} />{saveStatus === 'saving' ? 'Enregistrement…' : saveStatus !== 'saved' ? 'Sauvegarde indisponible' : offlineMode ? 'Sauvegardé sur cet appareil' : 'Sauvegardé sur le serveur'}</span><button className="icon-button" aria-label="Informations sur le prototype" onClick={() => setModal('info')}><CircleHelp size={19} /></button>{!offlineMode && <button className="icon-button" aria-label="Historique des projets" onClick={() => setModal('activity')}><History size={19} /></button>}<button className="header-avatar" aria-label="Mon compte" onClick={() => setModal(offlineMode ? 'info' : 'account')}>{avatarLabel(workspace.user?.name)}</button></div></header>
