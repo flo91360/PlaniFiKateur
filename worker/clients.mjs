@@ -41,7 +41,7 @@ export function createSiteClient({ origin, token }, transport = fetch) {
     mergeEligible: async ({ repository, number, sha }, signal) => (await request(`github/merge-eligibility?${new URLSearchParams({ repository, number, sha })}`, undefined, signal)).eligible === true,
     queue: (projectId, signal) => request(`projects/${projectId}/work`, undefined, signal),
     history: (run, signal) => request(path(run), undefined, signal),
-    action: (run, action, data = {}, signal) => request(`${path(run)}/${run.id}/${action}`, { version: run.version, ...(run.leaseToken ? { leaseToken: run.leaseToken } : {}), ...data }, signal),
+    action: (run, action, data = {}, signal) => request(`${path(run)}/${run.id}/${action}`, { version: run.version, ...(run.leaseToken ? { leaseToken: run.leaseToken } : {}), ...(['claim', 'revise'].includes(action) ? { aiSettingsSupported: true, engines: ['codex', 'claude-code'] } : {}), ...data }, signal),
   };
 }
 

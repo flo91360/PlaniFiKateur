@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { pullRequestLink } from './github.js';
 import { tokenHash } from './accounts.js';
 import { validateWorkspace } from '../src/lib/workspace.js';
+import { validateAi, efforts } from '../worker/ai-settings.mjs';
 
 const fail = (status, code, message) => { throw Object.assign(new Error(message), { status, code }); };
 const text = (value, name, max = 20000) => {
@@ -10,11 +11,12 @@ const text = (value, name, max = 20000) => {
 };
 const terminal = new Set(['done', 'cancelled']);
 const cardStatus = { ready: 'ready', running: 'progress', waiting: 'clarify', review: 'review', merging: 'review', interrupted: 'ready', done: 'done', cancelled: 'draft' };
-const source = card => JSON.stringify([card.title, card.description, card.tags, card.checklist.map(c => c.text), ...((card.attachments || []).length ? [card.attachments] : [])]);
+const source = card => JSON.stringify([card.title, card.description, card.tags, card.checklist.map(c => c.text), ...((card.attachments || []).length ? [card.attachments] : []), ...(card.aiEffort ? [{ aiEffort: card.aiEffort }] : [])]);
 export const LEASE_MS = 5 * 60000;
 
 export function createWorkflows(db, { transaction, audit, findCard }) {
-  db.exec(`CREATE TABLE IF NOT EXISTS github_projects (project_id TEXT PRIMARY KEY, repository TEXT NOT NULL);
+  db.exec(`CREATE TABLE IF NOT EXISTS project_ai (project_id TEXT PRIMARY KEY, data TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS github_projects (project_id TEXT PRIMARY KEY, repository TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS github_pr_bindings (repository TEXT NOT NULL, number INTEGER NOT NULL, execution_id TEXT NOT NULL, PRIMARY KEY(repository,number));
     CREATE TABLE IF NOT EXISTS agents (id TEXT PRIMARY KEY, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, projects TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1);
     CREATE TABLE IF NOT EXISTS executions (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, card_id TEXT NOT NULL, state TEXT NOT NULL, version INTEGER NOT NULL, lease_hash TEXT, lease_expires INTEGER, data TEXT NOT NULL);
@@ -97,6 +99,10 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
     if (source(card) !== run.source) fail(409, 'request_changed', 'La demande a changé. Préparez une nouvelle exécution.');
   };
   const githubProject = projectId => db.prepare('SELECT repository FROM github_projects WHERE project_id=?').get(projectId)?.repository || null;
+  const projectAi = projectId => {
+    const row = db.prepare('SELECT data FROM project_ai WHERE project_id=?').get(projectId);
+    return row ? JSON.parse(row.data) : { engine: 'codex', model: '' };
+  };
   const prepare = (projectId, cardId, data, actor) => {
     const { card } = findCard(projectId, cardId);
     if (db.prepare("SELECT id FROM executions WHERE card_id=? AND state NOT IN ('done','cancelled')").get(cardId)) fail(409, 'active_execution', 'Une exécution existe déjà. Annulez-la avant de préparer une nouvelle demande.');
@@ -123,6 +129,15 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
     if (changed) db.prepare('UPDATE workspace SET projects=?,revision=revision+1,updated_at=? WHERE id=1').run(JSON.stringify(projects), new Date().toISOString());
   });
   return {
+    projectAi,
+    configureAi(projectId, data, actor) {
+      return transaction(() => {
+        if (!JSON.parse(db.prepare('SELECT projects FROM workspace WHERE id=1').get().projects).some(project => project.id === projectId)) fail(404, 'project_not_found', 'Projet inexistant.');
+        let ai; try { ai = validateAi(data); } catch (error) { fail(400, 'invalid_ai', error.message); }
+        db.prepare('INSERT INTO project_ai VALUES(?,?) ON CONFLICT(project_id) DO UPDATE SET data=excluded.data').run(projectId, JSON.stringify(ai));
+        audit(actor, 'project.ai_configured', { projectId, ...ai }); return ai;
+      });
+    },
     githubProject,
     configureGithub(projectId, repository, actor) {
       return transaction(() => {
@@ -262,6 +277,13 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
             && run.exchanges.at(-1)?.question === 'La PR ne pointe pas sur le commit testé.' && !run.exchanges.at(-1)?.answer;
           if (action === 'revise' ? ((!publicationRecovery && run.state !== 'merging') || run.agent?.id !== agent.id) : !['ready','interrupted'].includes(run.state)) fail(409, 'already_claimed', 'Cette exécution n’est pas disponible.');
           checkVersion(run, data?.version); checkSource(run);
+          if (!run.ai) {
+            const ai = run.agent ? { engine: 'codex', model: '' } : projectAi(projectId), effort = run.cardSnapshot.aiEffort || '';
+            if ((ai.engine !== 'codex' || ai.model || effort) && (!data.aiSettingsSupported || !data.engines?.includes(ai.engine))) fail(503, 'worker_update_required', 'Mettez à jour le worker pour utiliser les paramètres IA du projet et de la carte.');
+            if (!efforts[ai.engine].includes(effort)) fail(400, 'invalid_effort', 'Cet effort n’est pas pris en charge par le moteur du projet.');
+            run.ai = { ...ai, effort };
+          }
+          if ((run.ai.engine !== 'codex' || run.ai.model || run.ai.effort) && (!data.aiSettingsSupported || !data.engines?.includes(run.ai.engine))) fail(503, 'worker_update_required', 'Ce worker ne prend pas en charge les paramètres IA de cette exécution.');
           const leaseToken = randomBytes(32).toString('hex'); run.state = 'running'; run.agent = { id: agent.id, name: agent.name }; run.interruption = null;
           save(run, agent, 'claimed', { leaseHash: tokenHash(leaseToken), expires: Date.now() + LEASE_MS });
           return { ...run, leaseToken, leaseExpiresAt: new Date(Date.now() + LEASE_MS).toISOString() };
@@ -272,6 +294,11 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
         }
         checkVersion(run, data?.version); checkSource(run);
         if (action === 'progress') {
+          if (data.aiRuntime) {
+            let runtime; try { runtime = validateAi(data.aiRuntime); } catch (error) { fail(400, 'invalid_ai', error.message); }
+            if (runtime.engine !== run.ai?.engine) fail(409, 'invalid_ai', 'Le moteur ne peut pas changer pendant une exécution.');
+            run.aiRuntime = { ...runtime, effort: run.ai.effort };
+          }
           if (run.updates.length >= 200) fail(400, 'update_limit', 'Limite de mises à jour atteinte.');
           run.updates.push({ text: text(data?.message, 'Avancement', 10000), date: new Date().toISOString() });
           return save(run, agent, action, { leaseHash: row.lease_hash, expires: Date.now() + LEASE_MS });

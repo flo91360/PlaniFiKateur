@@ -73,6 +73,15 @@ export function createApi(store, config = {}) {
         send(res, 200, { data: event === 'pull_request' ? store.workflows.githubMerged(data) : event === 'workflow_run' ? store.workflows.githubChecks(data) : { updated: false } }); return true;
       }
       const githubProject = /^\/api\/v1\/projects\/([a-zA-Z0-9_-]+)\/github$/.exec(path);
+      const aiProject = /^\/api\/v1\/projects\/([a-zA-Z0-9_-]+)\/ai$/.exec(path);
+      if (aiProject) {
+        requireAccount(req);
+        if (!store.read().projects.some(project => project.id === aiProject[1])) throw httpError(404, 'project_not_found', 'Projet inexistant.');
+        if (req.method === 'GET') send(res, 200, { data: store.workflows.projectAi(aiProject[1]) });
+        else if (req.method === 'PUT') send(res, 200, { data: store.workflows.configureAi(aiProject[1], await body(req), requireAdmin(req)) });
+        else throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
+        return true;
+      }
       if (githubProject) {
         requireAccount(req);
         if (req.method === 'GET') send(res, 200, { data: { repository: store.workflows.githubProject(githubProject[1]), branch: 'main', webhookConfigured: !!config.githubWebhookSecret } });

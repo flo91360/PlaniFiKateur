@@ -1,7 +1,7 @@
 FROM node:24-bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git ca-certificates chromium python3 make g++ gosu \
+    git ca-certificates chromium python3 make g++ gosu bubblewrap socat ripgrep \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /opt/worker
 COPY --chown=node:node worker/package.json worker/package-lock.json ./

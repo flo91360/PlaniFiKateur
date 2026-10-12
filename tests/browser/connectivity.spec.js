@@ -353,6 +353,43 @@ test('follows an existing card without being its author and keeps the setting af
 
 test.describe('project task execution', () => {
   test.use({ githubEnabled: true });
+  test('engine and model are project settings while effort persists on each card and is locked during a conversation', async ({ page, request, appServer }) => {
+    await login(page, appServer);
+    const project = seed[0], card = project.cards[0];
+    await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
+    await page.getByText('Moteur et modèle IA', { exact: true }).click();
+    await page.getByLabel('Moteur IA', { exact: true }).selectOption('claude-code');
+    await page.getByLabel('Modèle IA', { exact: true }).fill('sonnet');
+    await page.getByRole('button', { name: 'Enregistrer les paramètres IA', exact: true }).click();
+    await expect(page.getByRole('status')).toHaveText('Moteur et modèle enregistrés pour ce projet.');
+    await page.getByRole('button', { name: 'Fermer', exact: true }).click();
+    await page.getByRole('heading', { name: card.title, exact: true }).click();
+    await expect(page.getByLabel('Effort IA', { exact: true })).toBeEnabled();
+    await page.getByLabel('Effort IA', { exact: true }).selectOption('high');
+    await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+    await expect.poll(async () => (await (await page.request.get(`${appServer}/api/v1/projects/${project.id}/cards/${card.id}`)).json()).data.aiEffort).toBe('high');
+    await page.reload();
+    await page.getByRole('heading', { name: card.title, exact: true }).click();
+    await expect(page.getByLabel('Effort IA', { exact: true })).toHaveValue('high');
+    await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+    const second = seed[1];
+    const unchanged = await page.request.get(`${appServer}/api/v1/projects/${second.id}/ai`);
+    expect((await unchanged.json()).data).toEqual({ engine: 'codex', model: '' });
+    await page.request.put(`${appServer}/api/v1/projects/${project.id}/github`, { data: { repository: 'owner/first' } });
+    const credentials = await page.request.post(`${appServer}/api/v1/agents`, { data: { name: 'Model agent', projectIds: [project.id] } });
+    const token = (await credentials.json()).data.token, headers = { Authorization: `Bearer ${token}` };
+    const base = `${appServer}/api/v1/projects/${project.id}/cards/${card.id}/work`;
+    let run = (await (await page.request.post(base, { data: {} })).json()).data;
+    const claimed = await request.post(`${base}/${run.id}/claim`, { headers, data: { version: run.version, aiSettingsSupported: true, engines: ['codex', 'claude-code'] } });
+    run = (await claimed.json()).data;
+    expect(run.ai).toEqual({ engine: 'claude-code', model: 'sonnet', effort: 'high' });
+    await page.request.put(`${appServer}/api/v1/projects/${project.id}/ai`, { data: { engine: 'codex', model: 'another-model' } });
+    const question = await request.post(`${base}/${run.id}/question`, { headers, data: { version: run.version, leaseToken: run.leaseToken, message: 'Quelle fenêtre ?' } });
+    expect(question.status()).toBe(200);
+    await page.reload(); await page.getByRole('heading', { name: card.title, exact: true }).click();
+    await expect(page.getByLabel('Effort IA', { exact: true })).toBeDisabled();
+    await expect(page.getByText('Exécution : Claude Code · modèle sonnet · effort Élevé.', { exact: true })).toBeVisible();
+  });
   test('a question appears in the open card and its answer leads to a downloadable generated Qt file', async ({ page, request, appServer }) => {
     await login(page, appServer);
     const project = seed[0], card = project.cards[0];

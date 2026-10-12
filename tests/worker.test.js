@@ -232,6 +232,29 @@ test('questions pause publication and an answer resumes the persisted conversati
   assert.equal(f.modelCalls.length, 2);
 });
 
+test('the worker selects Claude for the project and keeps the resolved model and card effort after an answer', async t => {
+  const f = await fixture(t, { model: async (input, number) => {
+    assert.equal(input.job.ai.engine, 'claude-code'); assert.equal(input.job.ai.effort, 'high');
+    if (number === 2) assert.equal(input.job.ai.model, 'claude-sonnet-resolved');
+    await input.onRuntime({ engine: 'claude-code', model: 'claude-sonnet-resolved', effort: 'high' });
+    if (number === 1) return { status: 'question', summary: '', question: 'Quelle langue ?', files: [] };
+    assert.equal(input.run.exchanges.at(-1).answer.text, 'Français.');
+    await writeFile(join(input.cwd, 'greet.mjs'), "export const greet = () => 'bonjour';\n");
+    return { status: 'result', summary: 'Traduit.', question: '', files: [] };
+  } });
+  const snapshot = f.store.read(); snapshot.projects[0].cards[0].aiEffort = 'high'; f.store.write(snapshot.projects, snapshot.revision, f.user);
+  f.store.workflows.configureAi(f.project.id, { engine: 'claude-code', model: 'sonnet' }, f.user);
+  const dependencies = { ...f.dependencies, claude: f.dependencies.model, model: { run() { throw new Error('Codex must not execute this task'); } } };
+  const worker = createWorker(f.config, dependencies);
+  f.prepare(); assert.equal((await worker.tick()).status, 'waiting');
+  assert.equal(f.current().aiRuntime.model, 'claude-sonnet-resolved');
+  f.store.workflows.configureAi(f.project.id, { engine: 'codex', model: 'different-model' }, f.user);
+  const reply = f.store.read(); reply.projects[0].cards[0].comments.push({ id: 'claude-answer', author: f.user.name, text: 'Français.', date: new Date().toISOString() });
+  f.store.write(reply.projects, reply.revision, f.user);
+  assert.equal((await createWorker(f.config, dependencies).tick()).status, 'merging');
+  assert.equal(f.current().ai.engine, 'claude-code'); assert.equal(f.modelCalls.length, 2);
+});
+
 const qtForm = '<?xml version="1.0"?><ui version="4.0"><class>PersonForm</class><widget class="QWidget" name="PersonForm"><layout class="QFormLayout" name="formLayout"><item row="0" column="0"><widget class="QLabel" name="nameLabel"><property name="text"><string>Nom</string></property></widget></item><item row="0" column="1"><widget class="QLineEdit" name="nameEdit"/></item></layout></widget><resources/><connections/></ui>';
 test('a model question is relayed literally, a card reply resumes the thread and the generated Qt file is delivered without a PR', async t => {
   const question = 'Quels champs souhaitez-vous dans le formulaire Qt ?';

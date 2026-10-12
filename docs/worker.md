@@ -264,6 +264,51 @@ Le worker la détecte automatiquement ; aucun bouton de lancement n’est néces
 Le premier passage complet à travers GitHub exige les accès externes réellement
 configurés. Les tests locaux ne remplacent pas cet essai.
 
+## Moteur et modèle du projet, effort de chaque carte
+
+Dans **Paramètres du projet → Moteur et modèle IA**, l’administrateur choisit
+**Codex** ou **Claude Code** et renseigne un identifiant de modèle accessible à
+son compte. Laisser le modèle vide utilise le défaut du moteur ; pour Codex,
+`PLANIFIKATEUR_CODEX_MODEL` reste le défaut du worker lorsqu’il est renseigné.
+L’**Effort IA** est choisi à la création ou dans le détail de chaque carte.
+Les niveaux proposés dépendent du moteur ; leur disponibilité effective dépend
+aussi du modèle. **Par défaut** n’impose aucun niveau au fournisseur.
+
+Le serveur conserve ces choix à la première prise en charge. Ils restent les
+mêmes après une question, une interruption ou une correction. Modifier les
+paramètres du projet affecte les prochaines exécutions ; les anciennes
+conversations Codex continuent avec Codex. Le worker conserve aussi le modèle
+résolu lorsqu’il est disponible : nom annoncé à l’initialisation par Claude Code,
+ou métadonnées de session pour Codex. Le détail de la carte et ses commentaires
+affichent les réglages de l’exécution. Si le moteur ne rapporte pas de nom, le
+modèle reste indiqué **par défaut**, sans inventer un identifiant.
+
+Claude Code utilise `@anthropic-ai/claude-agent-sdk`, livré dans l’image du worker,
+avec un sandbox obligatoire, sans commandes hors sandbox ni délégation à des
+sous-agents. Ses questions `AskUserQuestion` sont relayées dans la discussion de
+la carte, et sa session est reprise après réponse. Les livraisons de fichiers,
+tests et PR passent par le même mécanisme que pour Codex.
+
+Configurer **une seule** méthode d’authentification Anthropic dans le fichier
+privé `planifikateur-worker.env` : `ANTHROPIC_API_KEY` ou
+`CLAUDE_CODE_OAUTH_TOKEN` obtenu via votre installation officielle Claude Code.
+Ne pas placer ces clés dans les paramètres du projet, les cartes ou Git.
+Les crédits et autorisations Anthropic sont indépendants de ceux d’OpenAI.
+Si le conteneur est déjà démarré, modifier le fichier ne modifie pas son
+environnement : une nouvelle création du conteneur avec `--env-file` est
+nécessaire, en conservant le volume `/data`. La prochaine livraison automatique
+d’une nouvelle image chargera aussi ce fichier. Un simple `docker restart` ne
+charge pas les nouvelles variables.
+
+Les paramètres sont consultables par les comptes via
+`GET /api/v1/projects/{projet}/ai` et modifiables par un administrateur via `PUT`
+avec `{ "engine": "codex", "model": "identifiant-ou-chaîne-vide" }`.
+Le champ des cartes est `aiEffort` (chaîne vide ou absent pour le défaut).
+Un ancien worker ne peut pas prendre une carte avec un moteur, modèle explicite
+ou effort qu’il ignorerait : le serveur exige le nouveau protocole de prise en
+charge. Les essais automatisés des deux moteurs simulent les appels aux modèles ;
+un premier essai réel Claude Code nécessite votre authentification Anthropic.
+
 ## Questions et fichiers générés
 
 Le modèle publie ses questions dans la discussion de la carte et s’arrête avec

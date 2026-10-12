@@ -22,6 +22,8 @@ export function readWorkerConfig(env = process.env) {
     origin: origin.origin, token: required('PLANIFIKATEUR_AGENT_TOKEN'), githubToken: required('PLANIFIKATEUR_GITHUB_TOKEN'),
     apiKey: env.OPENAI_API_KEY || env.CODEX_API_KEY, projectIds, repositories, stateRoot,
     codexHome: resolve(env.CODEX_HOME || `${stateRoot}/codex`), model: env.PLANIFIKATEUR_CODEX_MODEL || undefined,
+    claudeApiKey: env.ANTHROPIC_API_KEY || undefined, claudeOauthToken: env.CLAUDE_CODE_OAUTH_TOKEN || undefined,
+    claudeHome: resolve(env.CLAUDE_CONFIG_DIR || `${stateRoot}/claude`),
     pollMs: number('PLANIFIKATEUR_WORKER_POLL_MS', 10000, 1000, 60000),
     heartbeatMs: number('PLANIFIKATEUR_WORKER_HEARTBEAT_MS', 60000, 1000, 120000),
     taskTimeoutMs: number('PLANIFIKATEUR_WORKER_TIMEOUT_MS', 20 * 60000, 1000, 2 * 60 * 60000),

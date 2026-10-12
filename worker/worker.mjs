@@ -7,15 +7,18 @@ import { createState } from './state.mjs';
 import { commandEnvironment, runCommand } from './commands.mjs';
 import { createCodexRunner } from './codex.mjs';
 import { collectOutputs } from './outputs.mjs';
+import { createClaudeRunner } from './claude.mjs';
+import { validateAi, efforts, effortLabels } from './ai-settings.mjs';
 
 export function createWorker(config, dependencies = {}) {
   const site = dependencies.site || createSiteClient(config);
   const github = dependencies.github || createGithubClient(config.githubToken);
   const state = dependencies.state || createState(config.stateRoot);
   const model = dependencies.model || createCodexRunner(config);
+  const claude = dependencies.claude || createClaudeRunner(config);
   const execute = dependencies.execute || runCommand;
   const log = dependencies.log || console.log;
-  const clean = text => [config.token, config.githubToken, config.apiKey].filter(Boolean).reduce((s, secret) => s.replaceAll(secret, '[secret]'), String(text)).slice(-12000);
+  const clean = text => [config.token, config.githubToken, config.apiKey, config.claudeApiKey, config.claudeOauthToken].filter(Boolean).reduce((s, secret) => s.replaceAll(secret, '[secret]'), String(text)).slice(-12000);
   const allowed = run => run.delivery === 'github' && validId(run.id) && validId(run.projectId) && validId(run.cardId) && validRepository(run.repository) && config.repositories.includes(run.repository.toLowerCase()) && config.projectIds.includes(run.projectId);
 
   async function processTask(candidate, parentSignal) {
@@ -71,6 +74,19 @@ export function createWorker(config, dependencies = {}) {
     try {
       job = await state.get(run.id) || { id: run.id, projectId: run.projectId, cardId: run.cardId, repository: run.repository.toLowerCase(), branch: `planifikateur/${run.id}`, attempts: 0, answers: 0 };
       if (job.repository !== run.repository.toLowerCase() || job.projectId !== run.projectId || job.cardId !== run.cardId || job.branch !== `planifikateur/${run.id}`) throw new Error('État du worker incompatible avec la carte.');
+      if (!job.ai) {
+        const ai = validateAi(run.aiRuntime || run.ai || { engine: 'codex', model: '' });
+        job.ai = { ...ai, model: ai.model || (ai.engine === 'codex' ? config.model || '' : ''), effort: run.ai?.effort || '' };
+      }
+      if (!efforts[job.ai.engine]?.includes(job.ai.effort) || run.ai && job.ai.engine !== run.ai.engine) throw new Error('Réglages IA incompatibles avec la conversation existante.');
+      const runner = job.ai.engine === 'claude-code' ? claude : model;
+      const onRuntime = async runtime => {
+        const safe = { ...validateAi(runtime), effort: job.ai.effort };
+        if (JSON.stringify(job.aiRuntime) === JSON.stringify(safe)) return;
+        if (safe.engine !== job.ai.engine) throw new Error('Le moteur de la conversation a changé.');
+        job.aiRuntime = safe; job.ai.model = safe.model; await state.put(job);
+        await action('progress', { aiRuntime: safe, message: `IA utilisée : ${safe.engine === 'codex' ? 'Codex' : 'Claude Code'} · ${safe.model} · effort ${effortLabels[safe.effort]}.` });
+      };
       const answers = run.exchanges.filter(e => e.answer).length;
       if (answers !== job.answers) { job.attempts = 0; job.answers = answers; }
       if (candidate.publicationRecovery || candidate.interruption === 'La PR ne pointe pas sur le commit testé.' || candidate.state === 'merging' && job.phase === 'merging') job.attempts = 0;
@@ -89,7 +105,7 @@ export function createWorker(config, dependencies = {}) {
         if (pr.state === 'open' && pr.labels.some(l => l.name === 'planifikateur-agent')) await github.unlabel(job.repository, pr.number, signal);
       }
       log(`Prise en charge ${run.id}.`);
-      await action('progress', { message: 'Le worker prépare le dépôt et lance Codex.' });
+      await action('progress', { message: `Le worker prépare le dépôt et lance ${job.ai.engine === 'codex' ? 'Codex' : 'Claude Code'}.` });
       const cwd = join(config.stateRoot, 'jobs', run.id);
       const home = join(cwd, '.planifikateur', 'home');
       const env = { ...commandEnvironment(), HOME: home, npm_config_cache: join(config.stateRoot, 'npm-cache'), PLANIFIKATEUR_WORKER: '1', CI: '1' };
@@ -125,7 +141,7 @@ export function createWorker(config, dependencies = {}) {
       for (const install of config.installCommands) await command(install);
       let result, checks = [], outputs = [], artifactOnly = false;
       for (let round = 0; round < 3; round++) {
-        result = await model.run({ run: { ...run, leaseToken: undefined }, job, cwd, signal, feedback, onThread: async id => { job.threadId = id; await state.put(job); } });
+        result = await runner.run({ run: { ...run, leaseToken: undefined }, job, cwd, signal, feedback, onRuntime, onThread: async id => { job.threadId = id; await state.put(job); } });
         if (result.status === 'question') {
           await action('question', { message: result.question }); job.phase = 'waiting'; await state.put(job);
           return { status: 'waiting' };

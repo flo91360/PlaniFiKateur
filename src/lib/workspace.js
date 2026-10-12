@@ -1,4 +1,5 @@
 export const STATUSES = ['draft', 'ready', 'progress', 'clarify', 'review', 'flo', 'done'];
+import { efforts } from '../../worker/ai-settings.mjs';
 const priorities = ['low', 'normal', 'high'];
 
 export function validateWorkspace(projects) {
@@ -39,11 +40,13 @@ export function validateWorkspace(projects) {
       object(c, `${path}.cards`);
       if (!listIds.has(c.listId)) fail(`${path}.cards.listId : liste inexistante.`);
       if (!STATUSES.includes(c.status) || !priorities.includes(c.priority)) fail(`${path}.cards : statut ou priorité inconnus.`);
+      if (c.aiEffort != null && !efforts.codex.includes(c.aiEffort)) fail('Effort IA invalide.');
       return {
         id: id(c.id, `${path}.cards.id`), listId: c.listId,
         createdBy: identity(c.createdBy), createdAt: date(c.createdAt), updatedBy: identity(c.updatedBy), updatedAt: date(c.updatedAt),
         title: text(c.title, `${path}.cards.title`, 140, true), description: text(c.description, `${path}.cards.description`, 20000),
         status: c.status, priority: c.priority,
+        ...(c.aiEffort ? { aiEffort: c.aiEffort } : {}),
         attachments: array(c.attachments ?? [], 'attachments', 10).map(a => {
           object(a, 'attachment');
           const attachmentId = id(a.id, 'attachment.id');
