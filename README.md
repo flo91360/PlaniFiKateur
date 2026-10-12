@@ -89,6 +89,10 @@ supprimer sa discussion. Une erreur GitHub conserve la dernière valeur connue.
 
 ## Évolutions suivantes
 
+Les exécutables DefilOrdi et FunKart peuvent être archivés automatiquement dans
+votre dossier Google Drive, avec un sous-dossier par projet et version. La carte
+Infos reçoit le lien de téléchargement. Voir [la configuration Google Drive](docs/google-drive.md).
+
 Héberger le serveur sur une origine HTTPS avec un volume de données persistant. Le parcours d’un seul agent est disponible : préparation, réservation exclusive, questions, résultats et validation humaine. Connecter un service agent externe avec sa clé dédiée ; voir [le guide agent](docs/agents.md). Les droits des membres par projet, les notifications et la délégation restent à ajouter.
 
 Les comptes peuvent suivre ou ne plus suivre une carte depuis son détail, même sans en être auteurs. Les abonnements persistants alimentent les destinataires des futures notifications ; aucun envoi de notification n’est encore actif. Voir [la documentation des comptes](docs/accounts.md#suivre-une-carte).

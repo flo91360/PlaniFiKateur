@@ -18,7 +18,12 @@ export function withInfos(project, version) {
     ...project,
     lists: list ? project.lists : [...project.lists, { id: listId, name: 'Infos', color: 'purple' }],
     cards: card
-      ? project.cards.map(item => item.id === cardId ? { ...item, listId: list?.id || listId, title: version.tag, description, status: 'done' } : item)
-      : [...project.cards, { id: cardId, listId: list?.id || listId, title: version.tag, description, status: 'done', priority: 'normal', tags: ['Version'], comments: [], checklist: [] }],
+      ? project.cards.map(item => {
+        if (item.id !== cardId) return item;
+        const { downloads, ...previous } = item;
+        const current = preserve ? downloads : version.downloads;
+        return { ...previous, listId: list?.id || listId, title: version.tag, description, status: 'done', ...(current ? { downloads: current } : {}) };
+      })
+      : [...project.cards, { id: cardId, listId: list?.id || listId, title: version.tag, description, status: 'done', priority: 'normal', tags: ['Version'], comments: [], checklist: [], ...(version.downloads ? { downloads: version.downloads } : {}) }],
   };
 }

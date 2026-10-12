@@ -8,6 +8,7 @@ import { createStore } from '../server/store.js';
 import { createAppServer } from '../server/index.js';
 import { createVersionSync, tagPushVersion } from '../server/project-versions.js';
 import { withInfos } from '../src/lib/infos.js';
+import { driveReleaseBody } from '../src/lib/drive-release.js';
 
 const secret = 'tag-webhook-test', date = '2026-10-12T07:32:00Z';
 function fixture(t) {
@@ -19,6 +20,43 @@ function fixture(t) {
   return { store, first, second };
 }
 const card = (store, project) => store.read().projects.find(p => p.id === project.id).cards.find(c => c.id === `${project.id}-git-version`);
+const driveDownload = { repository: 'owner/first', version: 'v2.0.0', commit: 'a'.repeat(40), folderId: 'drive-version-folder', files: [{ id: 'drive-executable-id', name: 'Product.exe', size: 120, md5: 'b'.repeat(32) }] };
+
+test('signed release events publish downloads for the matching repository/version without inventing a tag push date', async t => {
+  const { store, first, second } = fixture(t);
+  store.recordGithubVersion('owner/first', { tag: 'v2.0.0', date: '' });
+  const server = createAppServer({ store, config: { githubWebhookSecret: secret } });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
+  const event = { action: 'edited', repository: { full_name: 'owner/first' }, release: { draft: false, tag_name: 'v2.0.0', published_at: date, body: driveReleaseBody('Release notes', driveDownload) } };
+  const send = async (data, signing = secret) => {
+    const raw = JSON.stringify(data);
+    return fetch(`http://127.0.0.1:${server.address().port}/api/v1/github/webhook`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-GitHub-Event': 'release', 'X-Hub-Signature-256': 'sha256=' + createHmac('sha256', signing).update(raw).digest('hex') }, body: raw });
+  };
+  assert.equal((await send(event, 'wrong')).status, 401); assert.equal(card(store, first).downloads, undefined);
+  assert.equal((await send(event)).status, 200); assert.deepEqual(card(store, first).downloads, driveDownload);
+  assert.equal(card(store, second).downloads, undefined); assert.match(card(store, first).description, /Date de push du tag indisponible/);
+  const snapshot = store.read(); await send(event); store.refreshInfos(); assert.deepEqual(store.read(), snapshot);
+  await send({ ...event, release: { ...event.release, body: driveReleaseBody('', { ...driveDownload, commit: 'c'.repeat(40) }) } });
+  assert.deepEqual(store.read(), snapshot);
+  await send({ ...event, repository: { full_name: 'owner/second' } }); assert.deepEqual(store.read(), snapshot);
+  store.recordGithubVersion('owner/first', { tag: 'v3.0.0', date }); assert.equal(card(store, first).downloads, undefined);
+});
+
+test('download links are recovered by polling, survive outages and remain unchanged across a server restart', async t => {
+  const dir = mkdtempSync(join(tmpdir(), 'planifikateur-drive-links-')), file = join(dir, 'store.sqlite');
+  let store = createStore(file); t.after(() => { store.close(); rmSync(dir, { recursive: true, force: true }); });
+  const project = store.read().projects[0]; store.workflows.configureGithub(project.id, 'owner/first', { id: 'github', name: 'GitHub' });
+  const sync = createVersionSync(store, { start: false, transport: async url => {
+    if (url.includes('/tags?')) return Response.json([{ name: 'v2.0.0' }]);
+    if (url.includes('/events?')) return Response.json([]);
+    return Response.json({ draft: false, body: driveReleaseBody('', driveDownload) });
+  } });
+  await sync.refresh(); sync.close(); assert.deepEqual(card(store, project).downloads, driveDownload);
+  const snapshot = store.read(); store.close(); store = createStore(file); assert.deepEqual(store.read(), snapshot);
+  const outage = createVersionSync(store, { start: false, transport: async () => { throw new Error('offline'); } });
+  await outage.refresh(); outage.close(); assert.deepEqual(store.read(), snapshot);
+});
 
 test('a signed tag push updates only its repository projects, preserves discussion and rejects stale deliveries', async t => {
   const { store, first, second } = fixture(t);

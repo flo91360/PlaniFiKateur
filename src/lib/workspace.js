@@ -1,5 +1,6 @@
 export const STATUSES = ['draft', 'ready', 'progress', 'clarify', 'review', 'flo', 'done'];
 import { efforts } from '../../worker/ai-settings.mjs';
+import { validateDriveRelease } from './drive-release.js';
 const priorities = ['low', 'normal', 'high'];
 
 export function validateWorkspace(projects) {
@@ -47,6 +48,7 @@ export function validateWorkspace(projects) {
         title: text(c.title, `${path}.cards.title`, 140, true), description: text(c.description, `${path}.cards.description`, 20000),
         status: c.status, priority: c.priority,
         ...(c.aiEffort ? { aiEffort: c.aiEffort } : {}),
+        ...(c.downloads ? { downloads: validateDriveRelease(c.downloads, c.downloads.repository, c.downloads.version) } : {}),
         attachments: array(c.attachments ?? [], 'attachments', 10).map(a => {
           object(a, 'attachment');
           const attachmentId = id(a.id, 'attachment.id');

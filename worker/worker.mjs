@@ -11,6 +11,7 @@ import { createClaudeRunner } from './claude.mjs';
 import { validateAi, efforts, effortLabels } from './ai-settings.mjs';
 import { defaultExecutionProfile, validateExecutionProfile } from './execution-profile.mjs';
 import { runtimeEnvironment, checkRuntime, projectDiagnostic } from './runtime.mjs';
+import { bumpProjectVersion } from './project-version.mjs';
 
 export function createWorker(config, dependencies = {}) {
   const site = dependencies.site || createSiteClient(config);
@@ -175,6 +176,10 @@ export function createWorker(config, dependencies = {}) {
           const repositoryChanged = !!await command(['git', 'status', '--porcelain']) || !!await command(['git', 'diff', `origin/${targetBranch}...HEAD`, '--name-only']);
           if (!outputs.length && !repositoryChanged) throw new Error('Aucun fichier ni modification livré. Pour une demande de fichier, crée le fichier dans .planifikateur/generated/ et indique son chemin dans files. Si tu ne peux pas réaliser la demande, pose une question précise avec status=question.');
           artifactOnly = outputs.length > 0 && !previous && !repositoryChanged;
+          if (repositoryChanged) {
+            const version = await bumpProjectVersion(cwd, profile, command);
+            if (version) checks.push(`Version ${version} : préparée avant les tests`);
+          }
         } catch (error) { failure = `Corrige les fichiers à livrer : ${clean(error.message)}`; }
         for (const test of failure || artifactOnly ? [] : run.legacyExecutionProfile ? config.testCommands : profile.testCommands) {
           await action('progress', { message: `Vérification locale : ${test.join(' ')}.` });

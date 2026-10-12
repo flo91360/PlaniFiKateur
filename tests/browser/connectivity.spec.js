@@ -1,4 +1,5 @@
 import { createHmac } from 'node:crypto';
+import { driveReleaseBody } from '../../src/lib/drive-release.js';
 import { test as base, expect } from '@playwright/test';
 import { createAppServer } from '../../server/index.js';
 import { createStore } from '../../server/store.js';
@@ -640,6 +641,13 @@ test.describe('automatic GitHub delivery', () => {
     await expect(infos.locator('.card')).toHaveCount(1);
     await page.reload();
     await expect(infos.locator('.card h3')).toHaveText('v2.0.0');
+    const downloads = { repository: 'owner/first', version: 'v2.0.0', commit: 'a'.repeat(40), folderId: 'drive-version-folder', files: [{ id: 'drive-executable-id', name: 'Product.exe', size: 100, md5: 'b'.repeat(32) }] };
+    const release = JSON.stringify({ action: 'edited', repository: { full_name: 'owner/first' }, release: { draft: false, tag_name: 'v2.0.0', body: driveReleaseBody('', downloads) } });
+    expect((await request.post(`${appServer}/api/v1/github/webhook`, { headers: { 'Content-Type': 'application/json', 'X-GitHub-Event': 'release', 'X-Hub-Signature-256': 'sha256=' + createHmac('sha256', 'browser-github-secret').update(release).digest('hex') }, data: release })).status()).toBe(200);
+    await page.reload();
+    await infos.locator('.card').click();
+    await expect(page.getByRole('link', { name: 'Télécharger cette version sur Google Drive' })).toHaveAttribute('href', 'https://drive.google.com/drive/folders/drive-version-folder');
+    await expect(page.getByRole('link', { name: 'Product.exe', exact: true })).toHaveAttribute('href', 'https://drive.google.com/file/d/drive-executable-id/view');
   });
   test('repositories persist separately for each project and missing configuration blocks preparation', async ({ page, appServer }) => {
     await login(page, appServer);

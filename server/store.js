@@ -9,6 +9,7 @@ import { validateWorkspace } from '../src/lib/workspace.js';
 import { publicUser, tokenHash } from './accounts.js';
 import { attributeChanges } from './activity.js';
 import { createWorkflows } from './workflows.js';
+import { validateDriveRelease } from '../src/lib/drive-release.js';
 
 const fail = (status, code, message) => { throw Object.assign(new Error(message), { status, code }); };
 export function createStore(filename) {
@@ -22,6 +23,7 @@ export function createStore(filename) {
     CREATE TABLE IF NOT EXISTS activity (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, actor_id TEXT, actor_name TEXT NOT NULL, action TEXT NOT NULL, project_id TEXT, card_id TEXT, revision INTEGER, payload TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS activity_project ON activity(project_id, id);
     CREATE INDEX IF NOT EXISTS activity_card ON activity(card_id, id);
+    CREATE TABLE IF NOT EXISTS github_downloads (repository TEXT NOT NULL, tag TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(repository,tag));
     CREATE TABLE IF NOT EXISTS github_versions (repository TEXT PRIMARY KEY, data TEXT NOT NULL);`);
   db.prepare('INSERT OR IGNORE INTO workspace VALUES (1, 1, ?, ?)').run(JSON.stringify(validateWorkspace(seed)), new Date().toISOString());
   const transaction = fn => { db.exec('BEGIN IMMEDIATE'); try { const result = fn(); db.exec('COMMIT'); return result; } catch (error) { db.exec('ROLLBACK'); throw error; } };
@@ -53,11 +55,24 @@ export function createStore(filename) {
     const repository = workflows.githubProject(projectId);
     if (!repository) return { tag: 'Aucun tag disponible', date: '' };
     const row = db.prepare('SELECT data FROM github_versions WHERE repository=?').get(repository.toLowerCase());
-    return { ...(row ? JSON.parse(row.data) : { tag: 'Version en cours de récupération', date: '' }), repository };
+    const version = row ? JSON.parse(row.data) : { tag: 'Version en cours de récupération', date: '' };
+    const downloads = db.prepare('SELECT data FROM github_downloads WHERE repository=? AND tag=?').get(repository.toLowerCase(), version.tag);
+    return { ...version, repository, ...(downloads ? { downloads: JSON.parse(downloads.data) } : {}) };
   };
   transaction(synchronizeInfos);
   return {
     workflows,
+    recordDriveRelease(repository, data) {
+      return transaction(() => {
+        repository = repository.toLowerCase();
+        if (!this.read().projects.some(project => workflows.githubProject(project.id)?.toLowerCase() === repository)) return { updated: false };
+        let release; try { release = validateDriveRelease(data, repository, data.version); } catch { return { updated: false }; }
+        const row = db.prepare('SELECT data FROM github_downloads WHERE repository=? AND tag=?').get(repository, release.version);
+        if (row && (JSON.parse(row.data).commit !== release.commit || isDeepStrictEqual(JSON.parse(row.data), release))) return { updated: false };
+        db.prepare('INSERT INTO github_downloads VALUES(?,?,?) ON CONFLICT(repository,tag) DO UPDATE SET data=excluded.data').run(repository, release.version, JSON.stringify(release));
+        synchronizeInfos(); return { updated: true };
+      });
+    },
     githubVersion(repository) { const row = db.prepare('SELECT data FROM github_versions WHERE repository=?').get(repository.toLowerCase()); return row ? JSON.parse(row.data) : null; },
     refreshInfos() { return transaction(synchronizeInfos); },
     recordGithubVersion(repository, version) {

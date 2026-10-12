@@ -39,6 +39,11 @@ async function fixture(t, options = {}) {
   await writeFile(join(source, 'greet.mjs'), "export const greet = () => 'hello';\n");
   await writeFile(join(source, 'test.mjs'), "import test from 'node:test'; import assert from 'node:assert/strict'; import { greet } from './greet.mjs'; test('French greeting', () => assert.equal(greet(), 'bonjour'));\n");
   await writeFile(join(source, 'browser-check.mjs'), "import assert from 'node:assert/strict'; import { greet } from './greet.mjs'; assert.equal(`<h1>${greet()}</h1>`, '<h1>bonjour</h1>');\n");
+  if (options.preset === 'defilordi') {
+    await writeFile(join(source, 'package.json'), JSON.stringify({ name: 'fixture', version: '1.0.0' }));
+    await writeFile(join(source, 'package-lock.json'), JSON.stringify({ name: 'fixture', version: '1.0.0', packages: { '': { version: '1.0.0' } } }));
+  }
+  if (options.preset === 'funkart') await writeFile(join(source, 'project.godot'), '[application]\nconfig/version="1.0.0"\n');
   await git(['add', '.']); await git(['commit', '-m', 'Fixture']); await git(['remote', 'add', 'origin', bare]); await git(['push', 'origin', 'main']);
   const config = readWorkerConfig({
     PLANIFIKATEUR_URL: origin, PLANIFIKATEUR_AGENT_TOKEN: credentials.token, PLANIFIKATEUR_GITHUB_TOKEN: 'github-test-token',
@@ -383,6 +388,10 @@ for (const preset of ['defilordi', 'funkart']) test(`automatic discovery deliver
   await f.webhook({ action: 'closed', repository: { full_name: repo }, pull_request: { number: 1, merged: true, merged_at: new Date().toISOString(), merge_commit_sha: f.pr.head.sha, head: { sha: f.pr.head.sha, repo: { full_name: repo } }, base: { ref: 'main' } } });
   assert.equal(f.current().state, 'done');
   assert.equal(await f.git(['show', 'main:greet.mjs'], f.bare), "export const greet = () => 'bonjour';");
+  if (preset === 'defilordi') {
+    assert.equal(JSON.parse(await f.git(['show', 'main:package.json'], f.bare)).version, '1.0.1');
+    assert.equal(JSON.parse(await f.git(['show', 'main:package-lock.json'], f.bare)).packages[''].version, '1.0.1');
+  } else assert.match(await f.git(['show', 'main:project.godot'], f.bare), /config\/version="1.0.1"/);
   assert.equal(f.current().id, run.id);
 });
 

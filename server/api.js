@@ -1,5 +1,6 @@
 import { githubEvent } from './github.js';
 import { tagPushVersion } from './project-versions.js';
+import { driveReleaseFromBody } from '../src/lib/drive-release.js';
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { STATUSES, validateWorkspace } from '../src/lib/workspace.js';
 import { createReadStream } from 'node:fs';
@@ -66,6 +67,12 @@ export function createApi(store, config = {}) {
       if (path === '/api/v1/github/webhook') {
         if (req.method !== 'POST') throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
         const { event, data } = await githubEvent(req, config.githubWebhookSecret);
+        if (event === 'release') {
+          const repository = data.repository?.full_name, release = data.release;
+          const downloads = ['published','released','edited'].includes(data.action) && repository && !release?.draft && driveReleaseFromBody(release?.body, repository, release?.tag_name);
+          send(res, 200, { data: downloads ? store.recordDriveRelease(repository, downloads) : { updated: false } });
+          if (downloads) void config.versions?.refresh(); return true;
+        }
         if (event === 'push') {
           const tag = tagPushVersion(data);
           send(res, 200, { data: tag ? store.recordGithubVersion(tag.repository, tag.version) : { updated: false } }); return true;

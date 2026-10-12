@@ -1,5 +1,6 @@
 // Git records creation/commit dates, not tag push dates. Only GitHub events
 // supply a publication timestamp; missing history remains explicitly unknown.
+import { driveReleaseFromBody } from '../src/lib/drive-release.js';
 export function tagPushVersion(data) {
   if (data?.deleted || typeof data?.ref !== 'string' || !data.ref.startsWith('refs/tags/') || typeof data.repository?.full_name !== 'string') return null;
   const tag = data.ref.slice('refs/tags/'.length);
@@ -38,7 +39,14 @@ export function createVersionSync(store, { transport = fetch, intervalMs = 15 * 
           const published = Array.isArray(events) ? events.filter(event => event.type === 'CreateEvent' && event.payload?.ref_type === 'tag'
             && tags.some(tag => tag.name === event.payload.ref) && Number.isFinite(Date.parse(event.created_at)))
             .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0] : null;
-          store.recordGithubVersion(repository, { tag: published?.payload.ref || tags[0].name, date: published?.created_at || '' });
+          const tag = published?.payload.ref || tags[0].name;
+          store.recordGithubVersion(repository, { tag, date: published?.created_at || '' });
+          try {
+            const currentTag = store.githubVersion(repository)?.tag || tag;
+            const release = await read(`/repos/${repository}/releases/tags/${encodeURIComponent(currentTag)}`);
+            const downloads = !release.draft && driveReleaseFromBody(release.body, repository, currentTag);
+            if (downloads && !closed) store.recordDriveRelease(repository, downloads);
+          } catch { /* Preserve the previous download link during an API outage. */ }
         } catch {
           // Retain the last known version; a GitHub failure must not block the site.
         }
