@@ -267,9 +267,14 @@ configurés. Les tests locaux ne remplacent pas cet essai.
 ## Moteur et modèle du projet, effort de chaque carte
 
 Dans **Paramètres du projet → Moteur et modèle IA**, l’administrateur choisit
-**Codex** ou **Claude Code** et renseigne un identifiant de modèle accessible à
-son compte. Laisser le modèle vide utilise le défaut du moteur ; pour Codex,
+**Codex** ou **Claude Code** puis un modèle dans la liste correspondant au moteur.
+**Par défaut** utilise le défaut du moteur ; pour Codex,
 `PLANIFIKATEUR_CODEX_MODEL` reste le défaut du worker lorsqu’il est renseigné.
+Le catalogue de l’interface suit les modèles publics de Codex 0.162.1 et de
+Claude Code 2.1.296 ; l’accès effectif dépend du compte du worker. Il se maintient
+dans `src/lib/ai-models.js` lors des mises à jour des moteurs, sans interroger les
+comptes fournisseurs depuis le site. Un ancien identifiant hors catalogue reste
+visible comme **modèle enregistré** et n’est pas remplacé silencieusement.
 L’**Effort IA** est choisi à la création ou dans le détail de chaque carte.
 Les niveaux proposés dépendent du moteur ; leur disponibilité effective dépend
 aussi du modèle. **Par défaut** n’impose aucun niveau au fournisseur.
