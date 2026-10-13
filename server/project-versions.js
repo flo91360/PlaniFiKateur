@@ -47,6 +47,16 @@ export function createVersionSync(store, { transport = fetch, intervalMs = 15 * 
       const repositories = [...new Set(store.read().projects.map(project => store.workflows.githubProject(project.id)).filter(Boolean).map(repo => repo.toLowerCase()))];
       for (const repository of repositories) {
         try {
+          // Recover historical notes too; a temporary failure keeps the cached history.
+          try {
+            for (let page = 1; ; page++) {
+              const releases = await read(`/repos/${repository}/releases?per_page=100&page=${page}`);
+              if (closed) return;
+              if (!Array.isArray(releases)) break;
+              store.recordGithubChangelog(repository, releases);
+              if (releases.length < 100) break;
+            }
+          } catch {}
           const tags = await read(`/repos/${repository}/tags?per_page=100`);
           if (closed) return;
           if (!Array.isArray(tags)) continue;
