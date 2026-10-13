@@ -102,6 +102,41 @@ Les sauvegardes ne sont jamais servies comme fichiers publics. Une suppression d
 
 Les cartes incluent `createdBy`, `createdAt`, `updatedBy`, `updatedAt` et les commentaires `authorId`. Les identités sont attribuées par le serveur et restent nulles pour les créateurs inconnus d’avant la migration. Les routes de comptes et d’historique sont décrites dans [accounts.md](accounts.md). Aucun mot de passe, e-mail de compte ou secret de session n’est retourné par les routes de cartes.
 
+## Reformulation des descriptions
+
+Avec une session personnelle, `POST /api/v1/projects/{projectId}/refine` reçoit
+`{ "description": "…", "title": "…", "listId": "…", "exchanges": [{ "question": "…", "answer": "…" }] }`
+et renvoie `{ "data": { "prompt": "…", "questions": ["…"], "model": "…", "sources": ["README", "CLAUDE.md"] } }`. Seule
+`description` est obligatoire (20 000 caractères au plus). Le serveur transmet la
+description, le titre et le contexte du projet (nom, présentation, dépôt GitHub,
+liste) à Claude Code, par le SDK Claude Agent et l’abonnement du propriétaire.
+Quand un dépôt est associé, le serveur y ajoute le README et `CLAUDE.md` (ou
+`AGENTS.md` à défaut) de la branche cible, lus par l’API GitHub avec
+`PLANIFIKATEUR_GITHUB_TOKEN` s’il est défini, tronqués à 12 000 caractères chacun
+et conservés tant que la branche reste sur le même commit (vérification au plus
+une fois par minute). `sources` liste les fichiers transmis ; un dépôt
+inaccessible n’empêche pas la reformulation, qui se fait alors sans eux.
+Claude Code s’exécute sans aucun outil, dans un dossier temporaire vide, sans
+charger de réglages ni conserver de session : il ne réalise rien et ne modifie
+rien. Il reformule la demande pour l’agent, signale les points ambigus
+« À préciser » et pose au plus six questions. `exchanges` transmet les réponses
+aux questions précédentes ; les questions sans réponse sont ignorées. La route
+n’enregistre rien : la carte change uniquement si la personne remplace elle-même
+sa description.
+
+Variables du serveur du site, jamais transmises au navigateur :
+
+| Variable | Rôle |
+| --- | --- |
+| `CLAUDE_CODE_OAUTH_TOKEN` | Jeton d’abonnement créé avec `claude setup-token`. Sans lui, la route répond 503 (`ai_not_configured`). C’est la seule variable transmise au processus Claude Code avec `PATH`, la langue et le proxy éventuel. |
+| `PLANIFIKATEUR_REFINE_MODEL` | Facultatif : modèle imposé ; sinon, modèle par défaut de l’abonnement. |
+
+Erreurs : 400 (`invalid_refinement`), 429 au-delà de dix reformulations par minute
+et par compte (`too_many_refinements`) ou quand la limite de l’abonnement est
+atteinte (`ai_quota`), 502 pour un jeton refusé ou expiré (`ai_unauthorized`), un
+modèle indisponible (`ai_rejected`) ou une réponse inexploitable, 503 si Claude est
+saturé (`ai_busy`), 504 au-delà de deux minutes (`ai_timeout`).
+
 ## Archivage Google Drive
 
 Avec une session personnelle, `GET /api/v1/projects/{projectId}/drive` renvoie l’état de l’archivage des `.exe` des Releases du dépôt du projet : `enabled`, erreurs éventuelles (`configurationError`, `error`, `repositoryError`), `lastRun` et les dix dernières versions (`tag`, `state` parmi `archived`, `error` ou `conflict`, `message`, `folderUrl`, `files`). Aucun secret n’est renvoyé. `POST` sur la même route, réservé à l’administrateur, lance une vérification immédiate et répond `202` ; `503` (`drive_disabled`) si le serveur n’est pas configuré. Voir [l’archivage Google Drive](google-drive.md).

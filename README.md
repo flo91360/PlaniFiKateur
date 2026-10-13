@@ -7,6 +7,7 @@ Un tableau de projets inspiré de Trello, conçu pour préparer des demandes con
 - Projets indépendants, listes personnalisées et cartes déplaçables.
 - Suppression d’un projet avec confirmation, y compris du dernier projet ; ses listes et cartes sont supprimées avec lui.
 - Création et édition avec titre, description, statut, priorité, étiquettes et commentaires.
+- Dictée de la description au micro et reformulation de la demande par l’IA (« Reformuler avec l’IA »).
 - Recherche, filtres, affichage mobile et navigation au clavier.
 - Mode connecté : données SQLite partagées entre le site et l’API de consultation.
 - Comptes individuels par e-mail et mot de passe, invitations, déconnexion et gestion des membres par l’administrateur.
@@ -19,6 +20,42 @@ Un tableau de projets inspiré de Trello, conçu pour préparer des demandes con
 - Import/export JSON pour transférer des projets locaux sans remplacer les projets existants.
 
 Les données initiales sont des exemples. Aucun agent n’est exécuté ni aucune tâche déléguée automatiquement.
+
+## Dicter et reformuler une demande
+
+Sous la description d’une carte (création ou détail), **Dicter** active le micro.
+Parlez aussi longtemps que nécessaire : la transcription s’affiche pendant
+l’enregistrement et s’ajoute à la description quand vous cliquez sur **Arrêter**.
+La dictée utilise la reconnaissance vocale du navigateur (Chrome, Edge ou Safari ;
+Firefox ne la propose pas) : aucune clé n’est nécessaire et l’audio ne passe pas
+par le serveur du site, mais le navigateur peut l’envoyer à son propre service de
+reconnaissance (Google pour Chrome, par exemple). L’accès au micro doit être
+autorisé pour le site.
+
+**Reformuler avec l’IA** (baguette magique) demande à Claude, via votre
+abonnement Claude Code, d’analyser la description sans rien réaliser ni modifier
+(aucun outil ni accès aux fichiers), puis de la réécrire en demande claire pour
+l’agent : objectif, comportement attendu, contraintes et vérification. Si un
+dépôt GitHub est associé au projet, Claude reçoit aussi son README et son
+`CLAUDE.md` (ou `AGENTS.md` à défaut), lus sur la branche cible : il emploie le
+vocabulaire du projet et évite les questions auxquelles ils répondent déjà. Ces
+fichiers sont relus seulement quand la branche change de commit, tronqués à
+12 000 caractères chacun ; un dépôt privé nécessite `PLANIFIKATEUR_GITHUB_TOKEN`
+(déjà utilisé pour la carte Infos). Les points ambigus sont signalés « À préciser » et donnent lieu à des questions :
+répondez-y puis **Reformuler avec mes réponses**, ou appliquez la proposition
+telle quelle. La proposition reste modifiable et ne remplace la description
+qu’avec **Remplacer la description** ; **Rétablir le texte précédent** annule ce
+remplacement.
+
+Pour l’activer, créez un jeton d’abonnement avec `claude setup-token` (Claude
+Code, sur votre poste) et placez-le dans la variable `CLAUDE_CODE_OAUTH_TOKEN`
+du service **du site** (le jeton déjà utilisé par le worker convient aussi). Les
+reformulations consomment le quota de cet abonnement, partagé avec le worker
+s’il utilise le même compte. Le modèle par défaut est celui de l’abonnement ;
+`PLANIFIKATEUR_REFINE_MODEL` permet d’en imposer un (par exemple
+`claude-sonnet-5-5`). Le jeton n’est jamais transmis au navigateur. La fonction
+n’est pas disponible dans la copie HTML hors ligne. Voir
+[la route de reformulation](docs/api.md#reformulation-des-descriptions).
 
 ## Démarrer le site avec l’API
 

@@ -8,6 +8,7 @@ import { readConfig } from './config.js';
 import { createBackups } from './backups.js';
 import { createVersionSync } from './project-versions.js';
 import { createDriveArchive, readDriveConfig } from './drive-archive.js';
+import { createRepositoryContext } from './repository-context.js';
 
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.woff': 'font/woff', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.json': 'application/json' };
 
@@ -38,6 +39,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const config = readConfig();
   const store = createStore(config.database);
   config.versions = createVersionSync(store, { token: process.env.PLANIFIKATEUR_GITHUB_TOKEN || '' });
+  config.repositoryContext = createRepositoryContext({ token: process.env.PLANIFIKATEUR_GITHUB_TOKEN || '' });
   config.driveArchive = createDriveArchive(store, { drive: readDriveConfig(), token: process.env.PLANIFIKATEUR_GITHUB_TOKEN || '', directory: join(dirname(config.database), 'drive-transfers') });
   config.backups = createBackups(store, { directory: config.backupDirectory, intervalMs: config.backupIntervalMs, keep: config.backupKeep });
   const server = createAppServer({ store, config });

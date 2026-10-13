@@ -49,6 +49,8 @@ for (const mode of ['standalone', 'sandbox-with-storage', 'sandbox-without-stora
     await expect(app.getByLabel('Liste', { exact: true })).toHaveCount(0);
     await app.getByLabel('Titre de la carte', { exact: true }).fill('Ma carte');
     await app.getByLabel('Description', { exact: true }).fill('Première ligne');
+    await expect(app.getByRole('button', { name: 'Dicter la description', exact: true })).toBeVisible();
+    await expect(app.getByRole('button', { name: 'Reformuler avec l’IA', exact: true })).toHaveCount(0);
     await app.getByLabel('Description', { exact: true }).press('Enter');
     await expect(app.getByRole('dialog')).toHaveCount(1);
     await app.getByLabel('Statut', { exact: true }).selectOption('ready');
