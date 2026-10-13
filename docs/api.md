@@ -106,10 +106,16 @@ Les cartes incluent `createdBy`, `createdAt`, `updatedBy`, `updatedAt` et les co
 
 Avec une session personnelle, `POST /api/v1/projects/{projectId}/refine` reçoit
 `{ "description": "…", "title": "…", "listId": "…", "exchanges": [{ "question": "…", "answer": "…" }] }`
-et renvoie `{ "data": { "prompt": "…", "questions": ["…"], "model": "…" } }`. Seule
+et renvoie `{ "data": { "prompt": "…", "questions": ["…"], "model": "…", "sources": ["README", "CLAUDE.md"] } }`. Seule
 `description` est obligatoire (20 000 caractères au plus). Le serveur transmet la
 description, le titre et le contexte du projet (nom, présentation, dépôt GitHub,
 liste) à Claude Code, par le SDK Claude Agent et l’abonnement du propriétaire.
+Quand un dépôt est associé, le serveur y ajoute le README et `CLAUDE.md` (ou
+`AGENTS.md` à défaut) de la branche cible, lus par l’API GitHub avec
+`PLANIFIKATEUR_GITHUB_TOKEN` s’il est défini, tronqués à 12 000 caractères chacun
+et conservés tant que la branche reste sur le même commit (vérification au plus
+une fois par minute). `sources` liste les fichiers transmis ; un dépôt
+inaccessible n’empêche pas la reformulation, qui se fait alors sans eux.
 Claude Code s’exécute sans aucun outil, dans un dossier temporaire vide, sans
 charger de réglages ni conserver de session : il ne réalise rien et ne modifie
 rien. Il reformule la demande pour l’agent, signale les points ambigus

@@ -135,6 +135,7 @@ export default function DescriptionAssistant({ value, onChange, offline = false,
     {undo && value === undo.applied && !proposal && <p className="assistant-note">Description remplacée par la proposition de l’IA.<button type="button" className="link-button" onClick={() => { onChange(undo.previous); setUndo(null); }}><Undo2 size={13} />Rétablir le texte précédent</button></p>}
     {proposal && <section className="refinement" aria-label="Proposition de l’IA">
       <header><WandSparkles size={15} /><strong>Proposition de l’IA</strong>{proposal.model && <small>{proposal.model}</small>}</header>
+      {proposal.sources?.length > 0 && <p className="refinement-sources">Documentation du dépôt utilisée : {proposal.sources.join(', ')}</p>}
       <p className="muted">Relisez et ajustez la demande reformulée avant de remplacer la description. Rien n’est modifié tant que vous ne l’appliquez pas.</p>
       <textarea aria-label="Demande reformulée" rows={10} value={proposal.prompt} onChange={e => setProposal(p => ({ ...p, prompt: e.target.value }))} />
       {proposal.questions.length > 0 && <div className="refinement-questions">

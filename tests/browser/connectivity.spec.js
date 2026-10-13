@@ -18,13 +18,14 @@ const test = base.extend({
   initialAccounts: [true, { option: true }],
   driveArchive: [null, { option: true }],
   refiner: [null, { option: true }],
-  appServer: async ({ initialAccounts, githubEnabled, driveArchive, refiner }, use) => {
+  repositoryContext: [null, { option: true }],
+  appServer: async ({ initialAccounts, githubEnabled, driveArchive, refiner, repositoryContext }, use) => {
     const store = createStore(':memory:');
     const user = initialAccounts ? seedAccount(store) : null;
     if (githubEnabled) { const initial = store.read(); initial.projects.forEach(p => p.cards.forEach(c => { c.status = 'draft'; })); store.write(initial.projects, initial.revision, user); }
     const dir = mkdtempSync(join(tmpdir(), 'planifikateur-browser-backups-'));
     const backups = createBackups(store, { directory: dir });
-    const server = createAppServer({ store, config: { ownerToken, readToken, backups, githubWebhookSecret: githubEnabled ? 'browser-github-secret' : '', ...(driveArchive ? { driveArchive } : {}), ...(refiner ? { refiner } : {}) } });
+    const server = createAppServer({ store, config: { ownerToken, readToken, backups, githubWebhookSecret: githubEnabled ? 'browser-github-secret' : '', ...(driveArchive ? { driveArchive } : {}), ...(refiner ? { refiner } : {}), ...(repositoryContext ? { repositoryContext } : {}) } });
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     await use(`http://127.0.0.1:${server.address().port}`);
     server.closeAllConnections();
@@ -802,7 +803,8 @@ test.describe('description assistant', () => {
       yield { type: 'result', subtype: 'success', is_error: false, structured_output: result };
     })();
   };
-  test.use({ refiner: createRefiner({ token: 'browser-subscription-secret', query, directory: join(tmpdir(), 'planifikateur-browser-refine') }) });
+  const repositoryContext = { get: async repository => repository === 'owner/planifikateur' ? [{ name: 'README', content: 'Le tableau exporte déjà les projets en JSON.' }, { name: 'CLAUDE.md', content: 'Interface en français.' }] : [] };
+  test.use({ refiner: createRefiner({ token: 'browser-subscription-secret', query, directory: join(tmpdir(), 'planifikateur-browser-refine') }), repositoryContext });
 
   test('a dictated description is saved, then clarified by the magic wand and can be restored', async ({ page, appServer }) => {
     calls.length = 0;
@@ -811,6 +813,7 @@ test.describe('description assistant', () => {
     const project = seed[0], card = project.cards[0];
     const cardUrl = `${appServer}/api/v1/projects/${project.id}/cards/${card.id}`;
     const savedDescription = async () => (await (await page.request.get(cardUrl)).json()).data.description;
+    expect((await page.request.put(`${appServer}/api/v1/projects/${project.id}/github`, { data: { repository: 'owner/planifikateur' } })).status()).toBe(200);
     await page.getByRole('heading', { name: card.title, exact: true }).click();
     const description = page.getByLabel('Description', { exact: true });
     await description.fill('');
@@ -834,6 +837,8 @@ test.describe('description assistant', () => {
     const proposal = page.getByRole('region', { name: 'Proposition de l’IA', exact: true });
     await expect(proposal.getByLabel('Demande reformulée', { exact: true })).toHaveValue('Objectif\nAjouter un export de la liste des cartes.\nÀ préciser : format.');
     await expect(description).toHaveValue('Ajouter un export de la liste des cartes');
+    await expect(proposal.getByText('Documentation du dépôt utilisée : README, CLAUDE.md', { exact: true })).toBeVisible();
+    expect(calls[0]).toContain('<<<README\nLe tableau exporte déjà les projets en JSON.\n>>>');
     expect(calls[0]).toContain(`Titre de la carte : ${card.title}`);
     expect(calls[0]).toContain('Ajouter un export de la liste des cartes');
     await expect(proposal.getByRole('button', { name: 'Reformuler avec mes réponses', exact: true })).toBeDisabled();

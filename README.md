@@ -35,8 +35,13 @@ autorisé pour le site.
 **Reformuler avec l’IA** (baguette magique) demande à Claude, via votre
 abonnement Claude Code, d’analyser la description sans rien réaliser ni modifier
 (aucun outil ni accès aux fichiers), puis de la réécrire en demande claire pour
-l’agent : objectif, comportement attendu, contraintes et vérification. Les
-points ambigus sont signalés « À préciser » et donnent lieu à des questions :
+l’agent : objectif, comportement attendu, contraintes et vérification. Si un
+dépôt GitHub est associé au projet, Claude reçoit aussi son README et son
+`CLAUDE.md` (ou `AGENTS.md` à défaut), lus sur la branche cible : il emploie le
+vocabulaire du projet et évite les questions auxquelles ils répondent déjà. Ces
+fichiers sont relus seulement quand la branche change de commit, tronqués à
+12 000 caractères chacun ; un dépôt privé nécessite `PLANIFIKATEUR_GITHUB_TOKEN`
+(déjà utilisé pour la carte Infos). Les points ambigus sont signalés « À préciser » et donnent lieu à des questions :
 répondez-y puis **Reformuler avec mes réponses**, ou appliquez la proposition
 telle quelle. La proposition reste modifiable et ne remplace la description
 qu’avec **Remplacer la description** ; **Rétablir le texte précédent** annule ce

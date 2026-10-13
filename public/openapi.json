@@ -2599,7 +2599,7 @@
     "/api/v1/projects/{projectId}/refine": {
       "post": {
         "summary": "Reformuler une description de carte avec l’IA",
-        "description": "Session personnelle. Le serveur envoie le titre, la description et le contexte du projet (nom, présentation, dépôt, liste) à Claude Code par le SDK Claude Agent, avec l’abonnement du propriétaire (CLAUDE_CODE_OAUTH_TOKEN, jamais transmis au navigateur). Claude Code s’exécute sans aucun outil : il ne réalise pas la demande, il la reformule pour l’agent et pose des questions sur les points ambigus. Rien n’est enregistré : la proposition n’est appliquée que si la personne remplace elle-même la description. Dix reformulations par minute et par compte.",
+        "description": "Session personnelle. Le serveur envoie le titre, la description et le contexte du projet (nom, présentation, dépôt, liste) à Claude Code par le SDK Claude Agent, avec le README et CLAUDE.md (ou AGENTS.md) de la branche cible du dépôt associé, et l’abonnement du propriétaire (CLAUDE_CODE_OAUTH_TOKEN, jamais transmis au navigateur). Claude Code s’exécute sans aucun outil : il ne réalise pas la demande, il la reformule pour l’agent et pose des questions sur les points ambigus. Rien n’est enregistré : la proposition n’est appliquée que si la personne remplace elle-même la description. Dix reformulations par minute et par compte.",
         "security": [
           {
             "ownerSession": []
@@ -2681,7 +2681,8 @@
                       "required": [
                         "prompt",
                         "questions",
-                        "model"
+                        "model",
+                        "sources"
                       ],
                       "properties": {
                         "prompt": {
@@ -2699,6 +2700,13 @@
                         "model": {
                           "type": "string",
                           "description": "Modèle ayant produit la proposition."
+                        },
+                        "sources": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "description": "Documentation du dépôt transmise au modèle (README, CLAUDE.md ou AGENTS.md) ; vide sans dépôt accessible."
                         }
                       }
                     }

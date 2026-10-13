@@ -135,7 +135,10 @@ export function createApi(store, config = {}) {
         if (!refiner.enabled) throw httpError(503, 'ai_not_configured', notConfigured);
         refineLimit(user);
         const list = project.lists.find(item => item.id === request.listId)?.name || '';
-        send(res, 200, { data: await refiner.refine({ ...request, list, project: { name: project.name, description: project.description, repository: store.workflows.githubProject(project.id) || '' } }) });
+        const repository = store.workflows.githubProject(project.id) || '';
+        const documents = repository && config.repositoryContext ? await config.repositoryContext.get(repository, store.workflows.executionProfile(project.id).branch) : [];
+        const result = await refiner.refine({ ...request, list, documents, project: { name: project.name, description: project.description, repository } });
+        send(res, 200, { data: { ...result, sources: documents.map(file => file.name) } });
         return true;
       }
       if (githubProject) {

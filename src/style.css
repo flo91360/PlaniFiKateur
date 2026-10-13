@@ -271,6 +271,7 @@ input::placeholder, textarea::placeholder { color: #96aca3; }
 .refinement > header { display: flex; align-items: center; gap: 8px; color: #5b4a8f; font-size: 12px; }
 .refinement > header small { margin-left: auto; color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
 .refinement > .muted { margin: 8px 0 10px; }
+.refinement-sources { margin: 6px 0 0; font-size: 11px; color: #6b5f93; }
 .refinement textarea { width: 100%; border: 1px solid #d7e5df; border-radius: 6px; padding: 11px; background: #fff; color: #3a5349; font-size: 12px; line-height: 1.6; resize: vertical; }
 .refinement-questions { margin-top: 14px; }
 .refinement-questions h4 { margin: 0; font-size: 12px; color: #4b4070; }
