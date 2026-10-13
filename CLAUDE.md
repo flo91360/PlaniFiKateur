@@ -77,9 +77,10 @@ propriétaire ; peut déclencher le déploiement Railway) :
    la session impose une autre branche, ouvrir la PR, attendre la CI verte
    (« Tests serveur » et « Tests navigateur ») puis la fusionner soi-même. En cas
    de conflit, intégrer `main`, revérifier, puis fusionner.
-8. Créer le tag annoté `v<version>` sur le commit de `main` et le pousser
-   (`git push origin v<version>`). Si l’environnement refuse le push du tag, le
-   dire explicitement avec la commande à lancer ou la Release à créer sur GitHub.
+8. Le tag `v<version>` est créé automatiquement par le workflow GitHub
+   `.github/workflows/tag-version.yml` dès que `package.json` change sur `main`.
+   Vérifier qu’il existe (`git ls-remote --tags origin v<version>`) ; sinon,
+   lancer ce workflow manuellement (`workflow_dispatch`) ou pousser le tag.
 
 - Vérifications selon les fichiers touchés : `npm test` pour l’API et le worker ;
   ajouter `npm run test:browser` pour l’interface ou les échanges site ↔ API.
