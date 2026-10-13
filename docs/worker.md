@@ -10,6 +10,10 @@ La conversation Codex et le checkout sont conservés pour reprendre après une
 question, un arrêt, des corrections ou des tests GitHub échoués. Le worker
 renouvelle sa réservation toutes les 60 secondes. Une réservation perdue arrête
 le travail ; une interruption se reprend avec une nouvelle réservation.
+Une fois la tâche terminée (PR fusionnée ou fichier livré dans la carte), son
+checkout `jobs/<exécution>` et ses dépendances sont supprimés du volume, y compris
+pour les tâches terminées avant cette version. Les tâches en attente, en revue,
+interrompues ou annulées conservent le leur.
 
 Le worker exécute lui-même les tests. En cas d’échec, il renvoie leur sortie à
 Codex pour correction, avec au plus trois tours locaux. Il crée le commit et
