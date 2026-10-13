@@ -270,6 +270,13 @@ export function createApi(store, config = {}) {
         } else throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
         return true;
       }
+      const cardFollowers = /^\/api\/v1\/projects\/([a-zA-Z0-9_-]+)\/card-followers$/.exec(path);
+      if (cardFollowers) {
+        requireAccount(req);
+        if (req.method !== 'GET') throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
+        send(res, 200, { data: store.projectCardFollowers(cardFollowers[1]) });
+        return true;
+      }
       const subscribers = /^\/api\/v1\/projects\/([a-zA-Z0-9_-]+)\/cards\/([a-zA-Z0-9_-]+)\/subscribers$/.exec(path);
       if (subscribers) {
         const user = requireAccount(req);

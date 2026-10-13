@@ -134,6 +134,8 @@ test('JSON import adds local cards to the API without replacing existing project
 });
 
 test('project deletion requires confirmation, removes cards and permits an empty workspace', async ({ page, request, appServer }) => {
+  const pageErrors = [];
+  page.on('pageerror', error => pageErrors.push(error.message));
   await login(page, appServer);
   await page.getByRole('button', { name: 'Supprimer le projet', exact: true }).click();
   await expect(page.getByRole('dialog')).toContainText(seed[0].name);
@@ -159,6 +161,7 @@ test('project deletion requires confirmation, removes cards and permits an empty
   await page.getByRole('button', { name: 'Créer le projet', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Nouveau départ', exact: true })).toBeVisible();
   await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+  expect(pageErrors).toEqual([]);
 });
 
 test('another browser receives changes automatically and unchanged polls do not save', async ({ page, browser, appServer }) => {
@@ -344,18 +347,25 @@ test.describe('first account setup', () => {
 test('follows an existing card without being its author and keeps the setting after reload', async ({ page, appServer }) => {
   await login(page, appServer);
   const card = seed[0].cards[0];
+  const preview = page.locator('.card').filter({ has: page.getByRole('heading', { name: card.title, exact: true }) });
+  await expect(preview.locator('.card-avatar')).toHaveCount(0);
   await page.getByRole('heading', { name: card.title, exact: true }).click();
   await expect(page.getByRole('button', { name: 'Suivre la carte', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Suivre la carte', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Ne plus suivre', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+  await expect(preview.locator('.card-avatar')).toHaveAttribute('title', 'Alice');
   await page.reload();
   await expect(page.locator('.project-heading h1')).toHaveText('PlaniFiKateur');
+  await expect(preview.locator('.card-avatar')).toHaveText('A');
   await page.getByRole('heading', { name: card.title, exact: true }).click();
   await expect(page.getByRole('button', { name: 'Ne plus suivre', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Ne plus suivre', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Suivre la carte', exact: true })).toHaveAttribute('aria-pressed', 'false');
   await page.getByRole('button', { name: 'Actualiser l’historique', exact: true }).click();
   await expect(page.locator('.activity-list')).toContainText('Alice ne suit plus la carte');
+  await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+  await expect(preview.locator('.card-avatar')).toHaveCount(0);
 });
 
 test.describe('project task execution', () => {
@@ -881,13 +891,26 @@ test('adds another member to card followers and preserves their ability to unsub
     const accepted = await bobContext.request.post(`${appServer}/api/v1/accounts/accept`, { data: { token: invitation.data.token, name: 'Bob', password: 'bob-personal-password-123' } });
     expect(accepted.ok()).toBeTruthy();
     const card = seed[0].cards[0];
+    const preview = page.locator('.card').filter({ has: page.getByRole('heading', { name: card.title, exact: true }) });
     await page.getByRole('heading', { name: card.title, exact: true }).click();
     await page.getByLabel('Membre à abonner').selectOption(invitation.data.user.id);
     await page.getByRole('button', { name: 'Ajouter au suivi', exact: true }).click();
     await expect(page.getByRole('list', { name: 'Membres abonnés' })).toHaveText('Bob');
     await expect(page.getByRole('button', { name: 'Suivre la carte', exact: true })).toBeEnabled();
     await expect(page.getByRole('button', { name: 'Ajouter au suivi', exact: true })).toBeDisabled();
+    await page.getByRole('button', { name: 'Suivre la carte', exact: true }).click();
+    await expect(page.getByRole('list', { name: 'Membres abonnés' })).toHaveText('AliceBob');
+    await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+    await expect(preview.locator('.card-avatar')).toHaveText(['A', 'B']);
+    await expect(preview.locator('.card-avatar').nth(0)).toHaveAttribute('aria-label', 'Alice');
+    await expect(preview.locator('.card-avatar').nth(1)).toHaveAttribute('title', 'Bob');
+    await page.getByRole('heading', { name: card.title, exact: true }).click();
+    await page.getByRole('button', { name: 'Ne plus suivre', exact: true }).click();
+    await expect(page.getByRole('list', { name: 'Membres abonnés' })).toHaveText('Bob');
+    await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+    await expect(preview.locator('.card-avatar')).toHaveText(['B']);
     await page.reload();
+    await expect(preview.locator('.card-avatar')).toHaveText(['B']);
     await page.getByRole('heading', { name: card.title, exact: true }).click();
     await expect(page.getByRole('list', { name: 'Membres abonnés' })).toHaveText('Bob');
     await expect(page.getByLabel('Membre à abonner').locator(`option[value="${invitation.data.user.id}"]`)).toHaveAttribute('disabled', '');
@@ -897,6 +920,8 @@ test('adds another member to card followers and preserves their ability to unsub
     await expect(bobPage.getByRole('button', { name: 'Ne plus suivre', exact: true })).toBeEnabled();
     await bobPage.getByRole('button', { name: 'Ne plus suivre', exact: true }).click();
     await expect(bobPage.getByRole('button', { name: 'Suivre la carte', exact: true })).toBeEnabled();
+    await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+    await expect(preview.locator('.card-avatar')).toHaveCount(0);
     await page.reload();
     await page.getByRole('heading', { name: card.title, exact: true }).click();
     await expect(page.getByText('Aucun membre ne suit cette carte.', { exact: true })).toBeVisible();
