@@ -122,13 +122,20 @@ export function createStore(filename) {
       const { card } = findCard(projectId, cardId);
       return { following: following(card, userId) };
     },
-    setSubscription(projectId, cardId, actor, enabled) {
+    cardMembers(projectId, cardId) {
+      const { card } = findCard(projectId, cardId);
+      return db.prepare('SELECT id,name FROM users WHERE active = 1 AND password_hash IS NOT NULL ORDER BY name,id').all()
+        .map(user => ({ ...user, following: following(card, user.id) }));
+    },
+    setSubscription(projectId, cardId, actor, enabled, userId = actor.id) {
       return transaction(() => {
         const { project, card } = findCard(projectId, cardId);
-        const previous = preferences(cardId).find(row => row.user_id === actor.id);
+        const target = userById(userId);
+        if (!target?.active || !target.password_hash) fail(400, 'invalid_subscriber', 'Choisissez un membre actif du projet.');
+        const previous = preferences(cardId).find(row => row.user_id === userId);
         if (!previous || !!previous.following !== enabled) {
-          db.prepare('INSERT INTO card_subscriptions VALUES(?,?,?) ON CONFLICT(card_id,user_id) DO UPDATE SET following = excluded.following').run(cardId, actor.id, enabled ? 1 : 0);
-          audit(actor, enabled ? 'card.followed' : 'card.unfollowed', { projectId, projectName: project.name, cardId, cardTitle: card.title, recipientIds: [] });
+          db.prepare('INSERT INTO card_subscriptions VALUES(?,?,?) ON CONFLICT(card_id,user_id) DO UPDATE SET following = excluded.following').run(cardId, userId, enabled ? 1 : 0);
+          audit(actor, userId !== actor.id ? 'card.subscriber_added' : enabled ? 'card.followed' : 'card.unfollowed', { projectId, projectName: project.name, cardId, cardTitle: card.title, subscriberId: userId, subscriberName: target.name, recipientIds: [] });
         }
         return { following: enabled };
       });

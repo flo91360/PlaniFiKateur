@@ -286,3 +286,42 @@ test('deleting a member during a password request revokes the request without a 
   pending.end('"bob-personal-password-123","password":"another-password-123"}');
   assert.equal(await result, 401);
 });
+
+
+test('any project member can add an active member to card followers without changing personal preferences', async t => {
+  const f = await fixture(t), admin = await f.login(), member = await inviteMember(f, admin);
+  const alice = f.store.userByEmail(testEmail), bob = member.user;
+  const project = f.store.read().projects[0], card = project.cards[0];
+  const path = `/projects/${project.id}/cards/${card.id}/subscribers`;
+  assert.equal((await f.request(path)).status, 401);
+  assert.equal((await f.request(path, { headers: { Authorization: 'Bearer agent-test-key' } })).status, 401);
+  assert.equal((await f.request(`/projects/wrong/cards/${card.id}/subscribers`, { cookie: admin })).status, 404);
+  const pending = f.store.inviteUser({ name: 'Pending', email: 'pending@example.test' }, alice);
+  const list = (await (await f.request(path, { cookie: member.cookie })).json()).data;
+  assert.equal(list.length, 2);
+  assert.deepEqual(Object.keys(list[0]).sort(), ['following', 'id', 'name']);
+  for (const userId of [null, 42, '', 'missing', pending.user.id]) {
+    assert.equal((await f.request(path, { method: 'PUT', cookie: member.cookie, data: { userId } })).status, 400);
+  }
+  f.store.setSubscription(project.id, card.id, alice, false);
+  const stale = f.store.read();
+  const response = await f.request(path, { method: 'PUT', cookie: member.cookie, data: { userId: alice.id } });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).data.find(user => user.id === alice.id).following, true);
+  assert.equal(f.store.subscription(project.id, card.id, bob.id).following, false);
+  const event = f.store.activity({ cardId: card.id }).find(event => event.action === 'card.subscriber_added');
+  assert.equal(event.actor.id, bob.id);
+  assert.equal(event.subscriberId, alice.id);
+  const version = f.store.backupVersion();
+  await f.request(path, { method: 'PUT', cookie: member.cookie, data: { userId: alice.id } });
+  assert.equal(f.store.backupVersion(), version);
+  assert.equal(f.store.getRevision(), stale.revision);
+  stale.projects[0].cards[0].title += ' assigned'; f.store.write(stale.projects, stale.revision, bob);
+  assert.deepEqual(f.store.activity({ cardId: card.id }).find(event => event.action === 'card.updated').recipientIds, [alice.id]);
+  f.store.setActive(bob.id, false, alice);
+  assert.equal((await f.request(path, { method: 'PUT', cookie: admin, data: { userId: bob.id } })).status, 400);
+  assert.deepEqual((await (await f.request(path, { cookie: admin })).json()).data.map(user => user.id), [alice.id]);
+  const restarted = await f.restart();
+  const persisted = await (await fetch(restarted + path, { headers: { Cookie: admin } })).json();
+  assert.equal(persisted.data.find(user => user.id === alice.id).following, true);
+});

@@ -278,3 +278,6 @@ input::placeholder, textarea::placeholder { color: #96aca3; }
 .refinement-questions label { display: flex; flex-direction: column; gap: 7px; margin: 0 0 12px; font-size: 12px; color: #4f6a5f; font-weight: 500; line-height: 1.5; }
 .refinement-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 @media (prefers-reduced-motion: reduce) { .recording-dot, .spin { animation: none; } }
+.card-subscription { min-width: 0; }
+.card-followers ul { padding-left: 18px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+@media (max-width: 700px) { .card-subscription { grid-column: 1 / -1; } }
