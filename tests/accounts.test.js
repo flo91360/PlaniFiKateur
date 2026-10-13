@@ -288,6 +288,34 @@ test('deleting a member during a password request revokes the request without a 
 });
 
 
+test('project card previews list active followers with automatic participation and explicit preferences', async t => {
+  const f = await fixture(t), admin = await f.login(), member = await inviteMember(f, admin);
+  const alice = f.store.userByEmail(testEmail), bob = member.user;
+  const initial = f.store.read(), project = initial.projects[0];
+  const card = { ...structuredClone(project.cards[0]), id: 'preview-followers', comments: [], checklist: [] };
+  project.cards.push(card);
+  f.store.write(initial.projects, initial.revision, alice);
+  const path = `/projects/${project.id}/card-followers`;
+  assert.equal((await f.request(path)).status, 401);
+  assert.equal((await f.request(path, { headers: { Authorization: 'Bearer agent-test-key' } })).status, 401);
+  assert.equal((await f.request('/projects/missing/card-followers', { cookie: admin })).status, 404);
+  assert.equal((await f.request(path, { method: 'PUT', cookie: admin, data: {} })).status, 405);
+  const read = async () => (await (await f.request(path, { cookie: member.cookie })).json()).data;
+  assert.deepEqual((await read())[project.cards[0].id], []);
+  assert.deepEqual((await read())[card.id], [{ id: alice.id, name: alice.name }]);
+  const discussion = f.store.read();
+  discussion.projects[0].cards.find(item => item.id === card.id).comments.push({ id: 'preview-comment', author: 'Bob', text: 'Je participe', date: new Date().toISOString() });
+  f.store.write(discussion.projects, discussion.revision, bob);
+  assert.deepEqual((await read())[card.id], [{ id: alice.id, name: alice.name }, { id: bob.id, name: bob.name }]);
+  f.store.setSubscription(project.id, card.id, alice, false);
+  assert.deepEqual((await read())[card.id], [{ id: bob.id, name: bob.name }]);
+  f.store.inviteUser({ name: 'Pending', email: 'preview-pending@example.test' }, alice);
+  f.store.setActive(bob.id, false, alice);
+  const result = (await (await f.request(path, { cookie: admin })).json()).data;
+  assert.deepEqual(result[card.id], []);
+  assert.equal(Object.keys(result).length, project.cards.length);
+});
+
 test('any project member can add an active member to card followers without changing personal preferences', async t => {
   const f = await fixture(t), admin = await f.login(), member = await inviteMember(f, admin);
   const alice = f.store.userByEmail(testEmail), bob = member.user;

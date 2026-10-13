@@ -49,8 +49,9 @@ export function createStore(filename) {
   };
   const preferences = cardId => db.prepare('SELECT user_id,following FROM card_subscriptions WHERE card_id = ?').all(cardId);
   const participants = card => [card.createdBy?.id, ...card.comments.map(c => c.authorId)].filter(Boolean);
-  const following = (card, userId) => {
-    const preference = preferences(card.id).find(row => row.user_id === userId);
+  const activeMembers = () => db.prepare('SELECT id,name FROM users WHERE active = 1 AND password_hash IS NOT NULL ORDER BY name,id').all();
+  const following = (card, userId, prefs = preferences(card.id)) => {
+    const preference = prefs.find(row => row.user_id === userId);
     return preference ? !!preference.following : participants(card).includes(userId);
   };
   const workflows = createWorkflows(db, { transaction, audit, findCard });
@@ -124,8 +125,17 @@ export function createStore(filename) {
     },
     cardMembers(projectId, cardId) {
       const { card } = findCard(projectId, cardId);
-      return db.prepare('SELECT id,name FROM users WHERE active = 1 AND password_hash IS NOT NULL ORDER BY name,id').all()
-        .map(user => ({ ...user, following: following(card, user.id) }));
+      const prefs = preferences(card.id);
+      return activeMembers().map(user => ({ ...user, following: following(card, user.id, prefs) }));
+    },
+    projectCardFollowers(projectId) {
+      const project = this.read().projects.find(project => project.id === projectId);
+      if (!project) fail(404, 'project_not_found', 'Projet inexistant.');
+      const members = activeMembers();
+      return Object.fromEntries(project.cards.map(card => {
+        const prefs = preferences(card.id);
+        return [card.id, members.filter(member => following(card, member.id, prefs))];
+      }));
     },
     setSubscription(projectId, cardId, actor, enabled, userId = actor.id) {
       return transaction(() => {
