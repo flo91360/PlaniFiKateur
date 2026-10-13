@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.21 — 2026-10-13
+<!-- planifikateur:worker-liberer-checkouts -->
+
+- **Disque du worker** : Le worker supprime le dossier local d’une tâche dès qu’elle est terminée, y compris pour les tâches terminées avant la mise à jour, afin que le disque du serveur ne se remplisse plus. Les tâches en attente, en revue ou annulées conservent leur dossier.
+
 ## 0.1.20 — 2026-10-13
 <!-- planifikateur:livraison-controle-base-20261013 -->
 

@@ -1,4 +1,4 @@
-import { access, appendFile, mkdir } from 'node:fs/promises';
+import { access, appendFile, mkdir, rm } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validId, validRepository } from './config.mjs';
@@ -26,6 +26,14 @@ export function createWorker(config, dependencies = {}) {
   const diagnostics = new Map();
   const auto = config.discovery !== 'manual';
   const allowed = run => run.delivery === 'github' && validId(run.id) && validId(run.projectId) && validId(run.cardId) && validRepository(run.repository) && (auto ? projects.has(run.projectId) : config.repositories.includes(run.repository.toLowerCase()) && config.projectIds.includes(run.projectId));
+
+  // done is terminal and its code is on main: the checkout and its dependencies would only fill the disk.
+  async function releaseCheckout(job) {
+    if (job.phase !== 'done' || job.checkoutReleased) return;
+    await rm(join(config.stateRoot, 'jobs', job.id), { recursive: true, force: true });
+    job.checkoutReleased = true; await state.put(job);
+    log(`Exécution ${job.id} : checkout local supprimé, tâche terminée.`);
+  }
 
   async function processTask(candidate, parentSignal) {
     if (!allowed(candidate)) return { status: 'ignored' };
@@ -199,6 +207,7 @@ export function createWorker(config, dependencies = {}) {
         await action('submit', { summary: result.summary, checks: checks.join('\n'), links: [], files: deliveredFiles, artifactOnly: true });
         job.phase = 'done'; job.attempts = 0; await state.put(job);
         log(`Exécution ${run.id} : fichiers livrés dans la carte, tâche terminée.`);
+        await releaseCheckout(job);
         return { status: 'done', files: deliveredFiles.map(file => file.name) };
       }
       await command(['git', 'add', '--all']);
@@ -250,7 +259,7 @@ export function createWorker(config, dependencies = {}) {
 
   async function reconcile(signal) {
     for (const job of await state.all()) {
-      if (['done', 'cancelled'].includes(job.phase)) continue;
+      if (['done', 'cancelled'].includes(job.phase)) { await releaseCheckout(job); continue; }
       if (auto && !projects.has(job.projectId)) {
         if (job.phase !== 'unauthorized') { job.phase = 'unauthorized'; await state.put(job); log(`Exécution ${job.id} suspendue localement : projet non autorisé ou supprimé.`); }
         continue;
@@ -279,6 +288,7 @@ export function createWorker(config, dependencies = {}) {
       }
       if (['done', 'cancelled', 'waiting', 'review'].includes(run.state)) {
         if (job.phase !== run.state) { job.phase = run.state; await state.put(job); log(`Exécution ${job.id} : ${run.state}.`); }
+        await releaseCheckout(job);
         continue;
       }
       if (run.state !== 'merging' || !allowed(run)) continue;

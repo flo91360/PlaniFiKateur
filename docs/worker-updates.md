@@ -90,6 +90,14 @@ automatiquement une fois l’espace libéré. Le paquet Chromium et les outils d
 compilation demandent à eux seuls plus d’un gigaoctet pendant leur installation ;
 un disque de 8 Go est juste, 16 Go ou plus est recommandé.
 
+Dans le volume, le worker supprime le checkout d’une tâche dès qu’elle est
+terminée (voir `docs/worker.md`). Pour contrôler l’espace occupé par les tâches
+et le cache npm :
+
+```sh
+sudo du -sh /var/lib/docker/volumes/planifikateur-worker-data/_data/{jobs,npm-cache}
+```
+
 Lors de la première vérification avec ce programme, un worker déjà à jour est
 nettoyé une fois. Pour libérer l’espace immédiatement :
 

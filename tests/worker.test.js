@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
-import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
+import { access, mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -204,7 +204,29 @@ test('local end-to-end from ready card status: real API, Git changes, passing te
   assert.equal(merged.merged, true); assert.equal(f.current().state, 'merging');
   await f.webhook({ action: 'closed', repository: { full_name: repository }, pull_request: { number: 1, merged: true, merged_at: new Date().toISOString(), merge_commit_sha: outcome.sha, head: { sha: outcome.sha, repo: { full_name: repository } }, base: { ref: 'main' } } });
   assert.equal(f.current().state, 'done'); assert.equal(f.store.read().projects[0].cards[0].status, 'done');
+  const checkout = join(f.config.stateRoot, 'jobs', ready.id);
+  await access(join(checkout, '.git'));
   assert.equal((await f.worker.tick()).status, 'idle');
+  await assert.rejects(access(checkout), { code: 'ENOENT' });
+  assert.equal((await f.state.get(ready.id)).checkoutReleased, true);
+  assert.equal(f.logs.filter(message => message.includes('checkout local supprimé')).length, 1);
+  assert.equal((await f.worker.tick()).status, 'idle');
+  assert.equal(f.logs.filter(message => message.includes('checkout local supprimé')).length, 1);
+});
+
+test('checkouts of tasks finished before the update are released while other phases keep theirs', async t => {
+  const f = await fixture(t);
+  const jobs = ['finished-job', 'waiting-job'].map((id, index) => ({ id, projectId: f.project.id, cardId: f.card.id, repository, phase: index ? 'waiting' : 'done' }));
+  for (const job of jobs) {
+    await f.state.put(job);
+    await mkdir(join(f.config.stateRoot, 'jobs', job.id, 'node_modules'), { recursive: true });
+  }
+  assert.equal((await f.worker.tick()).status, 'idle');
+  await assert.rejects(access(join(f.config.stateRoot, 'jobs', 'finished-job')), { code: 'ENOENT' });
+  await access(join(f.config.stateRoot, 'jobs', 'waiting-job', 'node_modules'));
+  assert.deepEqual(await f.state.get('finished-job'), { ...jobs[0], checkoutReleased: true });
+  // Unknown on the site, the second job is archived as cancelled and still keeps its checkout.
+  assert.deepEqual(await f.state.get('waiting-job'), { ...jobs[1], phase: 'cancelled' });
 });
 
 test('two worker claims start only one model and one PR', async t => {
@@ -321,6 +343,7 @@ test('a model question is relayed literally, a card reply resumes the thread and
   assert.equal(f.pr, undefined);
   assert.equal(f.calls.some(call => call.command[0] === 'git' && call.command[1] === 'push'), false);
   assert.equal(f.calls.some(call => call.command.includes('--test')), false);
+  await assert.rejects(access(join(f.config.stateRoot, 'jobs', f.current().id)), { code: 'ENOENT' });
 });
 
 test('generated files alongside repository changes remain bound to the tested PR and do not cancel its execution', async t => {
