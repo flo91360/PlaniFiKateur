@@ -213,7 +213,15 @@ export function createWorker(config, dependencies = {}) {
       }
       const sha = await command(['git', 'rev-parse', 'HEAD']);
       await action('progress', { message: 'Les tests locaux ont réussi. Le worker publie la branche et prépare la PR.' });
-      await command(['git', 'push', 'origin', `HEAD:refs/heads/${job.branch}`]);
+      const pushed = await execute(['git', 'push', 'origin', `HEAD:refs/heads/${job.branch}`], { cwd, env: gitEnv, signal });
+      if (pushed.code !== 0) {
+        // Retrying cannot fix a missing token permission: ask for the configuration change.
+        if (!workflowScopeRefused(pushed.output)) throw new Error(`Échec de git push origin : ${clean(pushed.output)}`);
+        const workflows = (await command(['git', 'diff', `origin/${targetBranch}...HEAD`, '--name-only', '--', '.github/workflows'])).split('\n').filter(Boolean);
+        await action('question', { message: workflowScopeQuestion(workflows) }); job.phase = 'waiting'; job.attempts = 0; await state.put(job);
+        log(`Exécution ${run.id} : publication refusée, le token GitHub ne peut pas modifier les workflows.`);
+        return { status: 'waiting' };
+      }
       // PR starts unlabeled. Only enable merging after the site has bound this SHA.
       const pr = await github.ensurePullRequest(job.repository, job.branch, run.cardSnapshot.title.slice(0, 140), `${result.summary}\n\nCarte PlaniFiKateur : ${run.cardId}\nExécution : ${run.id}\n\nVérifications locales :\n${checks.map(c => `- ${c}`).join('\n')}`, signal, sha, targetBranch);
       if (pr.head.sha !== sha) throw new Error('La PR ne pointe pas sur le commit testé.');
@@ -351,4 +359,15 @@ export function createWorker(config, dependencies = {}) {
       return { status: 'idle' };
     },
   };
+}
+
+export function workflowScopeRefused(output) {
+  return /refusing to allow an? (Personal Access Token|OAuth App|GitHub App)[^\n]*(create or update )?workflow/i.test(String(output));
+}
+
+export function workflowScopeQuestion(files = []) {
+  const list = files.length ? ` (${files.slice(0, 5).join(', ')}${files.length > 5 ? '…' : ''})` : '';
+  return `GitHub refuse la publication : la modification touche un workflow GitHub Actions${list} et le token PLANIFIKATEUR_GITHUB_TOKEN du worker n’a pas le droit de modifier les workflows. `
+    + 'Ajoutez la portée « workflow » (token classique) ou la permission « Workflows : lecture et écriture » (token à granularité fine ou GitHub App), redémarrez le worker, puis répondez ici pour relancer la publication. '
+    + 'Si le workflow ne devait pas changer, précisez-le et la modification sera refaite sans y toucher.';
 }

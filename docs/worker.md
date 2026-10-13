@@ -47,7 +47,7 @@ sandbox puis remplacement avec retour au conteneur précédent en cas d’échec
 | --- | --- |
 | `PLANIFIKATEUR_URL` | `https://planifikateur-production.up.railway.app` |
 | `PLANIFIKATEUR_AGENT_TOKEN` | Clé active créée dans le site |
-| `PLANIFIKATEUR_GITHUB_TOKEN` | Token GitHub App ou token personnel dédié au dépôt, avec lecture Actions, écriture Contents, Issues et Pull requests |
+| `PLANIFIKATEUR_GITHUB_TOKEN` | Token GitHub App ou token personnel dédié au dépôt, avec lecture Actions, écriture Contents, Issues et Pull requests, et écriture Workflows (portée `workflow` d’un token classique) pour les cartes qui modifient `.github/workflows/` |
 | `OPENAI_API_KEY` | Authentification Codex par API ; consommation facturée à l’API |
 | `PLANIFIKATEUR_WORKER_PROJECTS` | Facultatif : identifiants du périmètre supplémentaire en mode `manual` |
 | `PLANIFIKATEUR_WORKER_REPOSITORIES` | Facultatif : dépôts autorisés en mode `manual` |
@@ -55,6 +55,11 @@ sandbox puis remplacement avec retour au conteneur précédent en cas d’échec
 
 L’identifiant du projet est visible dans **Paramètres du projet**, ainsi que
 dans la réponse de l’API de consultation `GET /api/v1/projects`. Les noms affichés ne remplacent pas ces identifiants.
+Sans la permission Workflows, GitHub refuse le push d’une branche qui crée ou
+modifie un fichier de `.github/workflows/` (« refusing to allow a Personal Access
+Token to create or update workflow … without `workflow` scope »). Le worker ne
+réessaie pas : il pose une question sur la carte. Après avoir ajouté la
+permission et redémarré le worker, répondre à la question relance la publication.
 Pour GitHub, utiliser un token personnel ou d’application permettant de déclencher
 les workflows sur les PR : un `GITHUB_TOKEN` d’un workflow GitHub ne déclenche
 généralement pas d’autres workflows. Ne pas copier les clés du site dans les
