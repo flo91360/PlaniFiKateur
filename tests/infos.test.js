@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { withInfos } from '../src/lib/infos.js';
+import { cardLinks, withInfos } from '../src/lib/infos.js';
 import { validateWorkspace } from '../src/lib/workspace.js';
 import { seed } from '../src/data/demo.js';
 import { createStore } from '../server/store.js';
@@ -39,6 +39,23 @@ test('Infos links the README of the associated repository and keeps it on naviga
   assert.deepEqual(withInfos(linked), linked);
   assert.equal(withInfos(linked, { tag: 'Aucun tag disponible', date: '' }).cards[1].readme, undefined);
   assert.throws(() => validateWorkspace([{ ...linked, name: 'P', description: '', emoji: '◈', color: '#fff', cards: [{ ...linked.cards[1], readme: 'evil.com/x/../y' }] }]), /mode d’emploi/);
+});
+
+test('Changelog links the CHANGELOG.md of the associated repository and keeps it on navigator refreshes', () => {
+  const empty = withInfos({ id: 'project', lists: [], cards: [] });
+  assert.equal(empty.cards[2].changelog, undefined);
+  assert.deepEqual(cardLinks(empty.cards[2]), []);
+  const linked = withInfos(empty, { ...version, repository: 'owner/repo' });
+  assert.equal(linked.cards[2].changelog, 'owner/repo');
+  assert.match(linked.cards[2].description, /https:\/\/github\.com\/owner\/repo\/blob\/HEAD\/CHANGELOG\.md/);
+  assert.deepEqual(cardLinks(linked.cards[2]), [{ href: 'https://github.com/owner/repo/blob/HEAD/CHANGELOG.md', label: 'Lire le changelog (CHANGELOG.md)', detail: 'Consulter le changelog (CHANGELOG.md)' }]);
+  assert.equal(cardLinks(linked.cards[1])[0].href, 'https://github.com/owner/repo#readme');
+  const released = withInfos(linked, { ...version, repository: 'owner/repo', changelog: [{ tag: 'v1.0.0', date: version.date, body: 'Nouveautés' }] });
+  assert.equal(released.cards[2].changelog, 'owner/repo');
+  assert.deepEqual(withInfos(released), released);
+  assert.equal(validateWorkspace([{ ...released, name: 'P', description: '', emoji: '◈', color: '#fff' }])[0].cards[2].changelog, 'owner/repo');
+  assert.equal(withInfos(released, { tag: 'Aucun tag disponible', date: '' }).cards[2].changelog, undefined);
+  assert.throws(() => validateWorkspace([{ ...released, name: 'P', description: '', emoji: '◈', color: '#fff', cards: [{ ...released.cards[2], changelog: 'javascript:alert(1)' }] }]), /changelog/);
 });
 
 test('existing databases receive Infos once and retain their other cards on restart', t => {

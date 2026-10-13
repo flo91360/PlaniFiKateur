@@ -12,6 +12,7 @@ import { validateAi, efforts, effortLabels } from './ai-settings.mjs';
 import { defaultExecutionProfile, validateExecutionProfile, resolveWorkerCommand } from './execution-profile.mjs';
 import { runtimeEnvironment, checkRuntime, projectDiagnostic } from './runtime.mjs';
 import { bumpProjectVersion } from './project-version.mjs';
+import { recordChangelog } from './changelog.mjs';
 
 export function createWorker(config, dependencies = {}) {
   const site = dependencies.site || createSiteClient(config);
@@ -180,6 +181,8 @@ export function createWorker(config, dependencies = {}) {
           if (repositoryChanged) {
             const version = await bumpProjectVersion(cwd, profile, command);
             if (version) checks.push(`Version ${version} : préparée avant les tests`);
+            await recordChangelog(cwd, { runId: run.id, version, title: run.cardSnapshot.title, summary: result.summary });
+            checks.push('CHANGELOG.md : entrée de la livraison ajoutée');
           }
         } catch (error) { failure = `Corrige les fichiers à livrer : ${clean(error.message)}`; }
         for (const test of failure || artifactOnly ? [] : run.legacyExecutionProfile ? config.testCommands : profile.testCommands) {

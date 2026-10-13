@@ -38,6 +38,7 @@ Une question doit être écrite intégralement dans le champ question, avec stat
 Si la carte demande un fichier téléchargeable (par exemple un formulaire Qt Designer .ui), crée-le dans .planifikateur/generated/ et indique ses chemins relatifs dans files. Ce dossier sert à la livraison et n'est pas ajouté au commit. Pour Qt, produis un véritable document XML ui version 4.0, ouvrable dans Qt Designer, avec les champs demandés. Ne te limite pas à décrire le fichier ou à afficher son code dans le résumé. Si la demande porte aussi sur le code du dépôt, réalise ces changements normalement et référence les fichiers à livrer dans files. Utilise files=[] si aucun fichier n'est demandé.
 Tu travailles dans une branche gérée par le worker. Ne fais aucun commit, push, PR, merge ou appel à l’API du site. Le worker réalise lui-même les tests obligatoires puis publie la PR. Ne modifie ni l’origine Git ni les accès du service. Ne délègue pas à d’autres agents.
 Pour les profils DefilOrdi, FunKart et TrameErgo, le worker augmente automatiquement le correctif de version avant les tests afin d’archiver chaque livraison. Une version majeure ou mineure explicitement augmentée est conservée.
+Le worker ajoute aussi lui-même, à chaque livraison de code, une section à CHANGELOG.md à partir du titre de la carte et de ton résumé : n’y ajoute pas d’entrée et rédige un résumé clair des modifications.
 Réponds en JSON conforme au schéma, avec status=result une fois les modifications prêtes.
 
 Carte : ${run.cardSnapshot.title}

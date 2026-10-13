@@ -30,6 +30,16 @@ export function withInfos(project, version) {
 }
 
 export const readmeUrl = repository => `https://github.com/${repository}#readme`;
+// HEAD suit la branche par défaut du dépôt, où le worker tient CHANGELOG.md à jour.
+export const changelogUrl = repository => `https://github.com/${repository}/blob/HEAD/CHANGELOG.md`;
+
+// Liens affichés sous la carte du tableau (label) et dans son détail (detail).
+export function cardLinks(card) {
+  return [
+    ...(card.readme ? [{ href: readmeUrl(card.readme), label: 'Lire le mode d’emploi (README)', detail: 'Consulter le mode d’emploi (README)' }] : []),
+    ...(card.changelog ? [{ href: changelogUrl(card.changelog), label: 'Lire le changelog (CHANGELOG.md)', detail: 'Consulter le changelog (CHANGELOG.md)' }] : []),
+  ];
+}
 
 // Without a repository argument (navigator), the server-provided link is kept.
 function withReadme(projectId, cards, listId, repository) {
@@ -51,8 +61,10 @@ function withChangelog(projectId, cards, listId, version) {
   const description = entries?.length
     ? entries.map(entry => `${entry.tag} — ${entry.date.slice(0, 10)}\n${entry.body || 'Aucune note de version publiée.'}`).join('\n\n').slice(0, 20000)
     : version === undefined && card ? card.description
-      : version?.repository ? 'Les nouveautés de chaque version apparaîtront ici dès la publication des notes de release GitHub.'
+      : version?.repository ? `Chaque livraison est inscrite dans CHANGELOG.md : ${changelogUrl(version.repository)}\nLes notes des releases GitHub apparaîtront aussi ici dès leur publication.`
         : 'Associez un dépôt GitHub au projet pour afficher les nouveautés de chaque version.';
-  const next = { ...(card || { id, priority: 'normal', tags: ['Changelog'], comments: [], checklist: [] }), listId, title: 'Changelog', description, status: 'done' };
+  const repository = version === undefined ? card?.changelog || '' : version.repository || '';
+  const { changelog, ...previous } = card || { id, priority: 'normal', tags: ['Changelog'], comments: [], checklist: [] };
+  const next = { ...previous, listId, title: 'Changelog', description, status: 'done', ...(repository ? { changelog: repository } : {}) };
   return card ? cards.map(item => item.id === id ? next : item) : [...cards, next];
 }

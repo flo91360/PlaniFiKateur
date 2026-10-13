@@ -653,8 +653,10 @@ test.describe('automatic GitHub delivery', () => {
     await page.reload();
     const changelog = infos.locator('.card').filter({ has: page.getByRole('heading', { name: 'Changelog', exact: true }) });
     await expect(changelog.locator('p')).toContainText('Nouvelle interface et corrections');
+    await expect(infos.getByRole('link', { name: 'Lire le changelog (CHANGELOG.md)' })).toHaveAttribute('href', 'https://github.com/owner/first/blob/HEAD/CHANGELOG.md');
     await changelog.click();
     await expect(page.getByLabel('Description', { exact: true })).toHaveValue(/Nouvelle interface et corrections/);
+    await expect(page.getByRole('link', { name: 'Consulter le changelog (CHANGELOG.md)' })).toHaveAttribute('href', 'https://github.com/owner/first/blob/HEAD/CHANGELOG.md');
     await page.getByRole('button', { name: 'Terminé', exact: true }).click();
     await version.click();
     await expect(page.getByRole('link', { name: 'Télécharger cette version sur Google Drive' })).toHaveAttribute('href', 'https://drive.google.com/drive/folders/drive-version-folder');
