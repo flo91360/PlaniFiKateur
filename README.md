@@ -7,6 +7,7 @@ Un tableau de projets inspiré de Trello, conçu pour préparer des demandes con
 - Projets indépendants, listes personnalisées et cartes déplaçables.
 - Suppression d’un projet avec confirmation, y compris du dernier projet ; ses listes et cartes sont supprimées avec lui.
 - Création et édition avec titre, description, statut, priorité, étiquettes et commentaires.
+- Dictée de la description au micro et reformulation de la demande par l’IA (« Reformuler avec l’IA »).
 - Recherche, filtres, affichage mobile et navigation au clavier.
 - Mode connecté : données SQLite partagées entre le site et l’API de consultation.
 - Comptes individuels par e-mail et mot de passe, invitations, déconnexion et gestion des membres par l’administrateur.
@@ -19,6 +20,30 @@ Un tableau de projets inspiré de Trello, conçu pour préparer des demandes con
 - Import/export JSON pour transférer des projets locaux sans remplacer les projets existants.
 
 Les données initiales sont des exemples. Aucun agent n’est exécuté ni aucune tâche déléguée automatiquement.
+
+## Dicter et reformuler une demande
+
+Sous la description d’une carte (création ou détail), **Dicter** active le micro.
+Parlez aussi longtemps que nécessaire : la transcription s’affiche pendant
+l’enregistrement et s’ajoute à la description quand vous cliquez sur **Arrêter**.
+La dictée utilise la reconnaissance vocale du navigateur (Chrome, Edge ou Safari ;
+Firefox ne la propose pas) : aucune clé n’est nécessaire et l’audio ne passe pas
+par le serveur du site, mais le navigateur peut l’envoyer à son propre service de
+reconnaissance (Google pour Chrome, par exemple). L’accès au micro doit être
+autorisé pour le site.
+
+**Reformuler avec l’IA** (baguette magique) demande à Claude d’analyser la
+description sans rien réaliser ni modifier, puis de la réécrire en demande claire
+pour l’agent : objectif, comportement attendu, contraintes et vérification. Les
+points ambigus sont signalés « À préciser » et donnent lieu à des questions :
+répondez-y puis **Reformuler avec mes réponses**, ou appliquez la proposition
+telle quelle. La proposition reste modifiable et ne remplace la description
+qu’avec **Remplacer la description** ; **Rétablir le texte précédent** annule ce
+remplacement. Cette fonction exige la variable serveur `ANTHROPIC_API_KEY` du
+site (modèle `claude-opus-5-5` par défaut, modifiable avec
+`PLANIFIKATEUR_REFINE_MODEL`) ; la clé n’est jamais transmise au navigateur. Elle
+n’est pas disponible dans la copie HTML hors ligne. Voir
+[la route de reformulation](docs/api.md#reformulation-des-descriptions).
 
 ## Démarrer le site avec l’API
 

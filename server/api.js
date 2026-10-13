@@ -5,6 +5,7 @@ import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { STATUSES, validateWorkspace } from '../src/lib/workspace.js';
 import { createReadStream } from 'node:fs';
 import { accountFields, hashPassword, verifyPassword, publicUser } from './accounts.js';
+import { createRefiner, validateRefinement } from './refine.js';
 
 const MAX_BODY = 4 * 1024 * 1024;
 const hash = value => createHash('sha256').update(value).digest();
@@ -27,7 +28,8 @@ async function body(req) {
 
 export function createApi(store, config = {}) {
   const { ownerToken = '', readToken = '', secureCookie = false } = config;
-  const loginAttempts = new Map();
+  const loginAttempts = new Map(), refinements = new Map();
+  const refiner = config.refiner || createRefiner({ apiKey: config.anthropicApiKey, model: config.refineModel });
   const cookie = (token, maxAge) => `planifikateur_session=${token}; HttpOnly; SameSite=Strict; Path=/api; Max-Age=${maxAge}${secureCookie ? '; Secure' : ''}`;
   const send = (res, status, data) => { res.statusCode = status; res.setHeader('Content-Type', 'application/json; charset=utf-8'); res.end(JSON.stringify(data)); };
   const sameOrigin = req => {
@@ -54,6 +56,14 @@ export function createApi(store, config = {}) {
     const attempt = loginAttempts.get(ip) || { count: 0, until: now + 60000 };
     if (++attempt.count > 20) throw httpError(429, 'too_many_attempts', 'Trop de tentatives. Réessayez dans une minute.');
     loginAttempts.set(ip, attempt);
+  };
+  // Chaque reformulation est facturée par le fournisseur IA : limite par compte.
+  const refineLimit = user => {
+    const now = Date.now();
+    for (const [key, attempt] of refinements) if (attempt.until < now) refinements.delete(key);
+    const attempt = refinements.get(user.id) || { count: 0, until: now + 60000 };
+    if (++attempt.count > 10) throw httpError(429, 'too_many_refinements', 'Trop de reformulations en une minute. Réessayez dans un instant.');
+    refinements.set(user.id, attempt);
   };
   const fields = data => { try { return accountFields(data); } catch (error) { throw httpError(400, 'invalid_account', error.message); } };
   const passwordHash = async password => { try { return await hashPassword(password); } catch (error) { throw httpError(400, 'invalid_password', error.message); } };
@@ -113,6 +123,19 @@ export function createApi(store, config = {}) {
         if (req.method === 'GET') send(res, 200, { data: store.workflows.projectAi(aiProject[1]) });
         else if (req.method === 'PUT') send(res, 200, { data: store.workflows.configureAi(aiProject[1], await body(req), requireAdmin(req)) });
         else throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
+        return true;
+      }
+      const refineProject = /^\/api\/v1\/projects\/([a-zA-Z0-9_-]+)\/refine$/.exec(path);
+      if (refineProject) {
+        const user = requireAccount(req);
+        if (req.method !== 'POST') throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
+        const project = store.read().projects.find(item => item.id === refineProject[1]);
+        if (!project) throw httpError(404, 'project_not_found', 'Projet inexistant.');
+        const request = validateRefinement(await body(req));
+        if (!refiner.enabled) throw httpError(503, 'ai_not_configured', 'La reformulation IA n’est pas configurée : ajoutez ANTHROPIC_API_KEY aux variables du serveur du site.');
+        refineLimit(user);
+        const list = project.lists.find(item => item.id === request.listId)?.name || '';
+        send(res, 200, { data: await refiner.refine({ ...request, list, project: { name: project.name, description: project.description, repository: store.workflows.githubProject(project.id) || '' } }) });
         return true;
       }
       if (githubProject) {

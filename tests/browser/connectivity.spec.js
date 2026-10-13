@@ -9,6 +9,7 @@ import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { seedAccount, testEmail, testPassword } from '../helpers/accounts.mjs';
+import { createRefiner } from '../../server/refine.js';
 
 const ownerToken = 'owner-browser-test-key';
 const readToken = 'agent-browser-test-key';
@@ -16,13 +17,14 @@ const test = base.extend({
   githubEnabled: [false, { option: true }],
   initialAccounts: [true, { option: true }],
   driveArchive: [null, { option: true }],
-  appServer: async ({ initialAccounts, githubEnabled, driveArchive }, use) => {
+  refiner: [null, { option: true }],
+  appServer: async ({ initialAccounts, githubEnabled, driveArchive, refiner }, use) => {
     const store = createStore(':memory:');
     const user = initialAccounts ? seedAccount(store) : null;
     if (githubEnabled) { const initial = store.read(); initial.projects.forEach(p => p.cards.forEach(c => { c.status = 'draft'; })); store.write(initial.projects, initial.revision, user); }
     const dir = mkdtempSync(join(tmpdir(), 'planifikateur-browser-backups-'));
     const backups = createBackups(store, { directory: dir });
-    const server = createAppServer({ store, config: { ownerToken, readToken, backups, githubWebhookSecret: githubEnabled ? 'browser-github-secret' : '', ...(driveArchive ? { driveArchive } : {}) } });
+    const server = createAppServer({ store, config: { ownerToken, readToken, backups, githubWebhookSecret: githubEnabled ? 'browser-github-secret' : '', ...(driveArchive ? { driveArchive } : {}), ...(refiner ? { refiner } : {}) } });
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     await use(`http://127.0.0.1:${server.address().port}`);
     server.closeAllConnections();
@@ -760,5 +762,91 @@ test.describe('Google Drive archive', () => {
     const before = runs.length;
     await page.getByRole('button', { name: 'Vérifier les Releases maintenant', exact: true }).click();
     await expect.poll(() => runs.length).toBeGreaterThan(before);
+  });
+});
+
+// Reconnaissance vocale simulée : le test dicte les résultats que le navigateur produirait.
+const fakeSpeech = () => {
+  window.__speechStarts = 0;
+  window.SpeechRecognition = window.webkitSpeechRecognition = class {
+    start() { window.__speech = this; window.__speechStarts++; this.results = []; }
+    stop() { setTimeout(() => this.onend?.(), 0); }
+    abort() { setTimeout(() => this.onend?.(), 0); }
+    say(transcript, isFinal) { this.results = [...this.results.filter(result => result.isFinal), Object.assign([{ transcript }], { isFinal })]; this.onresult?.({ resultIndex: 0, results: this.results }); }
+  };
+};
+
+test('dictation is unavailable without browser support and the magic wand explains a missing server key', async ({ page, appServer }) => {
+  await page.addInitScript(() => { delete window.SpeechRecognition; delete window.webkitSpeechRecognition; });
+  await login(page, appServer);
+  await page.getByRole('button', { name: 'Ajouter une carte dans Améliorations', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Reformuler avec l’IA', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Dicter la description', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveText('La dictée n’est pas prise en charge par ce navigateur. Utilisez Chrome, Edge ou Safari.');
+  await page.getByLabel('Titre de la carte', { exact: true }).fill('Export');
+  await page.getByLabel('Description', { exact: true }).fill('exporter les cartes');
+  await page.getByRole('button', { name: 'Reformuler avec l’IA', exact: true }).click();
+  await expect(page.getByText('La reformulation IA n’est pas configurée : ajoutez ANTHROPIC_API_KEY aux variables du serveur du site.', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Description', { exact: true })).toHaveValue('exporter les cartes');
+});
+
+test.describe('description assistant', () => {
+  const calls = [];
+  const transport = async (url, options) => {
+    const body = JSON.parse(options.body);
+    calls.push(body);
+    const answered = body.messages[0].content.includes('Réponse : En CSV');
+    const result = answered ? { prompt: 'Objectif\nAjouter un export CSV de la liste des cartes.', questions: [] } : { prompt: 'Objectif\nAjouter un export de la liste des cartes.\nÀ préciser : format.', questions: ['Quel format de fichier ?'] };
+    return new Response(JSON.stringify({ model: 'claude-opus-5-5', stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify(result) }] }), { headers: { 'Content-Type': 'application/json' } });
+  };
+  test.use({ refiner: createRefiner({ apiKey: 'browser-anthropic-secret', transport }) });
+
+  test('a dictated description is saved, then clarified by the magic wand and can be restored', async ({ page, appServer }) => {
+    calls.length = 0;
+    await page.addInitScript(fakeSpeech);
+    await login(page, appServer);
+    const project = seed[0], card = project.cards[0];
+    const cardUrl = `${appServer}/api/v1/projects/${project.id}/cards/${card.id}`;
+    const savedDescription = async () => (await (await page.request.get(cardUrl)).json()).data.description;
+    await page.getByRole('heading', { name: card.title, exact: true }).click();
+    const description = page.getByLabel('Description', { exact: true });
+    await description.fill('');
+    await page.getByRole('button', { name: 'Dicter la description', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Arrêter la dictée', exact: true })).toContainText('0:0');
+    await expect(page.getByRole('button', { name: 'Reformuler avec l’IA', exact: true })).toBeDisabled();
+    await page.evaluate(() => window.__speech.say('ajouter un export', false));
+    await expect(page.locator('.dictation-live')).toHaveText('ajouter un export');
+    await page.evaluate(() => window.__speech.say('ajouter un export', true));
+    // A silence ends the browser session: dictation resumes until the person stops it.
+    await page.evaluate(() => window.__speech.onend());
+    await expect.poll(() => page.evaluate(() => window.__speechStarts)).toBe(2);
+    await page.evaluate(() => window.__speech.say('de la liste des cartes', true));
+    await expect(page.locator('.dictation-live')).toHaveText('ajouter un export de la liste des cartes');
+    await expect(description).toHaveValue('');
+    await page.getByRole('button', { name: 'Arrêter la dictée', exact: true }).click();
+    await expect(description).toHaveValue('Ajouter un export de la liste des cartes');
+    await expect.poll(savedDescription).toBe('Ajouter un export de la liste des cartes');
+
+    await page.getByRole('button', { name: 'Reformuler avec l’IA', exact: true }).click();
+    const proposal = page.getByRole('region', { name: 'Proposition de l’IA', exact: true });
+    await expect(proposal.getByLabel('Demande reformulée', { exact: true })).toHaveValue('Objectif\nAjouter un export de la liste des cartes.\nÀ préciser : format.');
+    await expect(description).toHaveValue('Ajouter un export de la liste des cartes');
+    expect(calls[0].messages[0].content).toContain(`Titre de la carte : ${card.title}`);
+    expect(calls[0].messages[0].content).toContain('Ajouter un export de la liste des cartes');
+    await expect(proposal.getByRole('button', { name: 'Reformuler avec mes réponses', exact: true })).toBeDisabled();
+    await proposal.getByLabel('Réponse : Quel format de fichier ?', { exact: true }).fill('En CSV');
+    await proposal.getByRole('button', { name: 'Reformuler avec mes réponses', exact: true }).click();
+    await expect(proposal.getByLabel('Demande reformulée', { exact: true })).toHaveValue('Objectif\nAjouter un export CSV de la liste des cartes.');
+    await expect(proposal.getByText('Points à préciser', { exact: true })).toHaveCount(0);
+    expect(calls[1].messages[0].content).toContain('Question : Quel format de fichier ?\nRéponse : En CSV');
+    await proposal.getByRole('button', { name: 'Remplacer la description', exact: true }).click();
+    await expect(proposal).toHaveCount(0);
+    await expect(description).toHaveValue('Objectif\nAjouter un export CSV de la liste des cartes.');
+    await expect.poll(savedDescription).toBe('Objectif\nAjouter un export CSV de la liste des cartes.');
+    expect(await page.content()).not.toContain('browser-anthropic-secret');
+    await page.getByRole('button', { name: 'Rétablir le texte précédent', exact: true }).click();
+    await expect(description).toHaveValue('Ajouter un export de la liste des cartes');
+    await expect.poll(savedDescription).toBe('Ajouter un export de la liste des cartes');
+    await expect(page.getByRole('button', { name: 'Rétablir le texte précédent', exact: true })).toHaveCount(0);
   });
 });

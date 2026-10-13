@@ -102,6 +102,32 @@ Les sauvegardes ne sont jamais servies comme fichiers publics. Une suppression d
 
 Les cartes incluent `createdBy`, `createdAt`, `updatedBy`, `updatedAt` et les commentaires `authorId`. Les identités sont attribuées par le serveur et restent nulles pour les créateurs inconnus d’avant la migration. Les routes de comptes et d’historique sont décrites dans [accounts.md](accounts.md). Aucun mot de passe, e-mail de compte ou secret de session n’est retourné par les routes de cartes.
 
+## Reformulation des descriptions
+
+Avec une session personnelle, `POST /api/v1/projects/{projectId}/refine` reçoit
+`{ "description": "…", "title": "…", "listId": "…", "exchanges": [{ "question": "…", "answer": "…" }] }`
+et renvoie `{ "data": { "prompt": "…", "questions": ["…"], "model": "…" } }`. Seule
+`description` est obligatoire (20 000 caractères au plus). Le serveur transmet la
+description, le titre et le contexte du projet (nom, présentation, dépôt GitHub,
+liste) à l’API Messages d’Anthropic. Le modèle ne réalise rien et ne modifie rien :
+il reformule la demande pour l’agent, signale les points ambigus « À préciser » et
+pose au plus six questions. `exchanges` transmet les réponses aux questions
+précédentes ; les questions sans réponse sont ignorées. La route n’enregistre rien :
+la carte change uniquement si la personne remplace elle-même sa description.
+
+Variables du serveur du site, jamais transmises au navigateur :
+
+| Variable | Rôle |
+| --- | --- |
+| `ANTHROPIC_API_KEY` | Clé de l’API Anthropic. Sans elle, la route répond 503 (`ai_not_configured`). |
+| `PLANIFIKATEUR_REFINE_MODEL` | Facultatif : modèle utilisé, `claude-opus-5-5` par défaut. |
+
+Erreurs : 400 (`invalid_refinement`), 429 au-delà de dix reformulations par minute
+et par compte (`too_many_refinements`), 422 si le modèle refuse (`refinement_refused`),
+502, 503 ou 504 pour une clé refusée, un service saturé ou injoignable. Avec Claude
+Opus 5.5, Opus 5, Fable 5.1 ou Sonnet 5.5, un refus des filtres de sécurité est
+retenté côté Anthropic sur le modèle de repli recommandé (`fallbacks: "default"`).
+
 ## Archivage Google Drive
 
 Avec une session personnelle, `GET /api/v1/projects/{projectId}/drive` renvoie l’état de l’archivage des `.exe` des Releases du dépôt du projet : `enabled`, erreurs éventuelles (`configurationError`, `error`, `repositoryError`), `lastRun` et les dix dernières versions (`tag`, `state` parmi `archived`, `error` ou `conflict`, `message`, `folderUrl`, `files`). Aucun secret n’est renvoyé. `POST` sur la même route, réservé à l’administrateur, lance une vérification immédiate et répond `202` ; `503` (`drive_disabled`) si le serveur n’est pas configuré. Voir [l’archivage Google Drive](google-drive.md).

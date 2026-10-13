@@ -2595,6 +2595,147 @@
           }
         }
       }
+    },
+    "/api/v1/projects/{projectId}/refine": {
+      "post": {
+        "summary": "Reformuler une description de carte avec l’IA",
+        "description": "Session personnelle. Le serveur envoie le titre, la description et le contexte du projet (nom, présentation, dépôt, liste) à l’API Messages d’Anthropic avec la clé ANTHROPIC_API_KEY du serveur, jamais transmise au navigateur. Le modèle ne réalise pas la demande : il la reformule en demande claire pour l’agent et pose des questions sur les points ambigus. Rien n’est enregistré : la proposition n’est appliquée que si la personne remplace elle-même la description. Dix reformulations par minute et par compte.",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "description"
+                ],
+                "properties": {
+                  "description": {
+                    "type": "string",
+                    "maxLength": 20000,
+                    "description": "Texte rédigé ou dicté à reformuler, non vide."
+                  },
+                  "title": {
+                    "type": "string",
+                    "maxLength": 140
+                  },
+                  "listId": {
+                    "type": "string",
+                    "description": "Liste de la carte, pour le contexte."
+                  },
+                  "exchanges": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "description": "Réponses déjà apportées aux questions des reformulations précédentes ; les questions sans réponse sont ignorées.",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "question",
+                        "answer"
+                      ],
+                      "properties": {
+                        "question": {
+                          "type": "string",
+                          "maxLength": 1000
+                        },
+                        "answer": {
+                          "type": "string",
+                          "maxLength": 4000
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Proposition de reformulation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "prompt",
+                        "questions",
+                        "model"
+                      ],
+                      "properties": {
+                        "prompt": {
+                          "type": "string",
+                          "description": "Demande reformulée ; les points ambigus y sont signalés « À préciser »."
+                        },
+                        "questions": {
+                          "type": "array",
+                          "maxItems": 6,
+                          "items": {
+                            "type": "string"
+                          },
+                          "description": "Questions sur les points à préciser ; vide si la demande est claire."
+                        },
+                        "model": {
+                          "type": "string",
+                          "description": "Modèle ayant produit la proposition."
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Description vide ou corps invalide (`invalid_refinement`)."
+          },
+          "401": {
+            "description": "Session requise."
+          },
+          "403": {
+            "description": "Origine non autorisée."
+          },
+          "404": {
+            "description": "Projet inexistant."
+          },
+          "422": {
+            "description": "Le modèle a refusé la demande (`refinement_refused`)."
+          },
+          "429": {
+            "description": "Plus de dix reformulations en une minute pour ce compte (`too_many_refinements`)."
+          },
+          "502": {
+            "description": "Clé refusée (`ai_unauthorized`), requête rejetée (`ai_rejected`) ou réponse inexploitable (`refinement_invalid`, `refinement_incomplete`)."
+          },
+          "503": {
+            "description": "Reformulation non configurée sur le serveur (`ai_not_configured`) ou service IA saturé (`ai_busy`)."
+          },
+          "504": {
+            "description": "Service IA injoignable ou trop lent (`ai_unreachable`)."
+          }
+        }
+      }
     }
   },
   "components": {
