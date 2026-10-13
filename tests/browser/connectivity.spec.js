@@ -786,20 +786,23 @@ test('dictation is unavailable without browser support and the magic wand explai
   await page.getByLabel('Titre de la carte', { exact: true }).fill('Export');
   await page.getByLabel('Description', { exact: true }).fill('exporter les cartes');
   await page.getByRole('button', { name: 'Reformuler avec l’IA', exact: true }).click();
-  await expect(page.getByText('La reformulation IA n’est pas configurée : ajoutez ANTHROPIC_API_KEY aux variables du serveur du site.', { exact: true })).toBeVisible();
+  await expect(page.getByText('La reformulation IA n’est pas configurée : ajoutez CLAUDE_CODE_OAUTH_TOKEN (créé avec « claude setup-token ») aux variables du serveur du site.', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Description', { exact: true })).toHaveValue('exporter les cartes');
 });
 
 test.describe('description assistant', () => {
   const calls = [];
-  const transport = async (url, options) => {
-    const body = JSON.parse(options.body);
-    calls.push(body);
-    const answered = body.messages[0].content.includes('Réponse : En CSV');
+  // Faux SDK Claude Agent : la reformulation dépend des réponses déjà fournies.
+  const query = ({ prompt }) => {
+    calls.push(prompt);
+    const answered = prompt.includes('Réponse : En CSV');
     const result = answered ? { prompt: 'Objectif\nAjouter un export CSV de la liste des cartes.', questions: [] } : { prompt: 'Objectif\nAjouter un export de la liste des cartes.\nÀ préciser : format.', questions: ['Quel format de fichier ?'] };
-    return new Response(JSON.stringify({ model: 'claude-opus-5-5', stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify(result) }] }), { headers: { 'Content-Type': 'application/json' } });
+    return (async function* () {
+      yield { type: 'system', subtype: 'init', model: 'claude-opus-5-5' };
+      yield { type: 'result', subtype: 'success', is_error: false, structured_output: result };
+    })();
   };
-  test.use({ refiner: createRefiner({ apiKey: 'browser-anthropic-secret', transport }) });
+  test.use({ refiner: createRefiner({ token: 'browser-subscription-secret', query, directory: join(tmpdir(), 'planifikateur-browser-refine') }) });
 
   test('a dictated description is saved, then clarified by the magic wand and can be restored', async ({ page, appServer }) => {
     calls.length = 0;
@@ -831,19 +834,19 @@ test.describe('description assistant', () => {
     const proposal = page.getByRole('region', { name: 'Proposition de l’IA', exact: true });
     await expect(proposal.getByLabel('Demande reformulée', { exact: true })).toHaveValue('Objectif\nAjouter un export de la liste des cartes.\nÀ préciser : format.');
     await expect(description).toHaveValue('Ajouter un export de la liste des cartes');
-    expect(calls[0].messages[0].content).toContain(`Titre de la carte : ${card.title}`);
-    expect(calls[0].messages[0].content).toContain('Ajouter un export de la liste des cartes');
+    expect(calls[0]).toContain(`Titre de la carte : ${card.title}`);
+    expect(calls[0]).toContain('Ajouter un export de la liste des cartes');
     await expect(proposal.getByRole('button', { name: 'Reformuler avec mes réponses', exact: true })).toBeDisabled();
     await proposal.getByLabel('Réponse : Quel format de fichier ?', { exact: true }).fill('En CSV');
     await proposal.getByRole('button', { name: 'Reformuler avec mes réponses', exact: true }).click();
     await expect(proposal.getByLabel('Demande reformulée', { exact: true })).toHaveValue('Objectif\nAjouter un export CSV de la liste des cartes.');
     await expect(proposal.getByText('Points à préciser', { exact: true })).toHaveCount(0);
-    expect(calls[1].messages[0].content).toContain('Question : Quel format de fichier ?\nRéponse : En CSV');
+    expect(calls[1]).toContain('Question : Quel format de fichier ?\nRéponse : En CSV');
     await proposal.getByRole('button', { name: 'Remplacer la description', exact: true }).click();
     await expect(proposal).toHaveCount(0);
     await expect(description).toHaveValue('Objectif\nAjouter un export CSV de la liste des cartes.');
     await expect.poll(savedDescription).toBe('Objectif\nAjouter un export CSV de la liste des cartes.');
-    expect(await page.content()).not.toContain('browser-anthropic-secret');
+    expect(await page.content()).not.toContain('browser-subscription-secret');
     await page.getByRole('button', { name: 'Rétablir le texte précédent', exact: true }).click();
     await expect(description).toHaveValue('Ajouter un export de la liste des cartes');
     await expect.poll(savedDescription).toBe('Ajouter un export de la liste des cartes');

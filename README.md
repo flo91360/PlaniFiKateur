@@ -32,16 +32,23 @@ par le serveur du site, mais le navigateur peut l’envoyer à son propre servic
 reconnaissance (Google pour Chrome, par exemple). L’accès au micro doit être
 autorisé pour le site.
 
-**Reformuler avec l’IA** (baguette magique) demande à Claude d’analyser la
-description sans rien réaliser ni modifier, puis de la réécrire en demande claire
-pour l’agent : objectif, comportement attendu, contraintes et vérification. Les
+**Reformuler avec l’IA** (baguette magique) demande à Claude, via votre
+abonnement Claude Code, d’analyser la description sans rien réaliser ni modifier
+(aucun outil ni accès aux fichiers), puis de la réécrire en demande claire pour
+l’agent : objectif, comportement attendu, contraintes et vérification. Les
 points ambigus sont signalés « À préciser » et donnent lieu à des questions :
 répondez-y puis **Reformuler avec mes réponses**, ou appliquez la proposition
 telle quelle. La proposition reste modifiable et ne remplace la description
 qu’avec **Remplacer la description** ; **Rétablir le texte précédent** annule ce
-remplacement. Cette fonction exige la variable serveur `ANTHROPIC_API_KEY` du
-site (modèle `claude-opus-5-5` par défaut, modifiable avec
-`PLANIFIKATEUR_REFINE_MODEL`) ; la clé n’est jamais transmise au navigateur. Elle
+remplacement.
+
+Pour l’activer, créez un jeton d’abonnement avec `claude setup-token` (Claude
+Code, sur votre poste) et placez-le dans la variable `CLAUDE_CODE_OAUTH_TOKEN`
+du service **du site** (le jeton déjà utilisé par le worker convient aussi). Les
+reformulations consomment le quota de cet abonnement, partagé avec le worker
+s’il utilise le même compte. Le modèle par défaut est celui de l’abonnement ;
+`PLANIFIKATEUR_REFINE_MODEL` permet d’en imposer un (par exemple
+`claude-sonnet-5-5`). Le jeton n’est jamais transmis au navigateur. La fonction
 n’est pas disponible dans la copie HTML hors ligne. Voir
 [la route de reformulation](docs/api.md#reformulation-des-descriptions).
 

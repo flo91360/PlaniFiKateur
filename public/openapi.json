@@ -2599,7 +2599,7 @@
     "/api/v1/projects/{projectId}/refine": {
       "post": {
         "summary": "Reformuler une description de carte avec l’IA",
-        "description": "Session personnelle. Le serveur envoie le titre, la description et le contexte du projet (nom, présentation, dépôt, liste) à l’API Messages d’Anthropic avec la clé ANTHROPIC_API_KEY du serveur, jamais transmise au navigateur. Le modèle ne réalise pas la demande : il la reformule en demande claire pour l’agent et pose des questions sur les points ambigus. Rien n’est enregistré : la proposition n’est appliquée que si la personne remplace elle-même la description. Dix reformulations par minute et par compte.",
+        "description": "Session personnelle. Le serveur envoie le titre, la description et le contexte du projet (nom, présentation, dépôt, liste) à Claude Code par le SDK Claude Agent, avec l’abonnement du propriétaire (CLAUDE_CODE_OAUTH_TOKEN, jamais transmis au navigateur). Claude Code s’exécute sans aucun outil : il ne réalise pas la demande, il la reformule pour l’agent et pose des questions sur les points ambigus. Rien n’est enregistré : la proposition n’est appliquée que si la personne remplace elle-même la description. Dix reformulations par minute et par compte.",
         "security": [
           {
             "ownerSession": []
@@ -2719,20 +2719,17 @@
           "404": {
             "description": "Projet inexistant."
           },
-          "422": {
-            "description": "Le modèle a refusé la demande (`refinement_refused`)."
-          },
           "429": {
-            "description": "Plus de dix reformulations en une minute pour ce compte (`too_many_refinements`)."
+            "description": "Plus de dix reformulations en une minute pour ce compte (`too_many_refinements`) ou limite de l’abonnement Claude atteinte (`ai_quota`)."
           },
           "502": {
-            "description": "Clé refusée (`ai_unauthorized`), requête rejetée (`ai_rejected`) ou réponse inexploitable (`refinement_invalid`, `refinement_incomplete`)."
+            "description": "Jeton refusé ou expiré (`ai_unauthorized`), modèle indisponible (`ai_rejected`), Claude Code indisponible (`ai_unavailable`) ou réponse inexploitable (`refinement_invalid`, `refinement_incomplete`)."
           },
           "503": {
-            "description": "Reformulation non configurée sur le serveur (`ai_not_configured`) ou service IA saturé (`ai_busy`)."
+            "description": "Reformulation non configurée sur le serveur (`ai_not_configured`) ou Claude saturé (`ai_busy`)."
           },
           "504": {
-            "description": "Service IA injoignable ou trop lent (`ai_unreachable`)."
+            "description": "Pas de réponse de Claude en deux minutes (`ai_timeout`)."
           }
         }
       }

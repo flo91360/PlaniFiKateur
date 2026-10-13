@@ -5,7 +5,7 @@ import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { STATUSES, validateWorkspace } from '../src/lib/workspace.js';
 import { createReadStream } from 'node:fs';
 import { accountFields, hashPassword, verifyPassword, publicUser } from './accounts.js';
-import { createRefiner, validateRefinement } from './refine.js';
+import { createRefiner, validateRefinement, notConfigured } from './refine.js';
 
 const MAX_BODY = 4 * 1024 * 1024;
 const hash = value => createHash('sha256').update(value).digest();
@@ -29,7 +29,7 @@ async function body(req) {
 export function createApi(store, config = {}) {
   const { ownerToken = '', readToken = '', secureCookie = false } = config;
   const loginAttempts = new Map(), refinements = new Map();
-  const refiner = config.refiner || createRefiner({ apiKey: config.anthropicApiKey, model: config.refineModel });
+  const refiner = config.refiner || createRefiner({ token: config.claudeOauthToken, model: config.refineModel });
   const cookie = (token, maxAge) => `planifikateur_session=${token}; HttpOnly; SameSite=Strict; Path=/api; Max-Age=${maxAge}${secureCookie ? '; Secure' : ''}`;
   const send = (res, status, data) => { res.statusCode = status; res.setHeader('Content-Type', 'application/json; charset=utf-8'); res.end(JSON.stringify(data)); };
   const sameOrigin = req => {
@@ -57,7 +57,7 @@ export function createApi(store, config = {}) {
     if (++attempt.count > 20) throw httpError(429, 'too_many_attempts', 'Trop de tentatives. Réessayez dans une minute.');
     loginAttempts.set(ip, attempt);
   };
-  // Chaque reformulation est facturée par le fournisseur IA : limite par compte.
+  // Chaque reformulation consomme le quota de l’abonnement Claude : limite par compte.
   const refineLimit = user => {
     const now = Date.now();
     for (const [key, attempt] of refinements) if (attempt.until < now) refinements.delete(key);
@@ -132,7 +132,7 @@ export function createApi(store, config = {}) {
         const project = store.read().projects.find(item => item.id === refineProject[1]);
         if (!project) throw httpError(404, 'project_not_found', 'Projet inexistant.');
         const request = validateRefinement(await body(req));
-        if (!refiner.enabled) throw httpError(503, 'ai_not_configured', 'La reformulation IA n’est pas configurée : ajoutez ANTHROPIC_API_KEY aux variables du serveur du site.');
+        if (!refiner.enabled) throw httpError(503, 'ai_not_configured', notConfigured);
         refineLimit(user);
         const list = project.lists.find(item => item.id === request.listId)?.name || '';
         send(res, 200, { data: await refiner.refine({ ...request, list, project: { name: project.name, description: project.description, repository: store.workflows.githubProject(project.id) || '' } }) });

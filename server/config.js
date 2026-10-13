@@ -6,7 +6,7 @@ export function readConfig(env = process.env) {
     database: resolve(env.PLANIFIKATEUR_DB_PATH || '.data/planifikateur.sqlite'),
     ownerToken: env.PLANIFIKATEUR_OWNER_TOKEN || '', readToken: env.PLANIFIKATEUR_READ_TOKEN || '',
     githubWebhookSecret: env.PLANIFIKATEUR_GITHUB_WEBHOOK_SECRET || '',
-    anthropicApiKey: env.ANTHROPIC_API_KEY || '', refineModel: env.PLANIFIKATEUR_REFINE_MODEL || '',
+    claudeOauthToken: env.CLAUDE_CODE_OAUTH_TOKEN || '', refineModel: env.PLANIFIKATEUR_REFINE_MODEL || '',
     secureCookie: env.NODE_ENV === 'production' || env.PLANIFIKATEUR_PUBLIC_ORIGIN?.startsWith('https://') || false,
   };
   if ((!['127.0.0.1', 'localhost', '::1'].includes(config.host) || env.NODE_ENV === 'production') && (!config.ownerToken || !config.readToken)) {
