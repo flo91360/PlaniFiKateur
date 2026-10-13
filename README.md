@@ -76,7 +76,7 @@ npm start
 
 Le site et l’API écoutent sur `127.0.0.1:3000` par défaut. La base persistante `.data/planifikateur.sqlite` est ignorée par Git. Aucune clé d’environnement n’est nécessaire pour un développement local, mais le premier compte doit être créé depuis le site. Toute exposition réseau ou exécution avec `NODE_ENV=production` exige des clés d’initialisation et agent différentes. Les paramètres, les routes et des exemples de consultation sont décrits dans [la documentation API](docs/api.md).
 
-Après le déploiement de la v0.1.16, créer le compte administrateur avec l’ancienne clé `PLANIFIKATEUR_OWNER_TOKEN`, puis inviter les membres depuis « Mon compte ». Les projets existants sont conservés. Voir [les comptes et l’historique](docs/accounts.md) pour la migration et les droits.
+Après le déploiement de la v0.1.17, créer le compte administrateur avec l’ancienne clé `PLANIFIKATEUR_OWNER_TOKEN`, puis inviter les membres depuis « Mon compte ». Les projets existants sont conservés. Voir [les comptes et l’historique](docs/accounts.md) pour la migration et les droits.
 
 La spécification OpenAPI est disponible dans [public/openapi.json](public/openapi.json), servie par le site à `/openapi.json`.
 
@@ -105,7 +105,7 @@ Conserver également des copies hors du volume Railway.
 npm run export:preview
 ```
 
-`dist/PlaniFiKateur-apercu-v0.1.16.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
+`dist/PlaniFiKateur-apercu-v0.1.17.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 
