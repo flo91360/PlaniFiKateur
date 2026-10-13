@@ -60,6 +60,14 @@ test('updating against a newly released base increases the version again and ret
   assert.equal((await prepareDelivery(f.cwd, profile, f.command, { ...details, runId: 'livraison-next', title: 'Aide' })).version, '1.2.5');
   const log = await readFile(join(f.cwd, 'CHANGELOG.md'), 'utf8'); assert.ok(log.indexOf('## 1.2.5') < log.indexOf('## 1.2.4'));
 });
+test('a delivery based on an obsolete main cannot pass even with a higher version and changelog', async t => {
+  const f = await fixture(t); await prepareDelivery(f.cwd, profile, f.command, details);
+  await f.git('add', '.'); await f.git('commit', '-m', 'Prepared feature');
+  await f.git('switch', 'main'); await writeFile(join(f.cwd, 'other.txt'), 'Another feature');
+  await f.git('add', '.'); await f.git('commit', '-m', 'Advance main'); await f.git('push', 'origin', 'main');
+  await f.git('switch', 'livraison/test'); await assert.rejects(verifyDelivery(f.cwd, profile, f.command), /branche cible a avancé/);
+  await f.git('merge', '--no-edit', 'origin/main'); assert.equal((await verifyDelivery(f.cwd, profile, f.command)).version, '1.2.4');
+});
 test('version and documentation files cannot be replaced by symlinks', async t => {
   const f = await fixture(t); await rm(join(f.cwd, 'README.md')); await symlink(join(f.cwd, 'package.json'), join(f.cwd, 'README.md'));
   await assert.rejects(prepareDelivery(f.cwd, profile, f.command, details), /fichier ordinaire/);

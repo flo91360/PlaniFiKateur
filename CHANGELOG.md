@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.20 — 2026-10-13
+<!-- planifikateur:livraison-controle-base-20261013 -->
+
+- **Livraisons à jour de main** : Une livraison est refusée si elle ne contient pas les derniers changements de main. La CI contrôle cette condition pour toutes les PR. Les abonnements des cartes sont actualisés automatiquement, y compris lors des changements réalisés par une autre personne (PR #22).
+
 ## 0.1.19 — 2026-10-13
 <!-- planifikateur:livraison-parcours-commun-20261013 -->
 
