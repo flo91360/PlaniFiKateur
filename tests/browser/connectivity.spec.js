@@ -869,3 +869,36 @@ test.describe('description assistant', () => {
     await expect(page.getByRole('button', { name: 'Rétablir le texte précédent', exact: true })).toHaveCount(0);
   });
 });
+
+
+test('adds another member to card followers and preserves their ability to unsubscribe', async ({ page, request, browser, appServer }) => {
+  await login(page, appServer);
+  const adminResponse = await request.post(`${appServer}/api/v1/session`, { data: { email: testEmail, password: testPassword } });
+  expect(adminResponse.ok()).toBeTruthy();
+  const invitation = await (await request.post(`${appServer}/api/v1/users`, { data: { name: 'Bob', email: 'bob@example.test' } })).json();
+  const bobContext = await browser.newContext();
+  try {
+    const accepted = await bobContext.request.post(`${appServer}/api/v1/accounts/accept`, { data: { token: invitation.data.token, name: 'Bob', password: 'bob-personal-password-123' } });
+    expect(accepted.ok()).toBeTruthy();
+    const card = seed[0].cards[0];
+    await page.getByRole('heading', { name: card.title, exact: true }).click();
+    await page.getByLabel('Membre à abonner').selectOption(invitation.data.user.id);
+    await page.getByRole('button', { name: 'Ajouter au suivi', exact: true }).click();
+    await expect(page.getByRole('list', { name: 'Membres abonnés' })).toHaveText('Bob');
+    await expect(page.getByRole('button', { name: 'Suivre la carte', exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Ajouter au suivi', exact: true })).toBeDisabled();
+    await page.reload();
+    await page.getByRole('heading', { name: card.title, exact: true }).click();
+    await expect(page.getByRole('list', { name: 'Membres abonnés' })).toHaveText('Bob');
+    await expect(page.getByLabel('Membre à abonner').locator(`option[value="${invitation.data.user.id}"]`)).toHaveAttribute('disabled', '');
+    const bobPage = await bobContext.newPage();
+    await bobPage.goto(appServer);
+    await bobPage.getByRole('heading', { name: card.title, exact: true }).click();
+    await expect(bobPage.getByRole('button', { name: 'Ne plus suivre', exact: true })).toBeEnabled();
+    await bobPage.getByRole('button', { name: 'Ne plus suivre', exact: true }).click();
+    await expect(bobPage.getByRole('button', { name: 'Suivre la carte', exact: true })).toBeEnabled();
+    await page.reload();
+    await page.getByRole('heading', { name: card.title, exact: true }).click();
+    await expect(page.getByText('Aucun membre ne suit cette carte.', { exact: true })).toBeVisible();
+  } finally { await bobContext.close(); }
+});

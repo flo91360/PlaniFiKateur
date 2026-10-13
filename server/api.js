@@ -270,6 +270,18 @@ export function createApi(store, config = {}) {
         } else throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
         return true;
       }
+      const subscribers = /^\/api\/v1\/projects\/([a-zA-Z0-9_-]+)\/cards\/([a-zA-Z0-9_-]+)\/subscribers$/.exec(path);
+      if (subscribers) {
+        const user = requireAccount(req);
+        if (req.method === 'GET') send(res, 200, { data: store.cardMembers(subscribers[1], subscribers[2]) });
+        else if (req.method === 'PUT') {
+          const data = await body(req);
+          if (typeof data?.userId !== 'string' || !data.userId) throw httpError(400, 'invalid_subscriber', 'Choisissez un membre du projet.');
+          store.setSubscription(subscribers[1], subscribers[2], user, true, data.userId);
+          send(res, 200, { data: store.cardMembers(subscribers[1], subscribers[2]) });
+        } else throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
+        return true;
+      }
       const subscription = /^\/api\/v1\/projects\/([a-zA-Z0-9_-]+)\/cards\/([a-zA-Z0-9_-]+)\/subscription$/.exec(path);
       if (subscription) {
         const user = requireAccount(req);
