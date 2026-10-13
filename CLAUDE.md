@@ -58,10 +58,28 @@ modifications. Le worker exécute les tests, crée le commit, pousse la branche
 `planifikateur/<exécution>` et ouvre la PR. Ne pas committer, pousser, fusionner
 ni déléguer à d’autres agents.
 
-**Intervention directe** : une fois la modification terminée et vérifiée, créer
-un commit explicite et pousser sur `main` sans redemander confirmation (autorisé
-par le propriétaire ; peut déclencher le déploiement Railway). Si la session
-impose une autre branche, pousser sur celle-ci.
+**Intervention directe** (session Claude Code) : appliquer ce workflow à chaque
+session, de bout en bout et sans redemander confirmation (autorisé par le
+propriétaire ; peut déclencher le déploiement Railway) :
+
+1. Implémenter la fonctionnalité demandée, avec ses tests.
+2. Vérifier (voir ci-dessous) jusqu’à ce que tout passe.
+3. Incrémenter la version : correctif (`x.y.Z+1`) par défaut, mineure si la
+   personne le demande. Mettre à jour ensemble `package.json`,
+   `package-lock.json` (`npm version <version> --no-git-tag-version`),
+   `README.md`, `docs/agents.md` et `docs/github.md`.
+4. Ajouter en tête de `CHANGELOG.md` une section `## <version> — <AAAA-MM-JJ>`
+   décrivant chaque modification livrée, du point de vue de l’utilisateur.
+5. Mettre à jour `README.md` (et `docs/`) si l’usage, la configuration ou une
+   route change.
+6. Préparer un commit explicite contenant le code, la version et le changelog.
+7. Fusionner automatiquement sur `main` : pousser directement sur `main`, ou, si
+   la session impose une autre branche, ouvrir la PR, attendre la CI verte
+   (« Tests serveur » et « Tests navigateur ») puis la fusionner soi-même. En cas
+   de conflit, intégrer `main`, revérifier, puis fusionner.
+8. Créer le tag annoté `v<version>` sur le commit de `main` et le pousser
+   (`git push origin v<version>`). Si l’environnement refuse le push du tag, le
+   dire explicitement avec la commande à lancer ou la Release à créer sur GitHub.
 
 - Vérifications selon les fichiers touchés : `npm test` pour l’API et le worker ;
   ajouter `npm run test:browser` pour l’interface ou les échanges site ↔ API.
