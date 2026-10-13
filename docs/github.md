@@ -1,10 +1,15 @@
-# PR d’agent : tests puis fusion automatique — v0.1.18
+# PR d’agent : tests puis fusion automatique — v0.1.19
 
 Toutes les nouvelles tâches sont livrées par PR GitHub avec fusion automatique,
 sans sélection du mode de livraison. Les anciennes exécutions sans PR restent
 consultables et peuvent terminer leur parcours précédent. Une PR est fusionnée seulement après la
 réussite des contrôles requis ; la carte est terminée après confirmation signée
 de la fusion par GitHub.
+
+Les interventions directes utilisent la même préparation et les mêmes contrôles
+que les cartes : voir [le parcours commun de livraison](livraison.md).
+La carte terminée confirme la fusion ; « Livraison de version » confirme ensuite
+le tag et la version réellement servie par Railway.
 
 ## Configuration à effectuer une fois
 

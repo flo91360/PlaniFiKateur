@@ -29,7 +29,7 @@ export function createAppServer({ store, config = {}, dist = resolve('dist') }) 
     if (!existsSync(file)) { res.writeHead(503); res.end('Compilez l’interface avec npm run build.'); return; }
     res.setHeader('Content-Type', mime[extname(file)] || 'application/octet-stream');
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Cache-Control', extname(file) === '.html' ? 'no-store' : 'public, max-age=3600');
+    res.setHeader('Cache-Control', extname(file) === '.html' || path === '/build-info.json' ? 'no-store' : 'public, max-age=3600');
     if (req.method === 'HEAD') { res.end(); return; }
     createReadStream(file).on('error', () => res.destroy()).pipe(res);
   });
