@@ -23,6 +23,8 @@ function readVersion(source, file) {
   parseProjectVersion(version); return version;
 }
 export async function verifyDelivery(cwd, profile, command, base = `origin/${profile.branch}`) {
+  try { await command(['git', 'merge-base', '--is-ancestor', base, 'HEAD']); }
+  catch { throw new Error('La branche cible a avancé : intégrez ses changements, préparez de nouveau la livraison puis relancez les vérifications.'); }
   const file = await versionFile(cwd, profile);
   const previous = readVersion(await command(['git', 'show', `${base}:${file}`]), file);
   const version = readVersion(await regularText(cwd, file), file);
