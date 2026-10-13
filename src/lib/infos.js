@@ -25,7 +25,7 @@ export function withInfos(project, version) {
   return {
     ...project,
     lists: list ? project.lists : [...project.lists, { id: listId, name: 'Infos', color: 'purple' }],
-    cards: withReadme(project.id, cards, list?.id || listId, preserve ? undefined : version.repository || ''),
+    cards: withChangelog(project.id, withReadme(project.id, cards, list?.id || listId, preserve ? undefined : version.repository || ''), list?.id || listId, preserve ? undefined : version),
   };
 }
 
@@ -42,4 +42,17 @@ function withReadme(projectId, cards, listId, repository) {
   const { readme, ...previous } = card || { id: cardId, priority: 'normal', tags: ['Mode d’emploi'], comments: [], checklist: [] };
   const next = { ...previous, listId, title: 'Mode d’emploi du projet', description, status: 'done', ...(repository ? { readme: repository } : {}) };
   return card ? cards.map(item => item.id === cardId ? next : item) : [...cards, next];
+}
+
+function withChangelog(projectId, cards, listId, version) {
+  const id = `${projectId}-changelog`;
+  const card = cards.find(item => item.id === id);
+  const entries = version?.changelog;
+  const description = entries?.length
+    ? entries.map(entry => `${entry.tag} — ${entry.date.slice(0, 10)}\n${entry.body || 'Aucune note de version publiée.'}`).join('\n\n').slice(0, 20000)
+    : version === undefined && card ? card.description
+      : version?.repository ? 'Les nouveautés de chaque version apparaîtront ici dès la publication des notes de release GitHub.'
+        : 'Associez un dépôt GitHub au projet pour afficher les nouveautés de chaque version.';
+  const next = { ...(card || { id, priority: 'normal', tags: ['Changelog'], comments: [], checklist: [] }), listId, title: 'Changelog', description, status: 'done' };
+  return card ? cards.map(item => item.id === id ? next : item) : [...cards, next];
 }

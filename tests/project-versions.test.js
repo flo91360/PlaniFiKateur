@@ -38,8 +38,10 @@ test('signed release events publish downloads for the matching repository/versio
   assert.equal(card(store, second).downloads, undefined); assert.match(card(store, first).description, /Date de publication indisponible/);
   const snapshot = store.read(); await send(event); store.refreshInfos(); assert.deepEqual(store.read(), snapshot);
   await send({ ...event, release: { ...event.release, body: driveReleaseBody('', { ...driveDownload, commit: 'c'.repeat(40) }) } });
-  assert.deepEqual(store.read(), snapshot);
-  await send({ ...event, repository: { full_name: 'owner/second' } }); assert.deepEqual(store.read(), snapshot);
+  assert.deepEqual(card(store, first).downloads, driveDownload);
+  const editedSnapshot = store.read();
+  await send({ ...event, repository: { full_name: 'owner/second' } }); assert.deepEqual(card(store, first), editedSnapshot.projects.find(p => p.id === first.id).cards.find(c => c.id === `${first.id}-git-version`));
+  assert.equal(card(store, second).downloads, undefined);
   store.recordGithubVersion('owner/first', { tag: 'v3.0.0', date }); assert.equal(card(store, first).downloads, undefined);
 });
 
@@ -176,4 +178,31 @@ test('without a creation event the highest version tag is chosen, not the first 
   assert.equal(latestTag([{ name: 'v0.1.9' }, { name: 'v0.1.16' }, { name: 'v0.1.10' }, { name: 'nightly' }]), 'v0.1.16');
   assert.equal(latestTag([{ name: 'v2.0.0' }, { name: '10.0.0' }]), '10.0.0');
   assert.equal(latestTag([{ name: 'nightly' }, { name: 'beta' }]), 'nightly');
+});
+
+test('Changelog recovers historical release notes, updates without duplicates and survives outages', async t => {
+  const { store, first } = fixture(t);
+  let releases = [
+    { tag_name: 'v2.0.0', published_at: date, body: 'Nouvelle interface' },
+    { tag_name: 'v1.0.0', published_at: '2026-10-01T10:00:00Z', body: 'Première version' },
+    { tag_name: 'v3.0.0', published_at: date, body: 'Secret', draft: true },
+  ];
+  const sync = createVersionSync(store, { start: false, transport: async url => {
+    if (url.includes('/releases?')) { if (!releases) throw new Error('offline'); return { ok: true, json: async () => releases }; }
+    return { ok: true, json: async () => url.includes('/tags?') ? [{ name: 'v2.0.0' }] : [] };
+  } });
+  t.after(() => sync.close());
+  const changelog = () => store.read().projects.find(p => p.id === first.id).cards.find(c => c.id === `${first.id}-changelog`);
+  await sync.refresh();
+  assert.match(changelog().description, /v2.0.0.*\nNouvelle interface\n\nv1.0.0.*\nPremière version/);
+  assert.doesNotMatch(changelog().description, /Secret/);
+  releases[0].body = 'Interface améliorée';
+  await sync.refresh();
+  assert.match(changelog().description, /Interface améliorée/);
+  assert.equal(changelog().description.split('v2.0.0').length, 2);
+  const snapshot = store.read();
+  releases = null;
+  await sync.refresh();
+  assert.deepEqual(store.read(), snapshot);
+  assert.deepEqual(withInfos(store.read().projects.find(p => p.id === first.id)), store.read().projects.find(p => p.id === first.id));
 });

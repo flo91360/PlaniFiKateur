@@ -71,6 +71,7 @@ export function createApi(store, config = {}) {
           const repository = data.repository?.full_name, release = data.release;
           const downloads = ['published','released','edited'].includes(data.action) && repository && !release?.draft && driveReleaseFromBody(release?.body, repository, release?.tag_name);
           const published = releaseVersion(data);
+          if (['published', 'released', 'edited'].includes(data.action) && typeof repository === 'string') store.recordGithubChangelog(repository, [release]);
           const version = published ? store.recordGithubVersion(published.repository, published.version) : { updated: false };
           send(res, 200, { data: downloads ? store.recordDriveRelease(repository, downloads) : version });
           if (downloads) void config.versions?.refresh();
