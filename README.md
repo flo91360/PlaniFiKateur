@@ -134,6 +134,23 @@ sous la carte du tableau (**Lire le mode d’emploi (README)**) et dans son dét
 le projet y trouve ce qui a été réalisé et comment l’utiliser. Pour un dépôt
 privé, la lecture du README demande un accès GitHub au dépôt.
 
+La carte **Changelog** est également créée par défaut dans cette colonne, y
+compris pour les projets existants. Elle présente les notes des releases GitHub
+publiées, de la plus récente à la plus ancienne, avec le tag et la date de chaque
+version. La synchronisation récupère aussi les anciennes releases ; les événements
+signés de publication et de modification actualisent leurs notes sans doublons.
+Les brouillons sont exclus. L’historique est conservé dans SQLite et reste visible
+si GitHub est indisponible. L’aperçu dans la description est limité à 20 000
+caractères ; ouvrir la carte permet de lire son contenu et de discuter des nouveautés.
+Dès qu’un dépôt est associé, un lien **Lire le changelog (CHANGELOG.md)**
+s’affiche directement sous la carte du tableau, et **Consulter le changelog
+(CHANGELOG.md)** dans son détail. Il ouvre le fichier `CHANGELOG.md` de la branche
+par défaut (`https://github.com/<dépôt>/blob/HEAD/CHANGELOG.md`), que le worker
+complète à chaque livraison avec la nouvelle version, la date, le titre de la
+carte et le résumé des modifications (voir
+[le guide multi-projets](docs/multi-projets.md#changelog-de-chaque-projet)).
+Sans release publiée, la description rappelle ce lien.
+
 ## Évolutions suivantes
 
 Le serveur archive automatiquement les `.exe` des Releases GitHub de chaque projet

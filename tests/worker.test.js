@@ -157,6 +157,9 @@ test('local end-to-end from ready card status: real API, Git changes, passing te
   const outcome = await f.worker.tick(); const ready = f.current(); assert.equal(outcome.status, 'merging');
   assert.equal(f.current().state, 'merging'); assert.equal(f.store.read().projects[0].cards[0].status, 'review');
   assert.match(await f.git(['show', `${outcome.sha}:greet.mjs`], f.bare), /bonjour/);
+  const changelog = await f.git(['show', `${outcome.sha}:CHANGELOG.md`], f.bare);
+  assert.ok(changelog.startsWith('# Changelog')); assert.match(changelog, /\n## \d{4}-\d{2}-\d{2}\n/);
+  assert.ok(changelog.includes(`<!-- planifikateur:${ready.id} -->\n\n- **${f.card.title}** : Greeting translated`));
   const job = await f.state.get(ready.id); assert.equal(job.threadId, 'fixture-thread');
   const serialized = JSON.stringify(job); assert.ok(!serialized.includes(f.credentials.token)); assert.ok(!serialized.includes('github-test-token')); assert.ok(!serialized.includes('leaseToken'));
   for (const call of f.calls.filter(c => c.command[0] !== 'git')) { assert.equal(call.env.PLANIFIKATEUR_GIT_TOKEN, undefined); assert.equal(call.env.PLANIFIKATEUR_AGENT_TOKEN, undefined); assert.equal(call.env.OPENAI_API_KEY, undefined); }
@@ -392,6 +395,7 @@ for (const preset of ['defilordi', 'funkart']) test(`automatic discovery deliver
     assert.equal(JSON.parse(await f.git(['show', 'main:package.json'], f.bare)).version, '1.0.1');
     assert.equal(JSON.parse(await f.git(['show', 'main:package-lock.json'], f.bare)).packages[''].version, '1.0.1');
   } else assert.match(await f.git(['show', 'main:project.godot'], f.bare), /config\/version="1.0.1"/);
+  assert.match(await f.git(['show', 'main:CHANGELOG.md'], f.bare), new RegExp(`\\n## 1\\.0\\.1 — \\d{4}-\\d{2}-\\d{2}\\n<!-- planifikateur:${run.id} -->\\n\\n- \\*\\*.+\\*\\* : Greeting translated`));
   assert.equal(f.current().id, run.id);
 });
 

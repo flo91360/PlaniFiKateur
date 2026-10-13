@@ -24,7 +24,7 @@ export function validateWorkspace(projects) {
     if (typeof value.id !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(value.id)) fail('Auteur invalide.');
     return { id: value.id, name: text(value.name, 'auteur.name', 80, true) };
   };
-  const repository = value => { if (typeof value !== 'string' || !/^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/.test(value)) fail('Dépôt du mode d’emploi invalide.'); return value; };
+  const repository = value => { if (typeof value !== 'string' || !/^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/.test(value)) fail('Dépôt du mode d’emploi ou du changelog invalide.'); return value; };
   const date = value => { if (value == null) return null; if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) fail('Date invalide.'); return value; };
   const array = (value, path, max) => { if (!Array.isArray(value) || value.length > max) fail(`${path} : liste invalide (maximum ${max} éléments).`); return value; };
   return array(projects, 'projects', 100).map((p, i) => {
@@ -50,6 +50,7 @@ export function validateWorkspace(projects) {
         status: c.status, priority: c.priority,
         ...(c.aiEffort ? { aiEffort: c.aiEffort } : {}),
         ...(c.readme ? { readme: repository(c.readme) } : {}),
+        ...(c.changelog ? { changelog: repository(c.changelog) } : {}),
         ...(c.downloads ? { downloads: validateDriveRelease(c.downloads, c.downloads.repository, c.downloads.version) } : {}),
         attachments: array(c.attachments ?? [], 'attachments', 10).map(a => {
           object(a, 'attachment');

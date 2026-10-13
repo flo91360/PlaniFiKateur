@@ -25,11 +25,21 @@ export function withInfos(project, version) {
   return {
     ...project,
     lists: list ? project.lists : [...project.lists, { id: listId, name: 'Infos', color: 'purple' }],
-    cards: withReadme(project.id, cards, list?.id || listId, preserve ? undefined : version.repository || ''),
+    cards: withChangelog(project.id, withReadme(project.id, cards, list?.id || listId, preserve ? undefined : version.repository || ''), list?.id || listId, preserve ? undefined : version),
   };
 }
 
 export const readmeUrl = repository => `https://github.com/${repository}#readme`;
+// HEAD suit la branche par défaut du dépôt, où le worker tient CHANGELOG.md à jour.
+export const changelogUrl = repository => `https://github.com/${repository}/blob/HEAD/CHANGELOG.md`;
+
+// Liens affichés sous la carte du tableau (label) et dans son détail (detail).
+export function cardLinks(card) {
+  return [
+    ...(card.readme ? [{ href: readmeUrl(card.readme), label: 'Lire le mode d’emploi (README)', detail: 'Consulter le mode d’emploi (README)' }] : []),
+    ...(card.changelog ? [{ href: changelogUrl(card.changelog), label: 'Lire le changelog (CHANGELOG.md)', detail: 'Consulter le changelog (CHANGELOG.md)' }] : []),
+  ];
+}
 
 // Without a repository argument (navigator), the server-provided link is kept.
 function withReadme(projectId, cards, listId, repository) {
@@ -42,4 +52,19 @@ function withReadme(projectId, cards, listId, repository) {
   const { readme, ...previous } = card || { id: cardId, priority: 'normal', tags: ['Mode d’emploi'], comments: [], checklist: [] };
   const next = { ...previous, listId, title: 'Mode d’emploi du projet', description, status: 'done', ...(repository ? { readme: repository } : {}) };
   return card ? cards.map(item => item.id === cardId ? next : item) : [...cards, next];
+}
+
+function withChangelog(projectId, cards, listId, version) {
+  const id = `${projectId}-changelog`;
+  const card = cards.find(item => item.id === id);
+  const entries = version?.changelog;
+  const description = entries?.length
+    ? entries.map(entry => `${entry.tag} — ${entry.date.slice(0, 10)}\n${entry.body || 'Aucune note de version publiée.'}`).join('\n\n').slice(0, 20000)
+    : version === undefined && card ? card.description
+      : version?.repository ? `Chaque livraison est inscrite dans CHANGELOG.md : ${changelogUrl(version.repository)}\nLes notes des releases GitHub apparaîtront aussi ici dès leur publication.`
+        : 'Associez un dépôt GitHub au projet pour afficher les nouveautés de chaque version.';
+  const repository = version === undefined ? card?.changelog || '' : version.repository || '';
+  const { changelog, ...previous } = card || { id, priority: 'normal', tags: ['Changelog'], comments: [], checklist: [] };
+  const next = { ...previous, listId, title: 'Changelog', description, status: 'done', ...(repository ? { changelog: repository } : {}) };
+  return card ? cards.map(item => item.id === id ? next : item) : [...cards, next];
 }

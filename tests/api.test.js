@@ -23,7 +23,7 @@ test('consultation exposes persisted projects, lists and full card context', asy
   const { get } = await fixture(t);
   const projects = await (await get('/projects')).json();
   assert.equal(projects.data.length, 2);
-  assert.equal(projects.data[0].cardCount, 10);
+  assert.equal(projects.data[0].cardCount, 11);
   assert.equal((await (await get('/projects/planifikateur')).json()).data.name, 'PlaniFiKateur');
   const lists = await (await get('/projects/planifikateur/lists')).json();
   assert.equal(lists.data[0].cardCount, 3);
@@ -41,7 +41,7 @@ test('filters and pagination isolate the requested cards', async t => {
   assert.deepEqual(result.data.map(c => c.id), ['c5']);
   const page = await (await get('/projects/planifikateur/cards?limit=2&offset=2')).json();
   assert.deepEqual(page.data.map(c => c.id), ['c3', 'c4']);
-  assert.deepEqual(page.meta, { revision: 1, total: 10, limit: 2, offset: 2, nextOffset: 4 });
+  assert.deepEqual(page.meta, { revision: 1, total: 11, limit: 2, offset: 2, nextOffset: 4 });
   const last = await (await get('/projects/planifikateur/cards?limit=2&offset=9')).json();
   assert.equal(last.meta.nextOffset, null);
   assert.equal((await (await get('/projects/planifikateur/cards?listId=missing')).json()).data.length, 0);

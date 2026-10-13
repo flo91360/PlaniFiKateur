@@ -24,6 +24,7 @@ export function createStore(filename) {
     CREATE INDEX IF NOT EXISTS activity_project ON activity(project_id, id);
     CREATE INDEX IF NOT EXISTS activity_card ON activity(card_id, id);
     CREATE TABLE IF NOT EXISTS github_downloads (repository TEXT NOT NULL, tag TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(repository,tag));
+    CREATE TABLE IF NOT EXISTS github_changelog (repository TEXT NOT NULL, tag TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(repository,tag));
     CREATE TABLE IF NOT EXISTS github_versions (repository TEXT PRIMARY KEY, data TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS drive_archives (repository TEXT NOT NULL, tag TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(repository,tag));
     CREATE TABLE IF NOT EXISTS drive_repositories (repository TEXT PRIMARY KEY, data TEXT NOT NULL);`);
@@ -59,7 +60,8 @@ export function createStore(filename) {
     const row = db.prepare('SELECT data FROM github_versions WHERE repository=?').get(repository.toLowerCase());
     const version = row ? JSON.parse(row.data) : { tag: 'Version en cours de récupération', date: '' };
     const downloads = db.prepare('SELECT data FROM github_downloads WHERE repository=? AND tag=?').get(repository.toLowerCase(), version.tag);
-    return { ...version, repository, ...(downloads ? { downloads: JSON.parse(downloads.data) } : {}) };
+    const changelog = db.prepare('SELECT data FROM github_changelog WHERE repository=?').all(repository.toLowerCase()).map(row => JSON.parse(row.data)).sort((a, b) => Date.parse(b.date) - Date.parse(a.date) || b.tag.localeCompare(a.tag));
+    return { ...version, repository, changelog, ...(downloads ? { downloads: JSON.parse(downloads.data) } : {}) };
   };
   transaction(synchronizeInfos);
   return {
@@ -87,6 +89,18 @@ export function createStore(filename) {
         return { tag: row.tag, state, message, date, files: files || [], ...(folderId ? { folderUrl: `https://drive.google.com/drive/folders/${folderId}` } : {}) };
       }).sort((a, b) => Date.parse(b.date) - Date.parse(a.date)).slice(0, 10);
       return { checkedAt, repositoryError: error, releases };
+    },
+    recordGithubChangelog(repository, releases) {
+      return transaction(() => {
+        repository = repository.toLowerCase();
+        if (!this.read().projects.some(project => workflows.githubProject(project.id)?.toLowerCase() === repository)) return;
+        for (const release of releases) {
+          if (!release || release.draft || typeof release.tag_name !== 'string' || !release.tag_name.trim() || release.tag_name.length > 140 || !release.published_at || !Number.isFinite(Date.parse(release.published_at))) continue;
+          const entry = { tag: release.tag_name, date: new Date(release.published_at).toISOString(), body: typeof release.body === 'string' ? release.body.replace(/<!-- planifikateur-drive\n[\s\S]*?\n-->/g, '').trim().slice(0, 20000) : '' };
+          db.prepare('INSERT INTO github_changelog VALUES(?,?,?) ON CONFLICT(repository,tag) DO UPDATE SET data=excluded.data').run(repository, entry.tag, JSON.stringify(entry));
+        }
+        synchronizeInfos();
+      });
     },
     githubVersion(repository) { const row = db.prepare('SELECT data FROM github_versions WHERE repository=?').get(repository.toLowerCase()); return row ? JSON.parse(row.data) : null; },
     refreshInfos() { return transaction(synchronizeInfos); },
