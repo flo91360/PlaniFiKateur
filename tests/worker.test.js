@@ -59,6 +59,7 @@ async function fixture(t, options = {}) {
     calls.push({ command, env: args.env });
     if (options.preset && command[0] === 'node' && command[1] === '--version') return { code: 0, output: `v${profile.nodeMajor}.0.0` };
     if (options.preset && command[0] === 'godot' && command[1] === '--version') return { code: 0, output: '4.4.1.stable.official' };
+    if (options.refusePush && command[0] === 'git' && command[1] === 'push') return { code: 1, output: options.refusePush() };
     if (command[0] === 'git') command = ['git', '-c', `url.${bare}.insteadOf=https://github.com/${repository}.git`, ...command.slice(1)];
     return runCommand(command, args);
   };
@@ -139,6 +140,25 @@ test('worker merges only after GitHub CI and site eligibility, without Actions s
   assert.ok(f.logs.some(line => line.includes('fusionnée après réussite des tests GitHub')));
   await f.webhook({ action: 'closed', repository: { full_name: repository }, pull_request: { number: 1, merged: true, merged_at: new Date().toISOString(), merge_commit_sha: submission.sha, head: { sha: submission.sha, repo: { full_name: repository } }, base: { ref: 'main' } } });
   await f.worker.tick(); assert.equal(f.current().state, 'done'); assert.equal(f.merges, 1);
+});
+
+test('a push refused for a missing workflow permission asks for the token change instead of retrying', async t => {
+  const f = await fixture(t, {
+    refusePush: () => "To https://github.com/flo91360/defilordi.git\n ! [remote rejected] HEAD -> planifikateur/x (refusing to allow a Personal Access Token to create or update workflow `.github/workflows/build-windows.yml` without `workflow` scope)\nerror: failed to push some refs",
+    model: async input => {
+      await mkdir(join(input.cwd, '.github', 'workflows'), { recursive: true });
+      await writeFile(join(input.cwd, '.github', 'workflows', 'build-windows.yml'), 'on: push\n');
+      await writeFile(join(input.cwd, 'greet.mjs'), "export const greet = () => 'bonjour';\n");
+      return { status: 'result', summary: 'Build Windows', question: '' };
+    },
+  });
+  f.prepare();
+  const outcome = await f.worker.tick(); assert.equal(outcome.status, 'waiting', f.logs.join('\n'));
+  const run = f.current(); assert.equal(run.state, 'waiting');
+  const message = run.exchanges.at(-1).question;
+  assert.match(message, /portée « workflow »/); assert.match(message, /\.github\/workflows\/build-windows\.yml/);
+  assert.ok(!message.includes('github-test-token'));
+  assert.equal(f.pr, undefined);
 });
 
 test('a refused merge automatically retries without consuming another model attempt or replacing the PR', async t => {
