@@ -105,7 +105,14 @@ signés de publication et de modification actualisent leurs notes sans doublons.
 Les brouillons sont exclus. L’historique est conservé dans SQLite et reste visible
 si GitHub est indisponible. L’aperçu dans la description est limité à 20 000
 caractères ; ouvrir la carte permet de lire son contenu et de discuter des nouveautés.
-Sans release publiée, un message indique où apparaîtront les nouveautés.
+Dès qu’un dépôt est associé, un lien **Lire le changelog (CHANGELOG.md)**
+s’affiche directement sous la carte du tableau, et **Consulter le changelog
+(CHANGELOG.md)** dans son détail. Il ouvre le fichier `CHANGELOG.md` de la branche
+par défaut (`https://github.com/<dépôt>/blob/HEAD/CHANGELOG.md`), que le worker
+complète à chaque livraison avec la nouvelle version, la date, le titre de la
+carte et le résumé des modifications (voir
+[le guide multi-projets](docs/multi-projets.md#changelog-de-chaque-projet)).
+Sans release publiée, la description rappelle ce lien.
 
 ## Évolutions suivantes
 

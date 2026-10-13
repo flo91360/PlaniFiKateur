@@ -47,6 +47,24 @@ exigé avant la fusion. Le contrôle est un fichier installé avec le worker
 (`@worker/checks/…` dans le profil), jamais un script du dépôt modifié. Le worker
 augmente la ligne `VERSION = x.y.z` du `.pro` à chaque livraison de code.
 
+## Changelog de chaque projet
+
+À chaque livraison de code, quel que soit le profil, le worker ajoute lui-même
+une section en tête du fichier `CHANGELOG.md` du dépôt (créé s’il manque), avant
+les tests locaux et dans le même commit que la PR. Pour DefilOrdi, FunKart et
+TrameErgo, la section porte la nouvelle version préparée par le worker et sa
+date (`## 1.4.2 — 2026-10-13`) ; pour PlaniFiKateur, dont la version n’est pas
+augmentée automatiquement, seulement la date. Elle reprend le titre de la carte
+et le résumé de l’agent, ramenés à une ligne, avec un marqueur de l’exécution :
+une nouvelle tentative ou une reprise sur `main` à jour remplace la section de
+la même exécution au lieu d’en ajouter une. L’historique déjà présent est
+conservé ; un `CHANGELOG.md` qui n’est pas un fichier ordinaire bloque la
+livraison. Chaque version fusionnée sur GitHub contient ainsi l’ensemble des
+modifications livrées depuis la mise en place du changelog.
+
+Cette règle fait partie du code installé du worker : elle ne dépend pas des
+workflows des dépôts et ne peut pas être modifiée par la branche livrée.
+
 Le conteneur contient Node 22 et 24, Chromium et le binaire officiel Godot 4.4.1
 avec vérification SHA-512. La fabrication des exécutables Windows de DefilOrdi
 et des exports Windows/Linux de FunKart reste sur GitHub Actions. Le worker
