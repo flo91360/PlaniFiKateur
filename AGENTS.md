@@ -1,40 +1,45 @@
 # Consignes de travail
 
-## Livraison automatique
+## Livraison commune obligatoire
 
-Lorsqu’un worker traite une carte (`PLANIFIKATEUR_WORKER=1`), il utilise une
-branche `planifikateur/<identifiant-exécution>` et une PR vers `main`. Dans ce
-parcours, Codex prépare les modifications et laisse le worker exécuter les tests,
-créer le commit, pousser la branche et ouvrir la PR. Ne pas pousser directement
-sur `main`, ne pas fusionner soi-même et ne pas déléguer à d’autres agents.
-La fusion est assurée par GitHub après réussite des contrôles et vérification
-de la demande sur le site.
+Une intervention directe et une carte du worker suivent le même parcours, sans
+confirmation supplémentaire du propriétaire :
 
-Pour les interventions directes hors worker, la consigne ci-dessous s’applique.
+1. Implémenter la demande sur une branche de travail.
+2. Préparer une version supérieure à celle de la branche cible, les références
+   documentaires et l'entrée correspondante de CHANGELOG.md avec le module
+   commun `worker/delivery.mjs`, avant les vérifications.
+3. Vérifier la livraison et exécuter les tests requis.
+4. Committer les fichiers de la livraison, pousser la branche et ouvrir une PR.
+5. Attendre les contrôles GitHub réussis sur le commit exact, puis fusionner
+   automatiquement sur main. Aucune revue humaine supplémentaire n'est demandée.
+6. Vérifier le tag immuable v<version>, créé par GitHub après les tests de main.
+7. Vérifier la version et le commit réellement déployés. Un push ou une fusion
+   seuls ne prouvent pas que Railway a déployé la livraison.
 
-Après chaque modification ou fonctionnalité terminée et vérifiée, créer un commit
-avec un message explicite puis pousser sur la branche GitHub `main`, sans demander
-une nouvelle confirmation. Cette consigne est autorisée par le propriétaire du
-projet. Le push peut déclencher le déploiement automatique Railway.
+Le guide unique est [docs/livraison.md](docs/livraison.md). Le push direct sur main
+ne remplace pas ces étapes. Pour une intervention directe, utiliser une branche
+`livraison/<nom-unique>` et `npm run delivery:prepare -- --id <id-unique>
+--title "Titre" --summary "Résumé utilisateur"`, puis `npm run delivery:check`.
+Après les tests, créer la PR, attendre la CI et la fusionner sans redemander
+confirmation. En cas d'avancée de main, intégrer ses changements et préparer
+à nouveau la livraison avant de vérifier les modifications concernées.
 
-- Exécuter les vérifications adaptées aux fichiers modifiés. Pour le code de
-  l’API, utiliser `npm test`. Pour les parcours de l’interface ou les échanges
-  entre le site et l’API, utiliser aussi `npm run test:browser`, qui compile le
-  site avant de lancer les tests sur ordinateur et mobile.
-- Vérifier `git diff --check` avant le commit. Pour une modification uniquement
-  documentaire, cette vérification suffit.
-- Réutiliser les résultats des vérifications déjà réussies pour le même état du
-  code ; ne pas les relancer sans changement ou problème qui le justifie.
-- Si les vérifications échouent, corriger avant de pousser. Si un blocage reste,
-  expliquer le problème à l’utilisateur et ne pas pousser de code non validé.
-- Inclure uniquement les fichiers du travail concerné, sans secrets, base SQLite,
-  dépendances installées ni fichiers de compilation. Préserver les modifications
-  sans rapport avec la tâche.
-- Pousser sans forcer. Si la branche distante a avancé, intégrer ses changements
-  et vérifier les éventuelles résolutions avant de pousser.
-- Après le push, vérifier que `main` sur GitHub contient le commit et communiquer
-  son identifiant avec un bref résumé des vérifications. Ne pas annoncer un
-  déploiement Railway réussi sans l’avoir vérifié.
+Lorsque `PLANIFIKATEUR_WORKER=1`, l'agent prépare le code et son résumé ; le worker
+appelle le même module, teste, committe et publie la PR. L'agent ne committe pas,
+ne pousse pas, ne fusionne pas et ne délègue pas lui-même. Cela change seulement
+qui exécute les étapes, jamais les obligations de livraison.
+
+- Pour l'API et le worker : `npm test`. Pour l'interface ou les échanges avec
+  l'API : ajouter `npm run test:browser` (compilation incluse).
+- Toujours vérifier `git diff --check` avant le commit. Ne pas relancer des
+  vérifications déjà réussies sans changement ni problème qui le justifie.
+- Corriger les échecs avant publication ; ne pas fusionner une livraison invalide.
+- N'inclure que les fichiers concernés, sans secrets, SQLite, dépendances ou
+  compilation. Préserver les modifications sans rapport avec la tâche.
+- Pousser sans forcer. Préserver les versions déjà publiées et leurs tags.
+- Confirmer le commit sur GitHub, le tag et les résultats des contrôles. Ne pas
+  annoncer un déploiement réussi sans avoir vérifié le site.
 
 ## Environnement du projet
 

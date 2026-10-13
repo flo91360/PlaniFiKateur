@@ -39,7 +39,7 @@ async function fixture(t, options = {}) {
   await writeFile(join(source, 'greet.mjs'), "export const greet = () => 'hello';\n");
   await writeFile(join(source, 'test.mjs'), "import test from 'node:test'; import assert from 'node:assert/strict'; import { greet } from './greet.mjs'; test('French greeting', () => assert.equal(greet(), 'bonjour'));\n");
   await writeFile(join(source, 'browser-check.mjs'), "import assert from 'node:assert/strict'; import { greet } from './greet.mjs'; assert.equal(`<h1>${greet()}</h1>`, '<h1>bonjour</h1>');\n");
-  if (options.preset === 'defilordi') {
+  if (!options.preset || ['planifikateur', 'defilordi'].includes(options.preset)) {
     await writeFile(join(source, 'package.json'), JSON.stringify({ name: 'fixture', version: '1.0.0' }));
     await writeFile(join(source, 'package-lock.json'), JSON.stringify({ name: 'fixture', version: '1.0.0', packages: { '': { version: '1.0.0' } } }));
   }
@@ -178,7 +178,7 @@ test('local end-to-end from ready card status: real API, Git changes, passing te
   assert.equal(f.current().state, 'merging'); assert.equal(f.store.read().projects[0].cards[0].status, 'review');
   assert.match(await f.git(['show', `${outcome.sha}:greet.mjs`], f.bare), /bonjour/);
   const changelog = await f.git(['show', `${outcome.sha}:CHANGELOG.md`], f.bare);
-  assert.ok(changelog.startsWith('# Changelog')); assert.match(changelog, /\n## \d{4}-\d{2}-\d{2}\n/);
+  assert.ok(changelog.startsWith('# Changelog')); assert.match(changelog, /\n## 1\.0\.1 — \d{4}-\d{2}-\d{2}\n/);
   assert.ok(changelog.includes(`<!-- planifikateur:${ready.id} -->\n\n- **${f.card.title}** : Greeting translated`));
   const job = await f.state.get(ready.id); assert.equal(job.threadId, 'fixture-thread');
   const serialized = JSON.stringify(job); assert.ok(!serialized.includes(f.credentials.token)); assert.ok(!serialized.includes('github-test-token')); assert.ok(!serialized.includes('leaseToken'));
@@ -393,7 +393,7 @@ test('a pending PR is revised against new main and only its new tested SHA can m
   assert.equal(f.calls.some(c => c.command.includes('--force') || c.command.includes('--force-with-lease')), false);
 });
 
-for (const preset of ['defilordi', 'funkart']) test(`automatic discovery delivers ${preset} with its model, repository, tests and GitHub workflow`, async t => {
+for (const preset of ['planifikateur', 'defilordi', 'funkart']) test(`automatic discovery delivers ${preset} with its model, repository, tests and GitHub workflow`, async t => {
   const repo = `flo91360/${preset}`;
   const f = await fixture(t, { auto: true, preset, repository: repo });
   f.config.projectIds = []; f.config.repositories = [];
@@ -411,7 +411,7 @@ for (const preset of ['defilordi', 'funkart']) test(`automatic discovery deliver
   await f.webhook({ action: 'closed', repository: { full_name: repo }, pull_request: { number: 1, merged: true, merged_at: new Date().toISOString(), merge_commit_sha: f.pr.head.sha, head: { sha: f.pr.head.sha, repo: { full_name: repo } }, base: { ref: 'main' } } });
   assert.equal(f.current().state, 'done');
   assert.equal(await f.git(['show', 'main:greet.mjs'], f.bare), "export const greet = () => 'bonjour';");
-  if (preset === 'defilordi') {
+  if (preset !== 'funkart') {
     assert.equal(JSON.parse(await f.git(['show', 'main:package.json'], f.bare)).version, '1.0.1');
     assert.equal(JSON.parse(await f.git(['show', 'main:package-lock.json'], f.bare)).packages[''].version, '1.0.1');
   } else assert.match(await f.git(['show', 'main:project.godot'], f.bare), /config\/version="1.0.1"/);

@@ -1,34 +1,55 @@
-name: Tag de version
+name: Livraison de version
 on:
-  push:
-    branches: [main]
-    paths: [package.json]
-  workflow_dispatch:
+  workflow_run:
+    workflows: [Tests]
+    types: [completed]
 permissions:
+  actions: read
   contents: write
 concurrency:
-  group: tag-version
+  group: livraison-${{ github.event.workflow_run.head_sha }}
   cancel-in-progress: false
 jobs:
-  tag:
-    name: Créer le tag de la version
+  publish:
+    name: Publier le tag après les tests
+    if: github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
-      - name: Créer et pousser v<version> s’il n’existe pas
-        run: |
-          version="$(node -p "require('./package.json').version")"
-          tag="v${version}"
-          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Version invalide dans package.json : ${version}"; exit 1
-          fi
-          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null; then
-            echo "Le tag ${tag} existe déjà."; exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$tag" -m "$tag" "$GITHUB_SHA"
-          git push origin "refs/tags/${tag}"
-          echo "Tag ${tag} créé sur ${GITHUB_SHA}."
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Vérifier les contrôles et publier le tag immuable
+        run: node scripts/publish-version.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DELIVERY_SHA: ${{ github.event.workflow_run.head_sha }}
+          TEST_RUN_ID: ${{ github.event.workflow_run.id }}
+      - name: Lire la version publiée
+        id: version
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+  deploy:
+    name: Vérifier le déploiement Railway
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Attendre la version et le commit livrés sur le site
+        run: node scripts/verify-deployment.mjs
+        env:
+          PLANIFIKATEUR_URL: ${{ vars.PLANIFIKATEUR_URL || 'https://planifikateur-production.up.railway.app' }}
+          DELIVERY_SHA: ${{ github.event.workflow_run.head_sha }}
+          DELIVERY_VERSION: ${{ needs.publish.outputs.version }}

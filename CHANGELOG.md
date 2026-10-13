@@ -2,6 +2,13 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.19 — 2026-10-13
+<!-- planifikateur:livraison-parcours-commun-20261013 -->
+
+- **Parcours de livraison commun** : Les interventions directes et les cartes préparent la même version et le même changelog. GitHub contrôle ces éléments, publie un tag après les tests et vérifie le commit déployé sur Railway.
+- **Effort des cartes** : les niveaux d’effort ont été mis à jour dans le sélecteur (PR #20, déjà fusionnée sans nouvelle version).
+- **Affectation d’une personne** : possibilité d’abonner un autre membre actif à une carte et d’afficher les membres abonnés (PR #21, déjà fusionnée sans nouvelle version).
+
 ## 0.1.18 — 2026-10-13
 
 - **Publication bloquée par un workflow GitHub** : quand GitHub refuse le push parce que la carte modifie un fichier de `.github/workflows/` et que le token du worker n’a pas la permission « workflow », la carte reçoit une question claire (fichiers concernés, permission à ajouter) au lieu d’échecs répétés ; répondre après correction du token relance la publication.

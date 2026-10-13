@@ -124,5 +124,5 @@ test('project versioning is idempotent and preserves a requested higher version'
   await writeFile(join(dir, 'project.godot'), '[application]\nconfig/version="0.1.0"\nconfig/name="FunKart"\n');
   assert.equal(await bumpProjectVersion(dir, { preset: 'funkart', branch: 'main' }, async () => 'config/version="0.1.0"'), '0.1.1');
   assert.match(await readFile(join(dir, 'project.godot'), 'utf8'), /config\/name="FunKart"/);
-  await mkdir(join(dir, 'empty')); assert.equal(await bumpProjectVersion(join(dir, 'empty'), { preset: 'planifikateur' }), null);
+  await mkdir(join(dir, 'empty')); await assert.rejects(bumpProjectVersion(join(dir, 'empty'), { preset: 'planifikateur' }), { code: 'ENOENT' });
 });

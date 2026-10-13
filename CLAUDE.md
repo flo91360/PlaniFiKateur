@@ -53,46 +53,17 @@ Hors CI, Playwright cherche Chromium via `PLAYWRIGHT_CHROMIUM_EXECUTABLE` ou
 
 ## Livraison
 
-**Exécution par le worker** (`PLANIFIKATEUR_WORKER=1`) : préparer uniquement les
-modifications. Le worker exécute les tests, crée le commit, pousse la branche
-`planifikateur/<exécution>` et ouvre la PR. Ne pas committer, pousser, fusionner
-ni déléguer à d’autres agents.
+Appliquer les mêmes règles pour toute livraison, directe ou issue d'une carte :
+**code → version et changelog → tests → PR → fusion automatique → tag →
+vérification du déploiement**. Les consignes communes font autorité dans
+[AGENTS.md](AGENTS.md) et le déroulement dans [docs/livraison.md](docs/livraison.md).
 
-**Intervention directe** (session Claude Code) : appliquer ce workflow à chaque
-session, de bout en bout et sans redemander confirmation (autorisé par le
-propriétaire ; peut déclencher le déploiement Railway) :
-
-1. Implémenter la fonctionnalité demandée, avec ses tests.
-2. Vérifier (voir ci-dessous) jusqu’à ce que tout passe.
-3. Incrémenter la version : correctif (`x.y.Z+1`) par défaut, mineure si la
-   personne le demande. Mettre à jour ensemble `package.json`,
-   `package-lock.json` (`npm version <version> --no-git-tag-version`),
-   `README.md`, `docs/agents.md` et `docs/github.md`.
-4. Ajouter en tête de `CHANGELOG.md` une section `## <version> — <AAAA-MM-JJ>`
-   décrivant chaque modification livrée, du point de vue de l’utilisateur.
-5. Mettre à jour `README.md` (et `docs/`) si l’usage, la configuration ou une
-   route change.
-6. Préparer un commit explicite contenant le code, la version et le changelog.
-7. Fusionner automatiquement sur `main` : pousser directement sur `main`, ou, si
-   la session impose une autre branche, ouvrir la PR, attendre la CI verte
-   (« Tests serveur » et « Tests navigateur ») puis la fusionner soi-même. En cas
-   de conflit, intégrer `main`, revérifier, puis fusionner.
-8. Le tag `v<version>` est créé automatiquement par le workflow GitHub
-   `.github/workflows/tag-version.yml` dès que `package.json` change sur `main`.
-   Vérifier qu’il existe (`git ls-remote --tags origin v<version>`) ; sinon,
-   lancer ce workflow manuellement (`workflow_dispatch`) ou pousser le tag.
-
-- Vérifications selon les fichiers touchés : `npm test` pour l’API et le worker ;
-  ajouter `npm run test:browser` pour l’interface ou les échanges site ↔ API.
-  Pour de la documentation seule, `git diff --check` suffit.
-- Toujours `git diff --check` avant le commit. Ne pas relancer des vérifications
-  déjà réussies sur le même état du code.
-- Ne pas pousser de code non validé : corriger, ou expliquer le blocage.
-- Committer uniquement les fichiers de la tâche : pas de secrets, de base SQLite,
-  de `node_modules` ni de `dist/`. Préserver les modifications sans rapport.
-- Pousser sans forcer ; si la branche distante a avancé, intégrer puis revérifier.
-- Après le push, confirmer l’identifiant du commit sur GitHub avec un résumé des
-  vérifications. Ne pas annoncer un déploiement Railway réussi sans l’avoir vu.
+Utiliser le module commun de préparation, jamais une incrémentation improvisée.
+Lors d'une intervention directe, lancer `npm run delivery:prepare` avec un
+identifiant stable de livraison, le titre et le résumé, puis vérifier et publier
+la PR. Lors d'une exécution `PLANIFIKATEUR_WORKER=1`, laisser le worker appeler
+ce module et effectuer tests, commit, push, PR et fusion ; l'agent fournit le code
+et un résumé clair. Aucune de ces situations ne dispense de version ni de changelog.
 
 ## Données
 

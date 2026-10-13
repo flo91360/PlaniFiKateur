@@ -92,6 +92,8 @@ test('build info uses an exact Git tag or the commit identifier and includes its
   if (tags.length) assert.ok(tags.includes(info.tag));
   else assert.equal(info.tag, git(['rev-parse', '--short', 'HEAD']));
   assert.equal(info.date, git(['show', '-s', '--format=%cI', 'HEAD']));
+  assert.equal(info.commit, git(['rev-parse', 'HEAD']));
+  assert.match(info.version, /^\d+\.\d+\.\d+$/);
   assert.ok(Number.isFinite(Date.parse(info.date)));
 });
 

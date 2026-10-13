@@ -105,7 +105,7 @@ Conserver également des copies hors du volume Railway.
 npm run export:preview
 ```
 
-`dist/PlaniFiKateur-apercu-v0.1.18.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
+`dist/PlaniFiKateur-apercu-v0.1.19.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 
@@ -152,6 +152,11 @@ carte et le résumé des modifications (voir
 Sans release publiée, la description rappelle ce lien.
 
 ## Évolutions suivantes
+
+Les interventions directes et les cartes suivent le [même parcours de livraison](docs/livraison.md) :
+version et changelog préparés par le même module, tests, PR, fusion automatique,
+tag après les tests de main et vérification de la version déployée sur Railway.
+GitHub refuse une livraison PlaniFiKateur sans nouvelle version ni changelog.
 
 Le serveur archive automatiquement les `.exe` des Releases GitHub de chaque projet
 dans votre dossier Google Drive, avec un sous-dossier par dépôt et par version. Un
