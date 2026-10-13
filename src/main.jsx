@@ -183,7 +183,7 @@ function CreationForm({ engine = 'codex', offline = false, projectId, attachment
   const [description, setDescription] = useState('');
   const target = listId || lists[0]?.id || '';
   const [priority, setPriority] = useState('normal');
-  const [aiEffort, setAiEffort] = useState('');
+  const [aiEffort, setAiEffort] = useState('medium');
   const [status, setStatus] = useState('draft');
   const [tags, setTags] = useState('');
   const [comment, setComment] = useState('');

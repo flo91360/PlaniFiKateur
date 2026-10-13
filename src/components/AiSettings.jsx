@@ -3,10 +3,11 @@ import { workRequest } from './AgentSetup.jsx';
 import { efforts, effortLabels } from '../../worker/ai-settings.mjs';
 import { aiModels } from '../lib/ai-models.js';
 
-export function EffortSelect({ engine = 'codex', value = '', onChange, disabled = false }) {
-  const levels = efforts[engine] || efforts.codex;
-  return <label>Effort IA<select aria-label="Effort IA" disabled={disabled} value={value} onChange={event => onChange(event.target.value)}>
-    {!levels.includes(value) && <option value={value}>{effortLabels[value]} — incompatible avec ce moteur</option>}
+export function EffortSelect({ engine = 'codex', value = 'medium', onChange, disabled = false }) {
+  const levels = (efforts[engine] || efforts.codex).filter(Boolean);
+  const selectedValue = value || 'medium';
+  return <label>Effort IA<select aria-label="Effort IA" disabled={disabled} value={selectedValue} onChange={event => onChange(event.target.value)}>
+    {!levels.includes(selectedValue) && <option value={selectedValue}>{effortLabels[selectedValue]} — incompatible avec ce moteur</option>}
     {levels.map(level => <option key={level} value={level}>{effortLabels[level]}</option>)}
   </select><span className="muted">L’effort dépend des capacités du modèle choisi.</span></label>;
 }

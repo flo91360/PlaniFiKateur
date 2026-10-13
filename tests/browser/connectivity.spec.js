@@ -56,6 +56,8 @@ test('a UI-created card is readable by an agent and another browser', async ({ p
   await login(page, appServer);
   await newProject(page, 'Projet connecté');
   await page.getByRole('button', { name: 'Ajouter une carte dans Bugs', exact: true }).click();
+  await expect(page.getByLabel('Effort IA', { exact: true })).toHaveValue('medium');
+  await expect(page.getByLabel('Effort IA', { exact: true }).locator('option[value=""]')).toHaveCount(0);
   await page.getByLabel('Titre de la carte', { exact: true }).fill('Bug visible par les agents');
   await page.getByLabel('Description', { exact: true }).fill('Le contexte de la demande.');
   await page.getByLabel('Statut', { exact: true }).selectOption('ready');
@@ -68,7 +70,7 @@ test('a UI-created card is readable by an agent and another browser', async ({ p
   expect(response.status()).toBe(200);
   const { data } = await response.json();
   expect(data).toHaveLength(1);
-  expect(data[0]).toMatchObject({ title: 'Bug visible par les agents', projectName: 'Projet connecté', listName: 'Bugs', description: 'Le contexte de la demande.' });
+  expect(data[0]).toMatchObject({ title: 'Bug visible par les agents', projectName: 'Projet connecté', listName: 'Bugs', description: 'Le contexte de la demande.', aiEffort: 'medium' });
   expect(data[0].comments[0].text).toBe('Une précision');
   expect((await request.put(`${appServer}/api/v1/workspace`, { headers: { Authorization: `Bearer ${readToken}` }, data: {} })).status()).toBe(401);
   const context = await browser.newContext();
@@ -403,6 +405,8 @@ test.describe('project task execution', () => {
     await page.getByRole('button', { name: 'Fermer', exact: true }).click();
     await page.getByRole('heading', { name: card.title, exact: true }).click();
     await expect(page.getByLabel('Effort IA', { exact: true })).toBeEnabled();
+    await expect(page.getByLabel('Effort IA', { exact: true })).toHaveValue('medium');
+    await expect(page.getByLabel('Effort IA', { exact: true }).locator('option[value=""]')).toHaveCount(0);
     await page.getByLabel('Effort IA', { exact: true }).selectOption('high');
     await page.getByRole('button', { name: 'Terminé', exact: true }).click();
     await expect.poll(async () => (await (await page.request.get(`${appServer}/api/v1/projects/${project.id}/cards/${card.id}`)).json()).data.aiEffort).toBe('high');
