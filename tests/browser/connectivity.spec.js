@@ -573,6 +573,12 @@ test('project roles hide, open read-only or reserve the agent to managers', asyn
   await member.getByLabel('Priorité', { exact: true }).selectOption('high');
   await member.getByRole('button', { name: 'Terminé', exact: true }).click();
   await expect(member.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+  // Une carte prête attend l’agent : sa demande n’est modifiable que par un responsable.
+  await member.getByRole('heading', { name: seed[0].cards[1].title, exact: true }).click();
+  await expect(member.getByLabel('Description', { exact: true })).not.toBeEditable();
+  await expect(member.getByText(/seul un responsable peut encore modifier la demande/)).toBeVisible();
+  await expect(member.getByLabel('Priorité', { exact: true })).toBeEnabled();
+  await member.getByRole('button', { name: 'Terminé', exact: true }).click();
   // Lecture seule sur le site vitrine.
   const memberMenu = member.getByRole('button', { name: 'Ouvrir les projets', exact: true });
   if (await memberMenu.isVisible()) await memberMenu.click();

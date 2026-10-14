@@ -41,7 +41,7 @@ export default function BackupsPanel() {
       <h3>Sauvegardes</h3>
       <p>
         {status
-          ? `Copie automatique toutes les ${status.intervalHours} heures si les données changent, et avant une suppression. Jusqu’à ${status.keep} copies conservées.`
+          ? `Copie automatique toutes les ${status.intervalHours} heures si les données changent, et avant une suppression. Jusqu’à ${status.keep} copies conservées de chaque sorte : les copies d’avant suppression ne remplacent pas les copies régulières.`
           : 'Chargement des sauvegardes…'}
       </p>
       <p>Téléchargez régulièrement une copie pour la conserver en dehors du site.</p>
@@ -59,6 +59,7 @@ export default function BackupsPanel() {
             <li key={file.name}>
               <span>
                 {new Date(file.createdAt).toLocaleString('fr-FR')} · {Math.ceil(file.size / 1024)} Ko
+                {file.kind === 'deletion' && ' · avant suppression'}
               </span>
               <button className="secondary-button" disabled={busy} onClick={() => void action(file.name)}>
                 Télécharger

@@ -209,6 +209,8 @@ export default function CardDetail({
   // Droits sur le projet : lecture seule pour un lecteur ; seul un responsable confie la carte à l’agent.
   const readOnly = role === 'viewer',
     canLaunch = role === 'manager';
+  // Une carte prête attend l’agent avec la demande validée par un responsable : lui seul la modifie.
+  const requestLocked = readOnly || (card.status === 'ready' && !canLaunch);
   const tagsText = card.tags.join(', ');
   const [title, setTitle] = useState(card.title);
   const [description, setDescription] = useState(card.description);
@@ -284,7 +286,7 @@ export default function CardDetail({
             <input
               aria-label="Titre de la carte"
               className="detail-title"
-              readOnly={readOnly}
+              readOnly={requestLocked}
               value={title}
               maxLength={140}
               onChange={e => setTitle(e.target.value)}
@@ -310,14 +312,14 @@ export default function CardDetail({
             <textarea
               aria-label="Description"
               rows={4}
-              readOnly={readOnly}
+              readOnly={requestLocked}
               value={description}
               onChange={e => setDescription(e.target.value)}
               onBlur={() => saveFields()}
               placeholder="Décrivez la demande pour l’agent, le résultat attendu et les contraintes utiles…"
             />
           </label>
-          {!readOnly && (
+          {!requestLocked && (
             <DescriptionAssistant
               value={description}
               onChange={replaceDescription}
@@ -327,7 +329,11 @@ export default function CardDetail({
               listId={card.listId}
             />
           )}
-          <p className="muted">Cette description est l’objectif transmis à l’agent.</p>
+          <p className="muted">
+            {requestLocked && !readOnly
+              ? 'Carte confiée à l’agent : seul un responsable peut encore modifier la demande. Repassez-la en « À explorer » pour la retravailler.'
+              : 'Cette description est l’objectif transmis à l’agent.'}
+          </p>
           {!offline && !systemCards(projectId).includes(card.id) && (
             <ExecutionPanel
               projectId={projectId}
@@ -345,7 +351,7 @@ export default function CardDetail({
             Étiquettes
             <input
               value={tags}
-              readOnly={readOnly}
+              readOnly={requestLocked}
               onChange={e => setTags(e.target.value)}
               onBlur={() => saveFields()}
               placeholder="Interface, Recherche… (séparées par une virgule)"
@@ -354,7 +360,7 @@ export default function CardDetail({
           <Attachments
             otherBytes={attachmentBytes}
             attachments={card.attachments || []}
-            readOnly={readOnly}
+            readOnly={requestLocked}
             onChange={attachments => update({ attachments })}
           />
           <Discussion card={card} user={user} readOnly={readOnly} onUpdate={onUpdate} />
@@ -376,7 +382,7 @@ export default function CardDetail({
           <EffortSelect
             engine={execution.managed ? execution.ai?.engine || engine : engine}
             value={card.aiEffort || ''}
-            disabled={execution.managed || readOnly}
+            disabled={execution.managed || requestLocked}
             onChange={aiEffort => update({ aiEffort })}
           />
           <label>

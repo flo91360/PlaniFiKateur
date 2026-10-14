@@ -69,7 +69,16 @@ Connexion par adresse e-mail et mot de passe. Les e-mails sont normalisés en mi
 - **Désactiver** : bloque la connexion, révoque les sessions et empêche l’activation des invitations. Les cartes et l’historique de cette personne restent conservés.
 - Mot de passe d’un membre oublié : l’administrateur utilise **Réinitialiser le mot de passe** et lui transmet le nouveau lien. L’ancien mot de passe reste valide jusqu’à l’activation du lien ; désactiver le compte permet de bloquer immédiatement tout accès.
 
-La récupération autonome par e-mail et la récupération du mot de passe administrateur depuis l’interface ne sont pas implémentées. Conserver le mot de passe administrateur dans un gestionnaire de mots de passe. Les tentatives d’authentification, d’activation et de changement de mot de passe sont limitées à 20 par minute et par adresse vue par le serveur ; derrière Railway, plusieurs utilisateurs peuvent partager cette limite.
+La récupération autonome par e-mail et la récupération du mot de passe administrateur depuis l’interface ne sont pas implémentées. Conserver le mot de passe administrateur dans un gestionnaire de mots de passe. Les tentatives d’authentification, d’activation et de changement de mot de passe sont limitées à 20 par minute et par adresse du client, et les connexions à 10 par minute et par compte, quelle que soit l’adresse. Derrière un mandataire (proxy), l’adresse du client est lue dans `X-Forwarded-For` : depuis la v0.1.30, Railway est reconnu automatiquement ; ailleurs, indiquez le nombre de mandataires de confiance dans `PLANIFIKATEUR_TRUST_PROXY` (0 par défaut hors Railway, de 0 à 5). Sans mandataire déclaré, cet en-tête est ignoré, pour qu’un client ne puisse pas choisir son adresse.
+
+## Règles complémentaires — v0.1.30
+
+- **Carte prête** : une carte « Prête à démarrer » attend l’agent avec la demande validée par un responsable. Seul un responsable peut encore modifier sa demande (titre, description, étiquettes, critères, pièces jointes, effort IA). Un contributeur peut la repasser en « À explorer » pour la retravailler ; un responsable devra alors la confier de nouveau à l’agent. L’interface affiche la demande en lecture seule avec cette explication.
+- **Commentaires** : seul l’auteur d’un commentaire peut le modifier ; son auteur ou un responsable du projet peut le supprimer. Les commentaires sans auteur connu (anciens commentaires, agent) ne sont supprimables que par un responsable.
+- **Cartes Infos** : le lien de téléchargement, le mode d’emploi (README) et le changelog des cartes Infos sont calculés par le serveur ; ils sont ignorés dans une carte envoyée par un client.
+- **Ordre des projets** : il est commun à tous ; chacun ne range que les projets qu’il peut modifier, les autres gardent leur place.
+- **Membres et historique** : seul un responsable voit la liste de tous les comptes, pour en ajouter au projet ; les autres rôles ne voient que les comptes qui ont accès au projet. L’historique commun ne montre les actions sans projet (comptes, agents) qu’aux administrateurs.
+- **Projet supprimé** : ses droits, sa validation avant fusion, son dépôt GitHub, ses réglages IA et d’exécution et l’accès des agents sont effacés. Son identifiant reste réservé : il ne peut pas être recréé, et seule une restauration de sauvegarde le ramène avec ses réglages (voir [sauvegardes](backups.md)). À la mise à jour, les réglages laissés par des projets supprimés auparavant sont effacés.
 
 ## Créateurs et journal des actions
 

@@ -25,6 +25,13 @@ export function readConfig(env = process.env) {
   if (config.refineModel && !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,159}$/.test(config.refineModel))
     throw new Error('PLANIFIKATEUR_REFINE_MODEL : identifiant de modèle invalide.');
   if (!Number.isInteger(config.port) || config.port < 0 || config.port > 65535) throw new Error('PORT invalide.');
+  // Mandataires de confiance devant le serveur (adresse des clients pour la limite de connexion).
+  // Railway en place un : il est reconnu automatiquement.
+  config.trustProxy = Number(
+    env.PLANIFIKATEUR_TRUST_PROXY ?? (env.RAILWAY_ENVIRONMENT_ID || env.RAILWAY_ENVIRONMENT ? 1 : 0),
+  );
+  if (!Number.isInteger(config.trustProxy) || config.trustProxy < 0 || config.trustProxy > 5)
+    throw new Error('PLANIFIKATEUR_TRUST_PROXY invalide (nombre de mandataires, de 0 à 5).');
   config.backupDirectory = resolve(env.PLANIFIKATEUR_BACKUP_DIR || join(dirname(config.database), 'backups'));
   config.backupIntervalMs = Number(env.PLANIFIKATEUR_BACKUP_INTERVAL_HOURS || 6) * 3600000;
   config.backupKeep = Number(env.PLANIFIKATEUR_BACKUP_KEEP || 28);

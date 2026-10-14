@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.30 — 2026-10-14
+<!-- planifikateur:etape-6-securite-serveur -->
+
+- **Sécurité des droits, des suppressions et des sauvegardes** : Un projet supprimé perd son dépôt, ses réglages et l’accès de l’agent, et son identifiant ne peut plus être recréé ; une restauration le ramène avec ses réglages. Les copies avant suppression ne sont faites qu’après le contrôle des droits et ont leur propre rotation. Seul un responsable modifie la demande d’une carte prête, seul l’auteur modifie son commentaire, les liens des cartes Infos ne viennent que du serveur, et la limite de connexion distingue les clients derrière Railway.
+
 ## 0.1.29 — 2026-10-14
 <!-- planifikateur:livraison-delais-reprise-20261014 -->
 

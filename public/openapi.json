@@ -1404,7 +1404,7 @@
             }
           },
           "403": {
-            "description": "Origine de la requête non autorisée.",
+            "description": "Origine non autorisée ou rôle insuffisant (project_forbidden) : confier une carte à l’agent ou modifier la demande d’une carte « Prête à démarrer » est réservé aux responsables.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4575,7 +4575,7 @@
             }
           },
           "409": {
-            "description": "Le tableau a changé dans une autre session (revision_conflict).",
+            "description": "Le tableau a changé dans une autre session (revision_conflict) ou contient un projet supprimé (project_deleted).",
             "content": {
               "application/json": {
                 "schema": {
@@ -4686,7 +4686,7 @@
             }
           },
           "403": {
-            "description": "Origine de la requête non autorisée.",
+            "description": "Origine non autorisée, rôle insuffisant sur un projet (project_forbidden : confier une carte à l’agent ou modifier une carte « Prête à démarrer » est réservé aux responsables) ou commentaire d’un autre membre (comment_forbidden).",
             "content": {
               "application/json": {
                 "schema": {
@@ -4696,7 +4696,7 @@
             }
           },
           "409": {
-            "description": "Statut piloté par une exécution IA (managed_status).",
+            "description": "Statut piloté par une exécution IA (managed_status) ou identifiant d’un projet supprimé (project_deleted).",
             "content": {
               "application/json": {
                 "schema": {
@@ -6371,6 +6371,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Trop de flux ouverts par ce compte (too_many_streams, 10 au plus).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -7768,6 +7778,14 @@
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "regular",
+              "deletion"
+            ],
+            "description": "regular : copie automatique ou manuelle ; deletion : copie faite avant une suppression, avec sa propre rotation."
           }
         }
       },

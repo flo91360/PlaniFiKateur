@@ -12,21 +12,31 @@ const RANK = { viewer: 1, editor: 2, manager: 3 };
 
 export const allows = (role, wanted) => (RANK[role] || 0) >= RANK[wanted];
 
+// Champs qui forment la demande transmise à l’agent (voir `source` dans server/workflows.js).
+export const REQUEST_FIELDS = ['title', 'description', 'tags', 'checklist', 'attachments', 'aiEffort'];
+
 // Rôle nécessaire pour une modification fine (src/lib/workspace-changes.js), par projet visé.
-// Placer une carte dans « Prête à démarrer » la confie à l’agent : c’est réservé aux responsables.
-export function requirements(change) {
+// Placer une carte dans « Prête à démarrer » la confie à l’agent : c’est réservé aux responsables,
+// tout comme changer la demande d’une carte qui attend l’agent (`cardStatus` donne le statut actuel).
+export function requirements(change, { cardStatus = () => null } = {}) {
   const [kind, action] = String(change?.type).split('.');
   if (kind === 'project') return ['update', 'delete'].includes(action) ? [[change.projectId, 'manager']] : [];
   if (kind === 'card' && action === 'create')
     return [[change.projectId, change.card?.status === 'ready' ? 'manager' : 'editor']];
-  if (kind === 'card' && action === 'update')
-    return [[change.projectId, change.fields?.status === 'ready' ? 'manager' : 'editor']];
+  if (kind === 'card' && action === 'update') {
+    const fields = change.fields && typeof change.fields === 'object' ? change.fields : {};
+    const launches = fields.status === 'ready';
+    const changesReadyRequest =
+      cardStatus(change.projectId, change.cardId) === 'ready' && REQUEST_FIELDS.some(field => field in fields);
+    return [[change.projectId, launches || changesReadyRequest ? 'manager' : 'editor']];
+  }
   return [[change?.projectId, 'editor']];
 }
 
 export function createAccess(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS project_policies (project_id TEXT PRIMARY KEY, member_role TEXT NOT NULL CHECK(member_role IN ('none','viewer','editor','manager')));
-    CREATE TABLE IF NOT EXISTS project_members (project_id TEXT NOT NULL, user_id TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('viewer','editor','manager')), PRIMARY KEY(project_id,user_id));`);
+    CREATE TABLE IF NOT EXISTS project_members (project_id TEXT NOT NULL, user_id TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('viewer','editor','manager')), PRIMARY KEY(project_id,user_id));
+    CREATE TABLE IF NOT EXISTS deleted_projects (project_id TEXT PRIMARY KEY, deleted_at TEXT NOT NULL);`);
   // v0.1.28 : validation humaine avant la fusion des PR de l’agent, désactivée par défaut.
   if (
     !db
@@ -125,6 +135,15 @@ export function createAccess(db) {
       db.prepare('DELETE FROM project_policies WHERE project_id = ?').run(projectId);
       db.prepare('DELETE FROM project_members WHERE project_id = ?').run(projectId);
     },
+    // Un projet supprimé garde son identifiant réservé : le recréer redonnerait son historique,
+    // ses notifications et ses réglages. Seule une restauration de sauvegarde le fait revenir.
+    bury(projectId) {
+      db.prepare('INSERT OR IGNORE INTO deleted_projects VALUES (?, ?)').run(projectId, new Date().toISOString());
+    },
+    revive(projectId) {
+      db.prepare('DELETE FROM deleted_projects WHERE project_id = ?').run(projectId);
+    },
+    isDeleted: projectId => !!db.prepare('SELECT 1 FROM deleted_projects WHERE project_id = ?').get(projectId),
     forgetUser(userId) {
       db.prepare('DELETE FROM project_members WHERE user_id = ?').run(userId);
     },

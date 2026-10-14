@@ -30,9 +30,9 @@ export function accountRoutes({ store, auth, guards }) {
           ctx.send(200, { authenticated: !!user, user, requiresLogin: true, needsSetup: !store.hasUsers() });
         },
         async POST(ctx) {
-          auth.loginLimit(ctx.req);
           const data = await ctx.body();
           const email = typeof data?.email === 'string' ? data.email.trim().toLowerCase() : '';
+          auth.loginLimit(ctx.req, email);
           const user = store.userByEmail(email);
           const valid = await verifyPassword(data?.password, user?.password_hash);
           // Relire le compte après le calcul du mot de passe : il a pu être désactivé ou modifié entre-temps.
