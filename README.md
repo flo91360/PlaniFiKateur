@@ -85,10 +85,13 @@ La spécification OpenAPI est disponible dans [public/openapi.json](public/opena
 ## Tests
 
 ```sh
+npm run format
 npm test
 npm run test:browser
 ```
 
+`npm test` vérifie d’abord la mise en forme (Prettier, `npm run format:check`) et
+ESLint (`npm run lint`) ; un test qui dépasse 60 secondes échoue au lieu de bloquer.
 Les tests Node vérifient l’API, l’accès en lecture seule, les filtres, la pagination, la validation, les conflits et la conservation des cartes après réouverture de SQLite.
 
 Les tests navigateur couvrent les parcours sur ordinateur et mobile, la création d’une carte consultable par l’API, le partage entre navigateurs, les erreurs de sauvegarde, les conflits, l’import JSON et la copie autonome dans des aperçus qui interdisent les soumissions natives de formulaires.

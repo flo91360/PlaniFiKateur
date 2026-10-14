@@ -30,6 +30,8 @@ appelle le même module, teste, committe et publie la PR. L'agent ne committe pa
 ne pousse pas, ne fusionne pas et ne délègue pas lui-même. Cela change seulement
 qui exécute les étapes, jamais les obligations de livraison.
 
+- Lancer `npm run format` après les modifications de code : `npm test` vérifie
+  d'abord la mise en forme (Prettier) et ESLint, puis exécute les tests Node.
 - Pour l'API et le worker : `npm test`. Pour l'interface ou les échanges avec
   l'API : ajouter `npm run test:browser` (compilation incluse).
 - Toujours vérifier `git diff --check` avant le commit. Ne pas relancer des
