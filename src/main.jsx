@@ -24,6 +24,7 @@ import AttentionPanel from './components/AttentionPanel.jsx';
 import NotificationsPanel from './components/NotificationsPanel.jsx';
 import Board from './components/Board.jsx';
 import CardDetail from './components/CardDetail.jsx';
+import ErrorBoundary, { DisplayError } from './components/ErrorBoundary.jsx';
 import CreationForm from './components/CreationForm.jsx';
 import Dialog from './components/Dialog.jsx';
 import InfoPanel from './components/InfoPanel.jsx';
@@ -351,6 +352,8 @@ function App() {
               syncError={workspace.syncError}
               saveStatus={saveStatus}
               saveError={workspace.saveError}
+              saveNotice={workspace.saveNotice}
+              onDismissNotice={workspace.dismissSaveNotice}
               onRefresh={workspace.refresh}
               onExport={() => exportWorkspace(projects)}
               onReload={() => setModal('reload')}
@@ -412,32 +415,56 @@ function App() {
       )}
       {modal && (
         <Dialog wide={kind === 'card'} title={dialogTitles[kind] || dialogTitles.info} onClose={() => setModal(null)}>
-          {renderDialog(kind)}
+          <ErrorBoundary resetKey={kind}>{renderDialog(kind)}</ErrorBoundary>
         </Dialog>
       )}
       {selected && (
-        <CardDetail
-          engine={projectAi.engine}
-          role={role}
-          attachmentBytes={attachmentSize(projects, selected.id)}
-          onWorkflowRefresh={() => workspace.refresh({ whileEditing: true })}
-          offline={offlineMode}
-          projectId={project.id}
-          user={workspace.user}
-          saveStatus={saveStatus}
-          card={selected}
-          lists={project.lists}
-          onClose={() => setSelectedId(null)}
-          onUpdate={patch => updateCard(selected.id, patch)}
-          onDelete={() => {
-            updateProject(p => ({ ...p, cards: p.cards.filter(c => c.id !== selected.id) }));
-            setSelectedId(null);
-            setNotice('Carte supprimée');
-          }}
-        />
+        <ErrorBoundary
+          resetKey={selected.id}
+          fallback={() => (
+            <Dialog title="Détail de la carte" onClose={() => setSelectedId(null)}>
+              <DisplayError message="Le détail de cette carte n’a pas pu s’afficher.">
+                <button className="secondary-button" onClick={() => setSelectedId(null)}>
+                  Fermer
+                </button>
+              </DisplayError>
+            </Dialog>
+          )}
+        >
+          <CardDetail
+            engine={projectAi.engine}
+            role={role}
+            attachmentBytes={attachmentSize(projects, selected.id)}
+            onWorkflowRefresh={() => workspace.refresh({ whileEditing: true })}
+            offline={offlineMode}
+            projectId={project.id}
+            user={workspace.user}
+            saveStatus={saveStatus}
+            card={selected}
+            lists={project.lists}
+            onClose={() => setSelectedId(null)}
+            onUpdate={patch => updateCard(selected.id, patch)}
+            onDelete={() => {
+              updateProject(p => ({ ...p, cards: p.cards.filter(c => c.id !== selected.id) }));
+              setSelectedId(null);
+              setNotice('Carte supprimée');
+            }}
+          />
+        </ErrorBoundary>
       )}
     </div>
   );
 }
 
-createRoot(document.getElementById('root')).render(<App />);
+createRoot(document.getElementById('root')).render(
+  <ErrorBoundary
+    fallback={() => (
+      <main className="display-error-page">
+        <h1>PlaniFiKateur</h1>
+        <DisplayError message="Le tableau n’a pas pu s’afficher." />
+      </main>
+    )}
+  >
+    <App />
+  </ErrorBoundary>,
+);

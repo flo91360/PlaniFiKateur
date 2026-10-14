@@ -30,6 +30,9 @@ export function requirements(change, { cardStatus = () => null } = {}) {
       cardStatus(change.projectId, change.cardId) === 'ready' && REQUEST_FIELDS.some(field => field in fields);
     return [[change.projectId, launches || changesReadyRequest ? 'manager' : 'editor']];
   }
+  // Étiquettes, critères et pièces jointes font partie de la demande transmise à l’agent.
+  if (['checklist', 'attachment', 'tag'].includes(kind))
+    return [[change.projectId, cardStatus(change.projectId, change.cardId) === 'ready' ? 'manager' : 'editor']];
   return [[change?.projectId, 'editor']];
 }
 

@@ -4769,6 +4769,10 @@
                     "items": {
                       "$ref": "#/components/schemas/Change"
                     }
+                  },
+                  "partial": {
+                    "type": "boolean",
+                    "description": "Enregistre les modifications acceptées et liste les autres dans rejected, au lieu de refuser tout le lot."
                   }
                 }
               }
@@ -8228,7 +8232,14 @@
               "card.order",
               "comment.create",
               "comment.update",
-              "comment.delete"
+              "comment.delete",
+              "checklist.create",
+              "checklist.update",
+              "checklist.delete",
+              "attachment.create",
+              "attachment.delete",
+              "tag.add",
+              "tag.remove"
             ]
           },
           "projectId": {
@@ -8287,6 +8298,23 @@
             "items": {
               "type": "string"
             }
+          },
+          "itemId": {
+            "type": "string"
+          },
+          "attachmentId": {
+            "type": "string"
+          },
+          "item": {
+            "type": "object",
+            "description": "Critère : id, text, done."
+          },
+          "attachment": {
+            "type": "object",
+            "description": "Pièce jointe : id, name, type, size, data (base64)."
+          },
+          "tag": {
+            "type": "string"
           }
         }
       },
@@ -8349,6 +8377,30 @@
                 "editor",
                 "manager"
               ]
+            }
+          },
+          "rejected": {
+            "type": "array",
+            "description": "Avec partial : modifications refusées, avec leur index, leur type et le code et le message d’erreur.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "index": {
+                  "type": "integer"
+                },
+                "type": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              }
             }
           }
         }

@@ -63,12 +63,14 @@ export function contentRoutes({ store, config, guards }) {
       guard: guards.account,
       methods: {
         async PATCH(ctx) {
-          const { changes } = only(await ctx.body(), ['changes']);
+          const { changes, partial = false } = only(await ctx.body(), ['changes', 'partial']);
           if (!Array.isArray(changes))
             throw httpError(400, 'invalid_change', 'Une liste de modifications est requise.');
-          const { skipped, ...workspace } = apply(ctx, changes);
+          if (typeof partial !== 'boolean') throw httpError(400, 'invalid_change', 'partial : booléen attendu.');
+          // `partial` : les modifications refusées sont listées dans `rejected`, les autres enregistrées.
+          const { skipped, rejected, ...workspace } = apply(ctx, changes, { partial });
           ctx.res.setHeader('ETag', `"${workspace.revision}"`);
-          ctx.send(200, { data: { ...workspace, skipped } });
+          ctx.send(200, { data: { ...workspace, skipped, ...(partial ? { rejected } : {}) } });
         },
       },
     },

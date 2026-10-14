@@ -31,10 +31,15 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
   const [saveStatus, setSaveStatus] = useState('saved');
   const [saveError, setSaveError] = useState('');
   const [syncError, setSyncError] = useState('');
+  // Modifications refusées ou ignorées par le serveur lors du dernier enregistrement : le reste est
+  // enregistré et la page continue de s’actualiser ; ce message explique ce qui n’a pas été gardé.
+  const [saveNotice, setSaveNotice] = useState('');
   // Rôle du compte sur chaque projet visible (viewer, editor, manager) ; null hors connexion.
   const [access, setAccess] = useState(null);
   const paused = useRef(pauseRefresh),
-    refreshing = useRef(false);
+    refreshing = useRef(false),
+    // Une actualisation demandée pendant un enregistrement ou une autre lecture est faite ensuite.
+    pending = useRef(false);
   paused.current = pauseRefresh;
   const current = useRef(projects),
     saved = useRef(projects),
@@ -75,12 +80,14 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
       offlineMode ||
       !initialized.current ||
       (!whileEditing && paused.current) ||
-      saving.current ||
-      refreshing.current ||
-      current.current !== saved.current ||
       document.visibilityState === 'hidden'
     )
       return;
+    if (saving.current || refreshing.current || current.current !== saved.current) {
+      pending.current = true;
+      return;
+    }
+    pending.current = false;
     const baseRevision = revision.current;
     refreshing.current = true;
     try {
@@ -113,8 +120,11 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
       );
     } finally {
       refreshing.current = false;
+      if (pending.current) setTimeout(() => void refreshRef.current?.(), 0);
     }
   }, []);
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
   useEffect(() => {
     if (!offlineMode) void load();
   }, [load]);
@@ -163,9 +173,10 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
         }
         const data = await apiData('workspace', {
           method: 'PATCH',
-          data: { changes },
+          data: { changes, partial: true },
           fallback: 'Le serveur ne répond pas.',
         });
+        setSaveNotice(describeRefusals(data));
         const canonical = validateWorkspace(data.projects);
         revision.current = data.revision;
         saved.current = canonical;
@@ -183,6 +194,7 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
       setSaveError(error.message);
     } finally {
       saving.current = false;
+      if (pending.current && current.current === saved.current) void refreshRef.current();
     }
   }, []);
   useEffect(() => {
@@ -241,6 +253,8 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
     saveStatus,
     saveError,
     syncError,
+    saveNotice,
+    dismissSaveNotice: () => setSaveNotice(''),
     refresh,
     retrySave: flush,
     reload: load,
@@ -249,6 +263,23 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
     accept,
     logout,
   };
+}
+
+// Message pour les modifications refusées (droits, contenu) ou ignorées (élément supprimé ailleurs).
+export function describeRefusals({ rejected = [], skipped = [] } = {}) {
+  const parts = [];
+  if (rejected.length) {
+    const reasons = [...new Set(rejected.map(item => item.message).filter(Boolean))].slice(0, 3);
+    parts.push(
+      `${rejected.length === 1 ? 'Une modification a été refusée' : `${rejected.length} modifications ont été refusées`} et retirée${rejected.length === 1 ? '' : 's'} de la page${reasons.length ? ` : ${reasons.join(' ')}` : '.'}`,
+    );
+  }
+  const missing = skipped.filter(item => item.reason === 'missing').length;
+  if (missing)
+    parts.push(
+      `${missing === 1 ? 'Une modification visait' : `${missing} modifications visaient`} un élément supprimé entre-temps dans une autre session.`,
+    );
+  return parts.join(' ');
 }
 
 export function exportWorkspace(projects) {

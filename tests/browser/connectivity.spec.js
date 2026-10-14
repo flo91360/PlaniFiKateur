@@ -215,6 +215,47 @@ test('a failed save preserves edits and can be retried', async ({ page, request,
   expect(data.some(p => p.name === 'Projet conservé')).toBe(true);
 });
 
+test('a refused change is explained and removed from the page without blocking later saves', async ({
+  page,
+  request,
+  appServer,
+}) => {
+  await login(page, appServer);
+  // Le serveur refuse la seule modification du lot : réponse réelle, complétée de ce refus.
+  await page.route('**/api/v1/workspace', async route => {
+    if (route.request().method() !== 'PATCH') return route.continue();
+    const sent = route.request().postDataJSON();
+    expect(sent.partial).toBe(true);
+    const response = await route.fetch({ postData: JSON.stringify({ changes: [], partial: true }) });
+    const json = await response.json();
+    json.data.rejected = sent.changes.map((change, index) => ({
+      index,
+      type: change.type,
+      code: 'project_forbidden',
+      message: 'Votre rôle sur ce projet ne permet que la lecture.',
+    }));
+    await route.fulfill({ response, json });
+  });
+  await newProject(page, 'Projet refusé');
+  const notice = page.getByRole('alert').filter({ hasText: 'Une modification a été refusée' });
+  await expect(notice).toContainText('ne permet que la lecture');
+  await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+  await expect(
+    page.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /Projet refusé/ }),
+  ).toHaveCount(0);
+  await page.unroute('**/api/v1/workspace');
+  await notice.getByRole('button', { name: 'Compris', exact: true }).click();
+  await expect(notice).toHaveCount(0);
+  await newProject(page, 'Projet accepté');
+  await expect(page.getByRole('heading', { name: 'Projet accepté', exact: true })).toBeVisible();
+  await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+  const { data } = await (
+    await request.get(`${appServer}/api/v1/projects`, { headers: { Authorization: `Bearer ${readToken}` } })
+  ).json();
+  expect(data.map(project => project.name)).toContain('Projet accepté');
+  expect(data.map(project => project.name)).not.toContain('Projet refusé');
+});
+
 test('JSON import adds local cards to the API without replacing existing projects', async ({
   page,
   request,
