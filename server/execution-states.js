@@ -4,6 +4,7 @@
 // - running —question→ waiting —answer→ ready : l’agent attend une réponse dans la discussion.
 // - running —submit sans PR→ review —accept→ done, ou —reject→ ready ; un fichier seul va à done.
 // - merging —checksFailed ou reject→ ready ; —revise→ running quand l’agent corrige sa PR.
+// - merging —approve→ merging : un responsable approuve la PR quand le projet l’exige avant fusion.
 // - running —interrupt, expire, revoke ou unassign→ interrupted —claim→ running.
 // - Toute exécution non terminée peut être annulée (cancel) : par une personne, ou par le site
 //   quand la carte est supprimée, modifiée, restaurée ou retirée de la file.
@@ -30,6 +31,7 @@ export const TRANSITIONS = {
   answer: { from: ['waiting'], to: 'ready' },
   accept: { from: ['review'], to: 'done' },
   reject: { from: ['review', 'merging'], to: 'ready' },
+  approve: { from: ['merging'], to: 'merging' },
   cancel: { from: OPEN, to: 'cancelled' },
   // Agent (clé d’agent et réservation).
   claim: { from: ['ready', 'interrupted'], to: 'running' },

@@ -587,6 +587,47 @@ test('project roles hide, open read-only or reserve the agent to managers', asyn
   await context.close();
 });
 
+test('a comment from another member reaches the notifications live and opens the card', async ({
+  page,
+  request,
+  appServer,
+}) => {
+  await login(page, appServer);
+  const card = seed[0].cards[0];
+  await expect(page.getByRole('button', { name: 'Notifications', exact: true })).toBeVisible();
+  // L’administratrice participe à la carte ; Bob, contributeur, y répond depuis l’API.
+  await page.getByRole('heading', { name: card.title, exact: true }).click();
+  await page.getByLabel('Votre commentaire', { exact: true }).fill('Qui peut regarder ?');
+  await page.getByRole('button', { name: 'Publier', exact: true }).click();
+  await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+  await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+  const { token } = (
+    await (
+      await page.request.post(`${appServer}/api/v1/users`, { data: { name: 'Bob', email: 'bob@example.test' } })
+    ).json()
+  ).data;
+  expect(
+    (
+      await request.post(`${appServer}/api/v1/accounts/accept`, {
+        data: { token, name: 'Bob', password: 'bob-browser-password-123' },
+      })
+    ).status(),
+  ).toBe(200);
+  const answered = await request.post(`${appServer}/api/v1/projects/${seed[0].id}/cards/${card.id}/comments`, {
+    data: { text: 'Je m’en occupe.' },
+  });
+  expect(answered.status()).toBe(201);
+  await page.getByRole('button', { name: 'Notifications (1 non lues)', exact: true }).click();
+  const list = page.getByRole('list', { name: 'Notifications', exact: true });
+  await expect(list).toContainText('Bob a ajouté un commentaire');
+  await expect(list.locator('li.unread')).toHaveCount(1);
+  await list.getByRole('button', { name: new RegExp(card.title) }).click();
+  await expect(page.getByLabel('Titre de la carte', { exact: true })).toHaveValue(card.title);
+  await expect(page.locator('.comments-section')).toContainText('Je m’en occupe.');
+  await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Notifications', exact: true })).toBeVisible();
+});
+
 test('personal password change and logout lead back to individual login', async ({ page, appServer }) => {
   await login(page, appServer);
   await page.getByRole('button', { name: 'Mon compte', exact: true }).click();
@@ -1204,6 +1245,58 @@ test.describe('project task execution', () => {
     await expect(page.getByRole('button', { name: 'À traiter', exact: true })).toBeVisible({ timeout: 10000 });
     await page.getByRole('button', { name: 'À traiter', exact: true }).click();
     await expect(page.getByText('Rien à traiter', { exact: false })).toBeVisible();
+  });
+
+  test('a project that requires approval waits for a manager before merging the agent PR', async ({
+    page,
+    request,
+    appServer,
+  }) => {
+    await login(page, appServer);
+    const project = seed[0],
+      card = project.cards[0];
+    const headers = await agentFor(page, appServer, project, 'Agent relu');
+    await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
+    await page.getByText('Validation avant fusion', { exact: true }).click();
+    await page.getByLabel('Approuver chaque PR avant sa fusion', { exact: true }).check();
+    await page.getByRole('button', { name: 'Enregistrer la validation', exact: true }).click();
+    await expect(page.getByText('Chaque PR de l’agent attendra désormais', { exact: false })).toBeVisible();
+    await page.getByRole('button', { name: 'Fermer', exact: true }).click();
+    const base = `${appServer}/api/v1/projects/${project.id}/cards/${card.id}/work`;
+    let run = (await (await page.request.post(base, { data: {} })).json()).data;
+    run = (await (await request.post(`${base}/${run.id}/claim`, { headers, data: { version: run.version } })).json())
+      .data;
+    const headSha = 'b'.repeat(40);
+    const submitted = await request.post(`${base}/${run.id}/submit`, {
+      headers,
+      data: {
+        version: run.version,
+        leaseToken: run.leaseToken,
+        summary: 'PR à relire.',
+        checks: 'Tests lancés.',
+        links: [],
+        pullRequest: { url: 'https://github.com/flo91360/PlaniFiKateur/pull/9', headSha },
+      },
+    });
+    expect(submitted.status()).toBe(200);
+    const eligible = async () =>
+      (
+        await (
+          await request.get(
+            `${appServer}/api/v1/github/merge-eligibility?repository=flo91360/PlaniFiKateur&number=9&sha=${headSha}`,
+            { headers },
+          )
+        ).json()
+      ).data.eligible;
+    expect(await eligible()).toBe(false);
+    await page.getByRole('button', { name: 'À traiter (1)', exact: true }).click();
+    await expect(page.getByRole('list', { name: 'Cartes à traiter', exact: true })).toContainText('Fusion à approuver');
+    await page.getByRole('list', { name: 'Cartes à traiter', exact: true }).getByRole('button').first().click();
+    const panel = page.getByRole('region', { name: 'Exécution IA', exact: true });
+    await expect(panel).toContainText('elle attend l’approbation d’un responsable avant la fusion');
+    await panel.getByRole('button', { name: 'Approuver la fusion', exact: true }).click();
+    await expect(panel).toContainText('PR approuvée par Alice : fusion après les tests GitHub.');
+    expect(await eligible()).toBe(true);
   });
 
   test('the event stream delivers board and agent changes without waiting for a refresh', async ({

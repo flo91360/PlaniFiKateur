@@ -460,3 +460,49 @@ test('automatic discovery does not create executions while the webhook secret is
   assert.deepEqual((await response.json()).data, []);
   assert.equal(f.store.workflows.list(f.project.id, f.card.id).length, 0);
 });
+
+test('a project that requires approval merges only the PR commit a manager approved', async t => {
+  const f = await fixture(t);
+  const path = run => `/projects/${f.project.id}/cards/${f.card.id}/work/${run.id}`;
+  assert.equal(
+    (await f.post(`/projects/${f.project.id}/approval`, { required: 'oui' }, { Cookie: f.cookie })).status,
+    405,
+    'Le réglage se modifie par PUT.',
+  );
+  f.store.configureMergeApproval(f.project.id, { required: true }, f.user);
+  const submitted = f.submit(f.prepare());
+  assert.deepEqual(f.store.workflows.mergeEligible(repository, 7, sha, f.agent), {
+    eligible: false,
+    reason: 'approval_required',
+  });
+  let [listed] = f.store.workflows.list(f.project.id, f.card.id);
+  assert.equal(listed.approvalRequired, true);
+  assert.ok(f.store.workflows.attention().some(item => item.executionId === submitted.id && item.state === 'merging'));
+  const approved = await f.post(`${path(submitted)}/approve`, { version: listed.version });
+  assert.equal(approved.status, 200);
+  const run = (await approved.json()).data;
+  assert.equal(run.state, 'merging');
+  assert.equal(run.approval.headSha, sha);
+  assert.equal(f.store.workflows.mergeEligible(repository, 7, sha, f.agent).eligible, true);
+  assert.equal(
+    f.store.workflows.attention().some(item => item.executionId === submitted.id),
+    false,
+  );
+  assert.ok(f.store.activity({ cardId: f.card.id }).some(event => event.action === 'work.approve'));
+  // Une correction de l’agent change le commit : il faut une nouvelle approbation.
+  const revised = f.store.workflows.agentAction(
+    f.project.id,
+    f.card.id,
+    run.id,
+    'revise',
+    { version: run.version },
+    f.agent,
+  );
+  f.submit(revised, nextSha);
+  assert.equal(f.store.workflows.mergeEligible(repository, 7, nextSha, f.agent).eligible, false);
+  // Sans exigence, la fusion automatique reprend.
+  f.store.configureMergeApproval(f.project.id, { required: false }, f.user);
+  assert.equal(f.store.workflows.mergeEligible(repository, 7, nextSha, f.agent).eligible, true);
+  [listed] = f.store.workflows.list(f.project.id, f.card.id);
+  assert.equal(listed.approvalRequired, false);
+});

@@ -28,8 +28,10 @@ export function eventRoutes({ store, config, auth, guards, streams }) {
           res.write('retry: 5000\n\n');
           send('ready', { revision: store.getRevision() });
           // Les événements d’un projet ne parviennent qu’aux comptes qui le voient.
-          const unsubscribe = store.subscribe(({ type, ...data }) => {
+          const unsubscribe = store.subscribe(({ type, userIds, ...data }) => {
             if (data.projectId && !store.projectRole(ctx.user, data.projectId)) return;
+            // Un événement destiné à certains comptes (notifications) ne parvient qu’à eux.
+            if (userIds && !userIds.includes(ctx.user.id)) return;
             send(type, data);
           });
           // Commentaire périodique : garde la connexion ouverte à travers les proxys et vérifie

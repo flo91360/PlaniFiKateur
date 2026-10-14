@@ -14,6 +14,12 @@ const checkLabels = {
   action_required: 'en attente d’une action',
 };
 
+// La PR attend-elle l’approbation d’un responsable (projet qui l’exige, commit pas encore approuvé) ?
+export const awaitingApproval = run =>
+  run?.state === 'merging' &&
+  !!run.approvalRequired &&
+  run.approval?.headSha !== run.submissions.at(-1)?.pullRequest?.headSha;
+
 function headline(run) {
   const pr = run.submissions.at(-1)?.pullRequest;
   switch (run.state) {
@@ -28,7 +34,10 @@ function headline(run) {
     case 'review':
       return 'Résultat à valider.';
     case 'merging':
-      return 'PR ouverte : fusion automatique après les tests GitHub.';
+      if (awaitingApproval(run)) return 'PR ouverte : elle attend l’approbation d’un responsable avant la fusion.';
+      return run.approvalRequired
+        ? `PR approuvée par ${run.approval.actor.name} : fusion après les tests GitHub.`
+        : 'PR ouverte : fusion automatique après les tests GitHub.';
     case 'done':
       return pr ? 'PR fusionnée : tâche terminée.' : 'Tâche terminée.';
     default:
@@ -196,6 +205,11 @@ export default function ExecutionPanel({
               onClick={() => void start()}
             >
               {run ? 'Relancer l’agent' : 'Confier à l’agent'}
+            </button>
+          )}
+          {awaitingApproval(run) && canLaunch && (
+            <button className="primary-button" disabled={busy} onClick={() => void transition('approve')}>
+              Approuver la fusion
             </button>
           )}
           {run?.state === 'review' && canLaunch && (

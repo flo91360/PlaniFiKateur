@@ -6325,7 +6325,7 @@
     "/api/v1/events": {
       "get": {
         "summary": "Interface : flux d’événements en temps réel",
-        "description": "Server-Sent Events. Événements : ready { revision } à la connexion, workspace { revision } après chaque enregistrement du tableau, work { projectId, cardId, executionId, state } après chaque étape d’une exécution IA, subscriptions { projectId, cardId } après un changement de suivi. Ils annoncent seulement un changement validé ; les données se relisent par les routes habituelles. Un commentaire est envoyé toutes les 25 secondes et le flux se ferme quand la session n’est plus valide.",
+        "description": "Server-Sent Events. Événements : ready { revision } à la connexion, workspace { revision } après chaque enregistrement du tableau, work { projectId, cardId, executionId, state } après chaque étape d’une exécution IA, subscriptions { projectId, cardId } après un changement de suivi, notifications {} quand une notification arrive pour le compte ou qu’il les marque comme lues. Ils annoncent seulement un changement validé ; les données se relisent par les routes habituelles. Un commentaire est envoyé toutes les 25 secondes et le flux se ferme quand la session n’est plus valide.",
         "security": [
           {
             "ownerSession": []
@@ -6550,6 +6550,465 @@
           },
           "404": {
             "description": "Projet inexistant ou masqué.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/cards/{cardId}/work/{executionId}/approve": {
+      "post": {
+        "summary": "Approuver la fusion de la PR",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          },
+          {
+            "name": "cardId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          },
+          {
+            "name": "executionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Action réussie.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Execution"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Corps invalide."
+          },
+          "401": {
+            "description": "Identité requise."
+          },
+          "403": {
+            "description": "Projet ou action non autorisé."
+          },
+          "404": {
+            "description": "Projet, carte ou exécution absent."
+          },
+          "409": {
+            "description": "Version périmée, réservation invalide ou transition interdite."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": [
+                  "version"
+                ]
+              }
+            }
+          }
+        },
+        "description": "Réservé aux responsables du projet, quand il exige une validation avant fusion. L’approbation vaut pour le commit actuel de la PR : une correction de l’agent en demande une nouvelle."
+      }
+    },
+    "/api/v1/projects/{projectId}/approval": {
+      "get": {
+        "summary": "Validation humaine avant fusion",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "required : les PR de l’agent attendent l’approbation d’un responsable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "required"
+                      ],
+                      "properties": {
+                        "required": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session requise.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origine de la requête non autorisée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Projet inexistant ou masqué.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Exiger ou non une validation avant fusion",
+        "description": "Réservé aux responsables du projet.",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "required"
+                ],
+                "properties": {
+                  "required": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Réglage enregistré.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "required"
+                      ],
+                      "properties": {
+                        "required": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Corps invalide (invalid_approval).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session requise.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Réservé aux responsables du projet (project_forbidden).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Projet inexistant ou masqué.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/notifications": {
+      "get": {
+        "summary": "Notifications du compte connecté",
+        "description": "Les plus récentes d’abord, avec le nombre de notifications non lues.",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 30
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Notifications et compteurs.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Notification"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "required": [
+                        "unread",
+                        "lastReadId"
+                      ],
+                      "properties": {
+                        "unread": {
+                          "type": "integer"
+                        },
+                        "lastReadId": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Pagination invalide.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session requise.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origine de la requête non autorisée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/read": {
+      "post": {
+        "summary": "Marquer les notifications comme lues",
+        "description": "Toutes les notifications jusqu’à upTo inclus ; le marqueur n’avance jamais en arrière.",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "upTo"
+                ],
+                "properties": {
+                  "upTo": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Compteurs mis à jour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "unread",
+                        "lastReadId"
+                      ],
+                      "properties": {
+                        "unread": {
+                          "type": "integer"
+                        },
+                        "lastReadId": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "upTo invalide (invalid_notification).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session requise.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origine de la requête non autorisée.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6971,6 +7430,29 @@
               "card"
             ],
             "description": "Présent pour les nouvelles exécutions dont la demande vient de la carte. Les exécutions historiques peuvent ne pas avoir ce champ."
+          },
+          "approvalRequired": {
+            "type": "boolean",
+            "description": "Le projet exige une approbation avant la fusion (historique d’une carte)."
+          },
+          "approval": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Approbation de la fusion par un responsable, pour un commit précis.",
+            "properties": {
+              "headSha": {
+                "type": "string"
+              },
+              "actor": {
+                "$ref": "#/components/schemas/Author"
+              },
+              "date": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
           }
         }
       },
@@ -7465,9 +7947,10 @@
             "type": "string",
             "enum": [
               "waiting",
-              "review"
+              "review",
+              "merging"
             ],
-            "description": "waiting : question de l’agent ; review : résultat sans PR à valider (anciennes exécutions manuelles)."
+            "description": "waiting : question de l’agent ; review : résultat sans PR à valider (anciennes exécutions manuelles) ; merging : PR à approuver avant fusion."
           },
           "message": {
             "type": "string",
@@ -7762,6 +8245,91 @@
                 }
               }
             }
+          }
+        }
+      },
+      "Notification": {
+        "type": "object",
+        "description": "Action qui concerne le compte : participant ou abonné de la carte, sur un projet qu’il voit.",
+        "required": [
+          "id",
+          "date",
+          "action",
+          "actor",
+          "read"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "comment.created",
+              "card.status_changed",
+              "card.deleted",
+              "card.subscriber_added",
+              "work.question",
+              "work.submit",
+              "work.checks",
+              "work.merged",
+              "work.interrupted",
+              "work.cancel",
+              "work.reject",
+              "work.approve",
+              "project.access_changed"
+            ]
+          },
+          "actor": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          "projectId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "projectName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cardId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cardTitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "details": {
+            "type": "object"
+          },
+          "executionId": {
+            "type": "string"
+          },
+          "read": {
+            "type": "boolean"
           }
         }
       }

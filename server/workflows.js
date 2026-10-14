@@ -25,7 +25,17 @@ export const LEASE_MS = 5 * 60000;
 
 export function createWorkflows(
   db,
-  { transaction, audit, findCard, readProjects, writeProjects, recipients, emit = () => {}, canLaunch = () => true },
+  {
+    transaction,
+    audit,
+    findCard,
+    readProjects,
+    writeProjects,
+    recipients,
+    emit = () => {},
+    canLaunch = () => true,
+    requiresApproval = () => false,
+  },
 ) {
   db.exec(`CREATE TABLE IF NOT EXISTS project_worker_status (project_id TEXT NOT NULL, agent_id TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(project_id,agent_id));
     CREATE TABLE IF NOT EXISTS project_execution (project_id TEXT PRIMARY KEY, data TEXT NOT NULL);
@@ -422,6 +432,9 @@ export function createWorkflows(
       )
         return { eligible: false };
       checkSource(run);
+      // Validation humaine exigée par le projet : seule la PR approuvée, à ce commit précis, fusionne.
+      if (requiresApproval(run.projectId) && run.approval?.headSha !== headSha)
+        return { eligible: false, reason: 'approval_required' };
       return { eligible: true };
     },
     githubChecks(event) {
@@ -596,7 +609,11 @@ export function createWorkflows(
         if (agent) checkAgent(agent, projectId);
         findCard(projectId, cardId);
         expire();
-        return rows('project_id = ? AND card_id = ?', projectId, cardId).map(unpack);
+        const approvalRequired = requiresApproval(projectId);
+        return rows('project_id = ? AND card_id = ?', projectId, cardId).map(row => ({
+          ...unpack(row),
+          approvalRequired,
+        }));
       });
     },
     // Exécutions qui attendent une personne : question de l’agent ou résultat sans PR à valider.
@@ -604,13 +621,17 @@ export function createWorkflows(
     attention() {
       const projects = readProjects();
       return db
-        .prepare("SELECT * FROM executions WHERE state IN ('waiting','review') ORDER BY rowid DESC")
+        .prepare("SELECT * FROM executions WHERE state IN ('waiting','review','merging') ORDER BY rowid DESC")
         .all()
         .map(unpack)
         .flatMap(run => {
           const project = projects.find(p => p.id === run.projectId);
           const card = project?.cards.find(c => c.id === run.cardId);
           if (!card || legacyPublicationQuestion(run)) return [];
+          // Une PR en cours de fusion n’attend une personne que si le projet exige son approbation.
+          const head = run.submissions.at(-1)?.pullRequest?.headSha;
+          if (run.state === 'merging' && (!requiresApproval(run.projectId) || run.approval?.headSha === head))
+            return [];
           const message = run.state === 'waiting' ? run.exchanges.at(-1)?.question : run.submissions.at(-1)?.summary;
           return [
             {
@@ -676,6 +697,12 @@ export function createWorkflows(
         if (action === 'accept') {
           checkSource(run);
           run.submissions.at(-1).decision = { accepted: true, actor: decidedBy, date: new Date().toISOString() };
+        }
+        if (action === 'approve') {
+          const headSha = run.submissions.at(-1)?.pullRequest?.headSha;
+          if (!headSha) fail(409, 'invalid_transition', 'Aucune PR à approuver.');
+          checkSource(run);
+          run.approval = { headSha, actor: decidedBy, date: new Date().toISOString() };
         }
         if (action === 'reject')
           run.submissions.at(-1).decision = {

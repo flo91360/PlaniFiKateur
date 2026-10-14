@@ -1,8 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api-client.js';
 
-const labels = {
+// Libellés des actions de l’historique, aussi utilisés par les notifications.
+export const activityLabels = {
   'work.merged': 'a confirmé la fusion de la PR',
+  'work.approve': 'a approuvé la fusion de la PR',
+  'project.access_changed': 'a modifié les droits du projet',
+  'project.approval_changed': 'a modifié la validation avant fusion',
   'work.checks': 'a signalé le résultat des contrôles GitHub',
   'github.configured': 'a configuré le dépôt GitHub',
   'account.deleted': 'a supprimé un compte',
@@ -89,7 +93,7 @@ export default function ActivityPanel({ projectId, cardId }) {
         {events.map(event => (
           <li key={event.id}>
             <p>
-              <strong>{event.actor?.name || 'Administration'}</strong> {labels[event.action] || event.action}
+              <strong>{event.actor?.name || 'Administration'}</strong> {activityLabels[event.action] || event.action}
               {event.subscriberName && event.action === 'card.subscriber_added' && <> : {event.subscriberName}</>}
               {event.cardTitle && <> · {event.cardTitle}</>}
               {!event.cardTitle && event.projectName && <> · {event.projectName}</>}

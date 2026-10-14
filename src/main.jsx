@@ -15,10 +15,12 @@ import { useWorkspace, offlineMode, exportWorkspace } from './lib/use-workspace.
 import { useCardFollowers } from './lib/use-card-followers.js';
 import { useAttention } from './lib/use-attention.js';
 import { useServerEvents } from './lib/use-server-events.js';
+import { useNotifications } from './lib/use-notifications.js';
 import ConnectionScreen from './components/AccountScreen.jsx';
 import AccountsPanel from './components/AccountsPanel.jsx';
 import ActivityPanel from './components/ActivityPanel.jsx';
 import AttentionPanel from './components/AttentionPanel.jsx';
+import NotificationsPanel from './components/NotificationsPanel.jsx';
 import Board from './components/Board.jsx';
 import CardDetail from './components/CardDetail.jsx';
 import CreationForm from './components/CreationForm.jsx';
@@ -43,6 +45,7 @@ const dialogTitles = {
   account: 'Mon compte',
   activity: 'Activité des projets',
   attention: 'À traiter',
+  notifications: 'Notifications',
   reload: 'Recharger le tableau',
   card: 'Une nouvelle idée',
   overview: 'Votre espace personnel',
@@ -130,6 +133,7 @@ function App() {
   const [projectAi, setProjectAi] = useProjectAi(project?.id, ready);
   const attention = useAttention({ enabled: !offlineMode && ready && !needsLogin, projects });
   useServerEvents(!offlineMode && ready && !needsLogin);
+  const notifications = useNotifications(!offlineMode && ready && !needsLogin);
 
   const updateProject = transform =>
     setProjects(ps => {
@@ -261,6 +265,8 @@ function App() {
         );
       case 'attention':
         return <AttentionPanel items={attention} onOpenCard={openCard} />;
+      case 'notifications':
+        return <NotificationsPanel notifications={notifications} onOpenCard={openCard} />;
       case 'activity':
         return (
           <div className="accounts-panel">
@@ -331,6 +337,7 @@ function App() {
           user={workspace.user}
           offline={offlineMode}
           attentionCount={attention.length}
+          unreadCount={notifications.unread}
           onOpenSidebar={() => setSidebar(true)}
           onOpenModal={setModal}
         />

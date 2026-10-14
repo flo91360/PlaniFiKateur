@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.28 — 2026-10-14
+<!-- planifikateur:audit-etape-5b-20261014 -->
+
+- **Validation avant fusion et notifications** : Un responsable peut exiger que chaque PR de l’agent soit approuvée avant sa fusion (Paramètres du projet → Validation avant fusion) : la PR attend alors « Approuver la fusion » depuis la carte et apparaît dans la boîte « À traiter », et une correction de l’agent demande une nouvelle approbation. Une cloche dans la barre supérieure affiche en direct les notifications : commentaires, changements de statut, ajout au suivi, changement de droits et étapes de l’agent sur les cartes que l’on a créées, commentées ou que l’on suit.
+
 ## 0.1.27 — 2026-10-14
 <!-- planifikateur:audit-etape-5a-20261014 -->
 

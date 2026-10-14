@@ -56,6 +56,30 @@ export function cardRoutes({ store, guards }) {
       },
     },
     { path: '/api/v1/activity', ...history },
+    {
+      path: '/api/v1/notifications',
+      guard: guards.account,
+      methods: {
+        GET(ctx) {
+          const limit = Number(ctx.url.searchParams.get('limit') || 30);
+          if (!Number.isInteger(limit) || limit < 1 || limit > 100)
+            throw httpError(400, 'invalid_pagination', 'Pagination invalide.');
+          const { items, unread, lastReadId } = store.notifications(ctx.user, { limit });
+          ctx.send(200, { data: items, meta: { unread, lastReadId } });
+        },
+      },
+    },
+    {
+      path: '/api/v1/notifications/read',
+      guard: guards.account,
+      methods: {
+        async POST(ctx) {
+          const data = await ctx.body();
+          const { unread, lastReadId } = store.readNotifications(ctx.user, data?.upTo);
+          ctx.send(200, { data: { unread, lastReadId } });
+        },
+      },
+    },
     { path: '/api/v1/projects/:projectId/activity', ...history },
     { path: `${card}/activity`, ...history },
   ];

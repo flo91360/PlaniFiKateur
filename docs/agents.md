@@ -1,4 +1,4 @@
-# Parcours agent par projet — v0.1.27
+# Parcours agent par projet — v0.1.28
 
 Un seul agent actif, sans délégation. Le site pilote les demandes et confirme la fusion GitHub ;
 l’agent s’exécute dans un service externe. Le [worker Codex](worker.md) fournit ce
@@ -50,7 +50,7 @@ demande confirmation à sa fermeture (aussitôt pour une pièce jointe ou l’ef
 avec la possibilité de rétablir la demande. La confirmation de suppression de la
 carte signale aussi l’annulation.
 Les transitions humaines exigent une version à jour pour éviter deux validations
-contradictoires. Depuis la v0.1.27, les droits par projet s’appliquent : confier une carte à
+contradictoires. Depuis la v0.1.28, les droits par projet s’appliquent : confier une carte à
 l’agent (statut « Prête à démarrer » ou « Confier à l’agent »), valider son résultat et demander
 des corrections sont réservés aux **responsables** du projet et aux administrateurs ; les
 contributeurs peuvent répondre à ses questions et annuler une exécution. Voir
@@ -109,6 +109,10 @@ Les actions humaines exigent une session personnelle :
 - `accept` : `{version}` ; uniquement pour les anciennes exécutions sans PR.
 - `reject` : `{version, message}` ; conserve le refus et remet le travail en file.
 - `cancel` : `{version, message}` ; annule l’exécution et conserve son historique.
+- `approve` : `{version}` ; approuve la fusion de la PR au commit actuel, quand le projet exige une
+  validation avant fusion (`GET/PUT /api/v1/projects/{projectId}/approval`, `{ required }`, réglé par un
+  responsable). Les exécutions renvoient alors `approvalRequired` et `approval`, et la boîte « À traiter »
+  liste les PR à approuver. Réservé aux responsables, comme `accept` et `reject`.
 
 Une transition réussie renvoie l’exécution avec sa nouvelle `version` : utiliser
 celle-ci pour l’action suivante. Chaque question, réponse, progression ou résultat
