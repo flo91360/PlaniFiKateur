@@ -15,7 +15,6 @@ import { commandEnvironment, runCommand } from '../worker/commands.mjs';
 import { createCodexRunner, taskPrompt } from '../worker/codex.mjs';
 import { ApiError, PublicationPendingError, createSiteClient, createGithubClient, connectionDiagnostic } from '../worker/clients.mjs';
 import { mergeAgentPullRequest, requiredJobs } from '../scripts/merge-agent-pr.mjs';
-import { validateExecutionProfile } from '../worker/execution-profile.mjs';
 
 const repository = 'worker/example', webhookSecret = 'worker-test-webhook';
 async function fixture(t, options = {}) {

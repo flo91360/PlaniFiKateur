@@ -1,7 +1,7 @@
 import { githubEvent } from './github.js';
 import { releaseVersion, tagPushVersion } from './project-versions.js';
 import { driveReleaseFromBody } from '../src/lib/drive-release.js';
-import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { STATUSES, validateWorkspace } from '../src/lib/workspace.js';
 import { createReadStream } from 'node:fs';
 import { accountFields, hashPassword, verifyPassword, publicUser } from './accounts.js';

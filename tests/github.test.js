@@ -63,13 +63,13 @@ test('superseded CI does not requeue the agent and later successful tests allow 
 });
 
 test('failed checks requeue work; obsolete commits, cancelled work and unmerged closure cannot finish it',async t=>{
- const f=await fixture(t); let run=f.submit(f.prepare());
+ const f=await fixture(t); f.submit(f.prepare()); let run;
  const closed=f.merged(); closed.pull_request.merged=false; await f.webhook('pull_request',closed); assert.equal(f.store.workflows.list(f.project.id,f.card.id)[0].state,'merging');
  await f.webhook('workflow_run',f.check('failure')); run=f.store.workflows.list(f.project.id,f.card.id)[0]; assert.equal(run.state,'ready');
  run=f.store.workflows.agentAction(f.project.id,f.card.id,run.id,'claim',{version:run.version},f.agent); run=f.submit(run,nextSha);
  await f.webhook('pull_request',f.merged()); assert.equal(f.store.workflows.list(f.project.id,f.card.id)[0].state,'merging');
  assert.equal(f.store.workflows.mergeEligible(repository,7,sha,f.agent).eligible,false);
- run=f.store.workflows.human(f.project.id,f.card.id,run.id,'cancel',{version:run.version,message:'Demande retirée'},f.user);
+ f.store.workflows.human(f.project.id,f.card.id,run.id,'cancel',{version:run.version,message:'Demande retirée'},f.user);
  assert.equal(f.store.workflows.mergeEligible(repository,7,nextSha,f.agent).eligible,false);
  await f.webhook('pull_request',f.merged(nextSha)); assert.equal(f.store.workflows.list(f.project.id,f.card.id)[0].state,'cancelled');
 });

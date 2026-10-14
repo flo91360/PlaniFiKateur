@@ -137,7 +137,7 @@ test('failed safety backup rejects a deletion without changing stored data', asy
 
 
 test('backup and restore CLI operate on the configured database and require confirmation', t => {
-  const { store, backups, dir } = fixture(t);
+  const { store, dir } = fixture(t);
   const env = { ...process.env, NODE_ENV: 'development', PLANIFIKATEUR_HOST: '127.0.0.1', PLANIFIKATEUR_DB_PATH: join(dir, 'active.sqlite'), PLANIFIKATEUR_BACKUP_DIR: join(dir, 'cli-backups'), PLANIFIKATEUR_OWNER_TOKEN: '', PLANIFIKATEUR_READ_TOKEN: '' };
   const backup = spawnSync(process.execPath, ['scripts/database.mjs', 'backup'], { env, encoding: 'utf8' });
   assert.equal(backup.status, 0, backup.stderr);

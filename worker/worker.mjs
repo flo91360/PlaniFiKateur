@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { validId, validRepository } from './config.mjs';
 import { ApiError, PublicationPendingError, createSiteClient, createGithubClient, connectionDiagnostic, temporaryConnectionError } from './clients.mjs';
 import { createState } from './state.mjs';
-import { commandEnvironment, runCommand } from './commands.mjs';
+import { runCommand } from './commands.mjs';
 import { createCodexRunner } from './codex.mjs';
 import { collectOutputs } from './outputs.mjs';
 import { createClaudeRunner } from './claude.mjs';

@@ -39,7 +39,7 @@ catch (error) { if (!['EROFS', 'EACCES', 'EPERM'].includes(error.code)) throw er
     if (await readFile(join(cwd, 'allowed.txt'), 'utf8') !== 'sandbox-ok') throw new Error('Écriture dans le dépôt impossible.');
     try { await access(outside); throw new Error('sandbox_unrestricted'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
   } catch (error) {
-    throw new Error(`Le sandbox Codex ne peut pas exécuter les commandes avec son isolation. Dans Docker, relancez avec --security-opt seccomp=worker/seccomp.json (voir docs/worker.md). Aucune tâche n’a été prise en charge.\nDiagnostic : ${diagnostic(error.message).replaceAll(root, '[répertoire de test]')}`);
+    throw new Error(`Le sandbox Codex ne peut pas exécuter les commandes avec son isolation. Dans Docker, relancez avec --security-opt seccomp=worker/seccomp.json (voir docs/worker.md). Aucune tâche n’a été prise en charge.\nDiagnostic : ${diagnostic(error.message).replaceAll(root, '[répertoire de test]')}`, { cause: error });
   } finally { await rm(root, { recursive: true, force: true }); }
 }
 

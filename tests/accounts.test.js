@@ -7,7 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { createStore } from '../server/store.js';
 import { createAppServer } from '../server/index.js';
 import { hashPassword, verifyPassword } from '../server/accounts.js';
-import { seedAccount, testEmail, testPassword, testPasswordHash } from './helpers/accounts.mjs';
+import { seedAccount, testEmail, testPassword } from './helpers/accounts.mjs';
 import { seed } from '../src/data/demo.js';
 import { createBackups, restoreBackup } from '../server/backups.js';
 
