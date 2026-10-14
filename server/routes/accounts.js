@@ -1,6 +1,7 @@
 import { accountFields, hashPassword, verifyPassword, publicUser } from '../accounts.js';
 import { httpError } from '../http.js';
 import { equalSecret } from '../auth.js';
+import { DEFAULT_ACCENT, isAccent } from '../../src/lib/accents.js';
 
 const fields = data => {
   try {
@@ -27,7 +28,13 @@ export function accountRoutes({ store, auth, guards }) {
       methods: {
         GET(ctx) {
           const user = auth.currentUser(ctx.req);
-          ctx.send(200, { authenticated: !!user, user, requiresLogin: true, needsSetup: !store.hasUsers() });
+          ctx.send(200, {
+            authenticated: !!user,
+            user,
+            requiresLogin: true,
+            needsSetup: !store.hasUsers(),
+            ...(user ? { preferences: store.preferences(user.id) } : {}),
+          });
         },
         async POST(ctx) {
           auth.loginLimit(ctx.req);
@@ -104,6 +111,21 @@ export function accountRoutes({ store, auth, guards }) {
           store.changePassword(user.id, hashed, user);
           auth.newSession(ctx.res, user);
           ctx.send(200, { authenticated: true, user });
+        },
+      },
+    },
+    {
+      // Apparence personnelle : seul le compte connecté lit et modifie sa couleur dominante.
+      path: '/api/v1/accounts/preferences',
+      guard: guards.account,
+      methods: {
+        GET: ctx => ctx.send(200, { data: store.preferences(ctx.user.id) }),
+        async PUT(ctx) {
+          const data = await ctx.body();
+          const accent = data?.accent === null ? DEFAULT_ACCENT : data?.accent;
+          if (!isAccent(accent))
+            throw httpError(400, 'invalid_preferences', 'Choisissez une couleur de la palette proposée.');
+          ctx.send(200, { data: store.setAccent(ctx.user.id, accent) });
         },
       },
     },

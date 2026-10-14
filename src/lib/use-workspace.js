@@ -3,6 +3,7 @@ import { withInfos } from './infos.js';
 import { seed } from '../data/demo.js';
 import { validateWorkspace } from './workspace.js';
 import { apiData, apiFetch } from './api-client.js';
+import { DEFAULT_ACCENT } from './accents.js';
 import { applyChanges, diffWorkspace } from './workspace-changes.js';
 import { useServerConnected, useServerEvent } from './use-server-events.js';
 
@@ -24,6 +25,8 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
   const [needsLogin, setNeedsLogin] = useState(false);
   const [needsSetup, setNeedsSetup] = useState(false),
     [user, setUser] = useState(null);
+  // Couleur dominante choisie par le compte connecté (couleur du site hors connexion).
+  const [accent, setAccent] = useState(DEFAULT_ACCENT);
   const [loadError, setLoadError] = useState('');
   const [saveStatus, setSaveStatus] = useState('saved');
   const [saveError, setSaveError] = useState('');
@@ -44,6 +47,7 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
     try {
       const session = await request('session');
       setUser(session.user || null);
+      setAccent(session.preferences?.accent || DEFAULT_ACCENT);
       setNeedsSetup(session.needsSetup);
       if (!session.authenticated) {
         setNeedsLogin(true);
@@ -219,6 +223,7 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
     await request('session', { method: 'DELETE' });
     initialized.current = false;
     setUser(null);
+    setAccent(DEFAULT_ACCENT);
     setNeedsLogin(true);
     setReady(false);
   };
@@ -230,6 +235,8 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
     needsLogin,
     needsSetup,
     user,
+    accent,
+    setAccent,
     loadError,
     saveStatus,
     saveError,

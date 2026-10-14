@@ -27,6 +27,10 @@ Le lien est valable 7 jours, utilisable une seule fois. Son secret est dans le f
 
 Les personnes déjà connectées peuvent également ouvrir un lien d’activation ou de réinitialisation ; l’activation remplace leur session par celle du compte invité.
 
+## Apparence
+
+Dans **Mon compte → Apparence**, chaque membre choisit la couleur dominante du site parmi une palette prédéfinie (Forêt, Océan, Prune, Framboise, Cuivre, Ardoise). La couleur s’applique aussitôt aux boutons principaux, liens, états actifs, à la navigation et à l’en-tête. Le choix est enregistré avec le compte sur le serveur : il est retrouvé après reconnexion, sur tout appareil ou navigateur, et ne change pas l’affichage des autres membres. **Rétablir la couleur par défaut** revient à la couleur Forêt d’origine. Chaque couleur de la palette respecte un contraste minimal du texte (4,5:1) et des contrôles (3:1), vérifié par les tests. Voir [l’API](api.md#apparence-personnelle).
+
 ## Droits
 
 | Action | Administrateur | Membre | Agent avec clé de lecture |

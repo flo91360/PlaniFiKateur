@@ -7,6 +7,7 @@ import { withInfos } from '../src/lib/infos.js';
 import { seed } from '../src/data/demo.js';
 import { validateWorkspace } from '../src/lib/workspace.js';
 import { publicUser, tokenHash } from './accounts.js';
+import { DEFAULT_ACCENT, isAccent } from '../src/lib/accents.js';
 import { attributeChanges } from './activity.js';
 import { createWorkflows } from './workflows.js';
 import { validateDriveRelease } from '../src/lib/drive-release.js';
@@ -52,7 +53,8 @@ export function createStore(filename, { backupDirectory } = {}) {
     CREATE TABLE IF NOT EXISTS github_versions (repository TEXT PRIMARY KEY, data TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS drive_archives (repository TEXT NOT NULL, tag TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(repository,tag));
     CREATE TABLE IF NOT EXISTS drive_repositories (repository TEXT PRIMARY KEY, data TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS notification_reads (user_id TEXT PRIMARY KEY, last_id INTEGER NOT NULL);`);
+    CREATE TABLE IF NOT EXISTS notification_reads (user_id TEXT PRIMARY KEY, last_id INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS user_preferences (user_id TEXT PRIMARY KEY, accent TEXT NOT NULL);`);
   const created =
     db
       .prepare('INSERT OR IGNORE INTO workspace VALUES (1, 1, ?, ?)')
@@ -717,6 +719,7 @@ export function createStore(filename, { backupDirectory } = {}) {
         db.prepare('DELETE FROM card_subscriptions WHERE user_id = ?').run(id);
         access.forgetUser(id);
         db.prepare('DELETE FROM notification_reads WHERE user_id = ?').run(id);
+        db.prepare('DELETE FROM user_preferences WHERE user_id = ?').run(id);
         db.prepare('DELETE FROM users WHERE id = ?').run(id);
         audit(actor, 'account.deleted', { userId: id, userName: user.name });
         return { deleted: true };
@@ -731,6 +734,16 @@ export function createStore(filename, { backupDirectory } = {}) {
         db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
         audit(actor, 'account.password_changed', { userId: id });
       });
+    },
+    // Préférences personnelles d’affichage : propres au compte, jamais exposées aux autres.
+    preferences(userId) {
+      const row = db.prepare('SELECT accent FROM user_preferences WHERE user_id = ?').get(userId);
+      return { accent: isAccent(row?.accent) ? row.accent : DEFAULT_ACCENT };
+    },
+    setAccent(userId, accent) {
+      db.prepare('DELETE FROM user_preferences WHERE user_id = ?').run(userId);
+      if (accent !== DEFAULT_ACCENT) db.prepare('INSERT INTO user_preferences VALUES(?,?)').run(userId, accent);
+      return this.preferences(userId);
     },
     createSession(userId) {
       const token = randomBytes(32).toString('hex');

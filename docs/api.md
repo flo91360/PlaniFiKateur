@@ -76,7 +76,13 @@ La spécification **OpenAPI 3.1** est servie à `/openapi.json` et conservée da
 
 ## Synchronisation de l’interface
 
-Les routes `/api/v1/session` et `/api/v1/workspace` sont réservées à l’interface. GET session indique le compte connecté et si le premier compte administrateur doit être créé ; il n’établit pas de session anonyme. POST session reçoit `{ "email": "…", "password": "…" }` ; DELETE termine la session. GET workspace fournit les projets visibles par le compte, la révision et `access`, le rôle du compte sur chacun (`viewer`, `editor`, `manager`).
+Les routes `/api/v1/session` et `/api/v1/workspace` sont réservées à l’interface. GET session indique le compte connecté et si le premier compte administrateur doit être créé ; il n’établit pas de session anonyme. Avec un compte connecté, GET session renvoie aussi `preferences`, les préférences d’affichage de ce compte (voir ci-dessous). POST session reçoit `{ "email": "…", "password": "…" }` ; DELETE termine la session. GET workspace fournit les projets visibles par le compte, la révision et `access`, le rôle du compte sur chacun (`viewer`, `editor`, `manager`).
+
+### Apparence personnelle
+
+`GET /api/v1/accounts/preferences` renvoie `{ "data": { "accent": "foret" } }`, la couleur dominante choisie par le compte connecté. `PUT /api/v1/accounts/preferences` reçoit `{ "accent": "prune" }` et renvoie les préférences enregistrées ; `"accent": null` ou `"foret"` rétablit la couleur par défaut du site. Seules les couleurs de la palette sont acceptées : `foret` (par défaut), `ocean`, `prune`, `framboise`, `cuivre`, `ardoise` (liste et teintes dans `src/lib/accents.js`). Toute autre valeur répond 400 `invalid_preferences`.
+
+Ces routes exigent une session personnelle de la même origine (401 sinon, 403 pour une autre origine) ; une clé de lecture ou d’agent est refusée. Le choix est enregistré dans le compte sur le serveur : il suit l’utilisateur sur tous ses appareils et navigateurs, et n’est jamais renvoyé aux autres comptes (ni dans `GET /api/v1/users`). La suppression d’un compte efface ses préférences.
 
 L’interface enregistre ses changements avec `PATCH /api/v1/workspace` et `{ "changes": [...] }` : seulement ce qui a changé depuis sa dernière lecture (voir [Modifier le tableau](#modifier-le-tableau)). Le serveur l’applique sur son état courant, sans révision à fournir. Deux navigateurs qui modifient des projets, des cartes ou des champs différents ne sont donc plus en conflit ; pour un même champ, la dernière écriture l’emporte. La réponse contient le tableau à jour, qui apporte aussi les changements des autres sessions. `PUT /api/v1/workspace` remplace tout le tableau : réservé aux administrateurs, il exige l’en-tête `If-Match: "révision"` et renvoie 409 si le tableau a changé depuis.
 
