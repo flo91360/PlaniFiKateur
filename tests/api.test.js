@@ -47,6 +47,24 @@ test('consultation exposes persisted projects, lists and full card context', asy
   assert.equal(card.meta.revision, 1);
 });
 
+test('unexpected errors are logged with the method and path only and stay private in the response', async t => {
+  const logs = [];
+  const { store, get } = await fixture(t, { logError: (...args) => logs.push(args) });
+  const read = store.read;
+  store.read = () => {
+    throw new Error('Base indisponible');
+  };
+  const response = await get('/projects?q=secret-de-test');
+  assert.equal(response.status, 500);
+  assert.deepEqual(await response.json(), { error: { code: 'internal_error', message: 'Erreur interne du serveur.' } });
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0][0], 'PlaniFiKateur : erreur interne sur GET /api/v1/projects');
+  assert.equal(logs[0][1].message, 'Base indisponible');
+  store.read = read;
+  assert.equal((await get('/projects/inconnu')).status, 404);
+  assert.equal(logs.length, 1, 'expected client errors are not logged');
+});
+
 test('filters and pagination isolate the requested cards', async t => {
   const { get } = await fixture(t);
   const result = await (await get('/cards?projectId=planifikateur&listId=features&status=clarify&q=discussion')).json();

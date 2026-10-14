@@ -37,7 +37,7 @@ async function body(req) {
 }
 
 export function createApi(store, config = {}) {
-  const { ownerToken = '', readToken = '', secureCookie = false } = config;
+  const { ownerToken = '', readToken = '', secureCookie = false, logError = console.error } = config;
   const loginAttempts = new Map(),
     refinements = new Map();
   const refiner = config.refiner || createRefiner({ token: config.claudeOauthToken, model: config.refineModel });
@@ -672,6 +672,9 @@ export function createApi(store, config = {}) {
       } else throw httpError(404, 'not_found', 'Route inexistante.');
       send(res, 200, { data, meta });
     } catch (error) {
+      // Une erreur sans statut HTTP est inattendue : la journaliser pour le diagnostic.
+      // Seuls la méthode et le chemin sont écrits, jamais les paramètres, en-têtes ou corps.
+      if (!error.status) logError(`PlaniFiKateur : erreur interne sur ${req.method} ${req.url.split('?')[0]}`, error);
       send(res, error.status || 500, {
         error: {
           code: error.code || 'internal_error',
