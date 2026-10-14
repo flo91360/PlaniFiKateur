@@ -109,6 +109,10 @@ Les actions humaines exigent une session personnelle :
 - `accept` : `{version}` ; uniquement pour les anciennes exécutions sans PR.
 - `reject` : `{version, message}` ; conserve le refus et remet le travail en file.
 - `cancel` : `{version, message}` ; annule l’exécution et conserve son historique.
+- `approve` : `{version}` ; approuve la fusion de la PR au commit actuel, quand le projet exige une
+  validation avant fusion (`GET/PUT /api/v1/projects/{projectId}/approval`, `{ required }`, réglé par un
+  responsable). Les exécutions renvoient alors `approvalRequired` et `approval`, et la boîte « À traiter »
+  liste les PR à approuver. Réservé aux responsables, comme `accept` et `reject`.
 
 Une transition réussie renvoie l’exécution avec sa nouvelle `version` : utiliser
 celle-ci pour l’action suivante. Chaque question, réponse, progression ou résultat

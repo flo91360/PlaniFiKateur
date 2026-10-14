@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronRight, CircleHelp, FolderKanban, History, Inbox, Menu } from 'lucide-react';
+import { Bell, ChevronRight, CircleHelp, FolderKanban, History, Inbox, Menu } from 'lucide-react';
 import { avatarLabel } from './Avatar.jsx';
 
 function saveLabel(saveStatus, offline) {
@@ -14,6 +14,7 @@ export default function Topbar({
   user,
   offline,
   attentionCount = 0,
+  unreadCount = 0,
   onOpenSidebar,
   onOpenModal,
 }) {
@@ -42,6 +43,17 @@ export default function Topbar({
           >
             <Inbox size={19} />
             {attentionCount > 0 && <span className="attention-count">{attentionCount}</span>}
+          </button>
+        )}
+        {!offline && (
+          <button
+            className={`icon-button attention-button ${unreadCount ? 'pending' : ''}`}
+            aria-label={unreadCount ? `Notifications (${unreadCount} non lues)` : 'Notifications'}
+            title={unreadCount ? `${unreadCount} notification(s) non lue(s)` : 'Aucune notification non lue'}
+            onClick={() => onOpenModal('notifications')}
+          >
+            <Bell size={19} />
+            {unreadCount > 0 && <span className="attention-count">{unreadCount}</span>}
           </button>
         )}
         <button className="icon-button" aria-label="Informations sur PlaniFiKateur" onClick={() => onOpenModal('info')}>

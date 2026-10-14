@@ -27,6 +27,14 @@ export function requirements(change) {
 export function createAccess(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS project_policies (project_id TEXT PRIMARY KEY, member_role TEXT NOT NULL CHECK(member_role IN ('none','viewer','editor','manager')));
     CREATE TABLE IF NOT EXISTS project_members (project_id TEXT NOT NULL, user_id TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('viewer','editor','manager')), PRIMARY KEY(project_id,user_id));`);
+  // v0.1.28 : validation humaine avant la fusion des PR de l’agent, désactivée par défaut.
+  if (
+    !db
+      .prepare('PRAGMA table_info(project_policies)')
+      .all()
+      .some(column => column.name === 'merge_approval')
+  )
+    db.exec('ALTER TABLE project_policies ADD COLUMN merge_approval INTEGER NOT NULL DEFAULT 0');
   const policy = projectId =>
     db.prepare('SELECT member_role FROM project_policies WHERE project_id = ?').get(projectId)?.member_role ??
     DEFAULT_MEMBER_ROLE;
@@ -71,7 +79,10 @@ export function createAccess(db) {
     },
     // Nouveau projet : règle par défaut et, s’il n’est pas administrateur, créateur responsable.
     adopt(projectId, creator) {
-      db.prepare('INSERT OR IGNORE INTO project_policies VALUES (?, ?)').run(projectId, DEFAULT_MEMBER_ROLE);
+      db.prepare('INSERT OR IGNORE INTO project_policies(project_id, member_role) VALUES (?, ?)').run(
+        projectId,
+        DEFAULT_MEMBER_ROLE,
+      );
       if (creator?.id && creator.role !== 'admin')
         db.prepare(
           "INSERT INTO project_members VALUES (?, ?, 'manager') ON CONFLICT(project_id,user_id) DO UPDATE SET role = 'manager'",
@@ -90,7 +101,7 @@ export function createAccess(db) {
     configure(projectId, { memberRole, members = {} }) {
       if (memberRole !== undefined)
         db.prepare(
-          'INSERT INTO project_policies VALUES (?, ?) ON CONFLICT(project_id) DO UPDATE SET member_role = excluded.member_role',
+          'INSERT INTO project_policies(project_id, member_role) VALUES (?, ?) ON CONFLICT(project_id) DO UPDATE SET member_role = excluded.member_role',
         ).run(projectId, memberRole);
       for (const [userId, role] of Object.entries(members)) {
         if (role === null)
@@ -100,6 +111,15 @@ export function createAccess(db) {
             'INSERT INTO project_members VALUES (?, ?, ?) ON CONFLICT(project_id,user_id) DO UPDATE SET role = excluded.role',
           ).run(projectId, userId, role);
       }
+    },
+    // Les PR de l’agent attendent-elles l’approbation d’un responsable avant la fusion ?
+    mergeApproval: projectId =>
+      !!db.prepare('SELECT merge_approval FROM project_policies WHERE project_id = ?').get(projectId)?.merge_approval,
+    setMergeApproval(projectId, required) {
+      db.prepare(
+        `INSERT INTO project_policies(project_id, member_role, merge_approval) VALUES (?, ?, ?)
+         ON CONFLICT(project_id) DO UPDATE SET merge_approval = excluded.merge_approval`,
+      ).run(projectId, DEFAULT_MEMBER_ROLE, required ? 1 : 0);
     },
     forgetProject(projectId) {
       db.prepare('DELETE FROM project_policies WHERE project_id = ?').run(projectId);

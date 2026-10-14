@@ -16,6 +16,25 @@ import { migrateWorkspace, readWorkspace, writeWorkspace } from './workspace-tab
 import { applyChanges, ChangeError } from '../src/lib/workspace-changes.js';
 import { allows, createAccess, MEMBER_ROLES, requirements, ROLES } from './access.js';
 
+// Actions qui notifient leurs destinataires (recipientIds : participants et abonnés de la carte,
+// sans l’auteur de l’action). Les messages de l’agent sont déjà annoncés par leur action work.*.
+export const NOTIFIED = [
+  'comment.created',
+  'card.status_changed',
+  'card.deleted',
+  'card.subscriber_added',
+  'work.question',
+  'work.submit',
+  'work.checks',
+  'work.merged',
+  'work.interrupted',
+  'work.cancel',
+  'work.reject',
+  'work.approve',
+  'project.access_changed',
+];
+const NOTIFIED_SQL = `action IN (${NOTIFIED.map(action => `'${action}'`).join(',')}) AND NOT (action = 'comment.created' AND json_extract(payload, '$.executionId') IS NOT NULL)`;
+
 // `backupDirectory` reçoit la copie faite avant la migration du tableau en tables.
 export function createStore(filename, { backupDirectory } = {}) {
   if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true, mode: 0o700 });
@@ -32,7 +51,8 @@ export function createStore(filename, { backupDirectory } = {}) {
     CREATE TABLE IF NOT EXISTS github_changelog (repository TEXT NOT NULL, tag TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(repository,tag));
     CREATE TABLE IF NOT EXISTS github_versions (repository TEXT PRIMARY KEY, data TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS drive_archives (repository TEXT NOT NULL, tag TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(repository,tag));
-    CREATE TABLE IF NOT EXISTS drive_repositories (repository TEXT PRIMARY KEY, data TEXT NOT NULL);`);
+    CREATE TABLE IF NOT EXISTS drive_repositories (repository TEXT PRIMARY KEY, data TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS notification_reads (user_id TEXT PRIMARY KEY, last_id INTEGER NOT NULL);`);
   const created =
     db
       .prepare('INSERT OR IGNORE INTO workspace VALUES (1, 1, ?, ?)')
@@ -63,7 +83,7 @@ export function createStore(filename, { backupDirectory } = {}) {
   };
   const emit = event => {
     if (!queued) return deliver([event]);
-    const key = JSON.stringify([event.type, event.projectId, event.cardId, event.executionId]);
+    const key = JSON.stringify([event.type, event.projectId, event.cardId, event.executionId, event.userIds]);
     queued.set(key, event);
   };
   const transaction = fn => {
@@ -98,8 +118,15 @@ export function createStore(filename, { backupDirectory } = {}) {
     // Only an actual Infos change should increment the workspace revision.
     if (!isDeepStrictEqual(projects, previous)) writeProjects(validateWorkspace(projects));
   };
-  const audit = (actor, action, payload = {}, revision = null) =>
-    db
+  const audit = (actor, action, payload = {}, revision = null) => {
+    // Les destinataires d’une action notifiée la voient arriver aussitôt dans leur boîte.
+    if (
+      NOTIFIED.includes(action) &&
+      !(action === 'comment.created' && payload.executionId) &&
+      payload.recipientIds?.length
+    )
+      emit({ type: 'notifications', userIds: payload.recipientIds });
+    return db
       .prepare(
         'INSERT INTO activity(date,actor_id,actor_name,action,project_id,card_id,revision,payload) VALUES(?,?,?,?,?,?,?,?)',
       )
@@ -113,6 +140,7 @@ export function createStore(filename, { backupDirectory } = {}) {
         revision,
         JSON.stringify(payload),
       );
+  };
   const userById = id => db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   const findCard = (projectId, cardId) => {
     const project = readProjects().find(p => p.id === projectId);
@@ -156,6 +184,7 @@ export function createStore(filename, { backupDirectory } = {}) {
   };
   const workflows = createWorkflows(db, {
     canLaunch,
+    requiresApproval: projectId => access.mergeApproval(projectId),
     transaction,
     audit,
     findCard,
@@ -398,7 +427,7 @@ export function createStore(filename, { backupDirectory } = {}) {
             cardTitle: card.title,
             subscriberId: userId,
             subscriberName: target.name,
-            recipientIds: [],
+            recipientIds: userId !== actor.id ? [userId] : [],
           });
         }
         return { following: enabled };
@@ -437,6 +466,24 @@ export function createStore(filename, { backupDirectory } = {}) {
       return { ...workspace, projects: workspace.projects.filter(project => roles[project.id]), access: roles };
     },
     projectRole: (user, projectId) => access.role(user, projectId),
+    mergeApproval: projectId => access.mergeApproval(projectId),
+    configureMergeApproval(projectId, data, actor) {
+      return transaction(() => {
+        this.requireProject(actor, projectId, 'manager');
+        if (!data || typeof data.required !== 'boolean' || Object.keys(data).length !== 1)
+          fail(400, 'invalid_approval', 'Envoyez { "required": true } ou { "required": false }.');
+        access.setMergeApproval(projectId, data.required);
+        audit(actor, 'project.approval_changed', {
+          projectId,
+          projectName: this.read().projects.find(project => project.id === projectId)?.name,
+          details: { required: data.required },
+          recipientIds: [],
+        });
+        // Les exécutions en cours de fusion affichent ou retirent l’attente de validation.
+        emit({ type: 'work', projectId });
+        return { required: data.required };
+      });
+    },
     // Exige un rôle minimal sur un projet ; un projet masqué est signalé comme inexistant.
     requireProject(user, projectId, role = 'viewer') {
       const current = this.read().projects.some(project => project.id === projectId) && access.role(user, projectId);
@@ -669,6 +716,7 @@ export function createStore(filename, { backupDirectory } = {}) {
         db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
         db.prepare('DELETE FROM card_subscriptions WHERE user_id = ?').run(id);
         access.forgetUser(id);
+        db.prepare('DELETE FROM notification_reads WHERE user_id = ?').run(id);
         db.prepare('DELETE FROM users WHERE id = ?').run(id);
         audit(actor, 'account.deleted', { userId: id, userName: user.name });
         return { deleted: true };
@@ -702,6 +750,47 @@ export function createStore(filename, { backupDirectory } = {}) {
     },
     deleteSession(token) {
       if (token) db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(tokenHash(token));
+    },
+    // Notifications d’un compte : actions qui le concernent sur les projets qu’il voit, les plus
+    // récentes d’abord, avec le nombre de non lues (après le dernier identifiant marqué comme lu).
+    notifications(user, { limit = 30 } = {}) {
+      const visible = JSON.stringify(Object.keys(this.readFor(user).access));
+      const where = `${NOTIFIED_SQL} AND EXISTS (SELECT 1 FROM json_each(payload, '$.recipientIds') WHERE value = ?) AND (project_id IS NULL OR project_id IN (SELECT value FROM json_each(?)))`;
+      const lastReadId =
+        db.prepare('SELECT last_id FROM notification_reads WHERE user_id = ?').get(user.id)?.last_id ?? 0;
+      const items = db
+        .prepare(`SELECT * FROM activity WHERE ${where} ORDER BY id DESC LIMIT ?`)
+        .all(user.id, visible, limit)
+        .map(row => {
+          const { projectName, cardTitle, details, executionId } = JSON.parse(row.payload);
+          return {
+            id: row.id,
+            date: row.date,
+            action: row.action,
+            actor: row.actor_id ? { id: row.actor_id, name: row.actor_name } : { id: null, name: row.actor_name },
+            projectId: row.project_id,
+            projectName: projectName || null,
+            cardId: row.card_id,
+            cardTitle: cardTitle || null,
+            ...(details ? { details } : {}),
+            ...(executionId ? { executionId } : {}),
+            read: row.id <= lastReadId,
+          };
+        });
+      const unread = db
+        .prepare(`SELECT COUNT(*) AS n FROM activity WHERE ${where} AND id > ?`)
+        .get(user.id, visible, lastReadId).n;
+      return { items, unread, lastReadId };
+    },
+    // Marque comme lues les notifications jusqu’à `upTo` inclus (jamais en arrière).
+    readNotifications(user, upTo) {
+      if (!Number.isSafeInteger(upTo) || upTo < 0) fail(400, 'invalid_notification', 'upTo : identifiant attendu.');
+      const max = db.prepare('SELECT COALESCE(MAX(id), 0) AS id FROM activity').get().id;
+      db.prepare(
+        'INSERT INTO notification_reads VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET last_id = MAX(last_id, excluded.last_id)',
+      ).run(user.id, Math.min(upTo, max));
+      emit({ type: 'notifications', userIds: [user.id] });
+      return this.notifications(user, { limit: 0 });
     },
     // `visible` limite l’historique global aux projets d’un compte (les actions sans projet restent).
     activity({ projectId, cardId, before = Number.MAX_SAFE_INTEGER, limit = 50, visible = null } = {}) {

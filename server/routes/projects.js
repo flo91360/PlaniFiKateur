@@ -109,6 +109,16 @@ export function projectRoutes({ store, config, auth, guards, refiner }) {
       },
     },
     {
+      path: '/api/v1/projects/:projectId/approval',
+      guard: guards.project,
+      methods: {
+        GET: ctx => ctx.send(200, { data: { required: store.mergeApproval(ctx.params.projectId) } }),
+        async PUT(ctx) {
+          ctx.send(200, { data: store.configureMergeApproval(ctx.params.projectId, await ctx.body(), ctx.user) });
+        },
+      },
+    },
+    {
       path: '/api/v1/projects/:projectId/members',
       guard: guards.project,
       methods: {

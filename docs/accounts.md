@@ -81,11 +81,17 @@ Le détail d’une carte affiche son auteur et son historique. Le bouton **Histo
 
 Les événements comprennent l’acteur, la date, le projet et la carte concernés, le type d’action, la révision et les champs modifiés. Les changements de contenu et leurs événements sont enregistrés dans la **même transaction SQLite** : une sauvegarde refusée pour conflit ne crée pas d’action fictive. Le journal est un historique applicatif ; un administrateur de l’hébergement disposant de la base peut techniquement le modifier.
 
-## Préparation des notifications
+## Notifications — v0.1.28
 
 Les événements de cartes conservent `recipientIds`, calculés à partir du créateur, des auteurs identifiés des commentaires et des abonnés explicites, en excluant les désabonnés, les comptes inactifs et la personne qui effectue l’action. Les destinataires sont des identifiants de comptes stables ; leurs adresses restent dans la table des comptes, sans être exposées par l’API de cartes.
 
-Cela prépare les futures notifications. **Aucune notification n’est envoyée** dans cette version : canal, mentions, assignation et traitement des événements restent à ajouter. Une notification future devra vérifier que le destinataire est encore actif et respecte ses préférences.
+Le bouton **Notifications** (cloche) de la barre supérieure affiche, avec un badge, le nombre de notifications non lues ; l’ouvrir les marque comme lues et un clic ouvre la carte concernée. Une personne est prévenue, sur les projets qu’elle voit, quand quelqu’un d’autre :
+
+- commente une carte qu’elle a créée, commentée ou qu’elle suit, change son statut ou la supprime ;
+- l’ajoute au suivi d’une carte ou change ses droits sur un projet ;
+- fait avancer l’agent sur une de ces cartes : question, résultat ou PR, contrôles GitHub, fusion, interruption, annulation, corrections demandées ou fusion approuvée.
+
+Les notifications arrivent en direct par le flux d’événements (événement `notifications`, envoyé seulement à leurs destinataires), et se consultent par `GET /api/v1/notifications` (`meta.unread`, `meta.lastReadId`) puis `POST /api/v1/notifications/read` avec `{ upTo }`. Elles proviennent de l’historique et suivent donc sa rétention. Il n’y a pas encore d’envoi par e-mail ni de préférences par type d’action.
 
 ## Sauvegardes
 

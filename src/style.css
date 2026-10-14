@@ -2421,3 +2421,19 @@ textarea::placeholder {
   font-size: 11px;
   white-space: nowrap;
 }
+.agent-setup .checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.agent-setup .checkbox-label input {
+  width: auto;
+  min-height: 0;
+}
+.attention-panel li.unread button {
+  border-color: #c98a16;
+  background: #fffaf0;
+}
+.attention-panel li button:disabled {
+  cursor: default;
+}

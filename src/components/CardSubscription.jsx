@@ -72,7 +72,7 @@ export default function CardSubscription({ projectId, cardId, saveStatus }) {
         {following
           ? 'Vous suivez les évolutions de cette carte.'
           : 'Abonnez-vous aux évolutions, même sans être auteur.'}{' '}
-        Les notifications seront disponibles dans une prochaine étape.
+        Ses commentaires, changements de statut et étapes de l’agent arrivent dans vos notifications.
       </p>
       <label>
         Ajouter un membre au suivi

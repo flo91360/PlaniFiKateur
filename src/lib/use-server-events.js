@@ -3,7 +3,7 @@ import { useEffect, useRef, useSyncExternalStore } from 'react';
 // Flux unique d’événements du serveur (GET /api/v1/events), partagé par toute la page.
 // Les hooks relisent leurs données quand un événement les concerne ; tant que le flux n’est
 // pas connecté, ils gardent leur actualisation périodique habituelle.
-const TYPES = ['ready', 'workspace', 'work', 'subscriptions'];
+const TYPES = ['ready', 'workspace', 'work', 'subscriptions', 'notifications'];
 const handlers = new Set();
 const watchers = new Set();
 let source = null,

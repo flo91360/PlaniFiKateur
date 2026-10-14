@@ -6,6 +6,7 @@ import AiSettings from './AiSettings.jsx';
 import ExecutionSettings from './ExecutionSettings.jsx';
 import DriveArchive from './DriveArchive.jsx';
 import ProjectMembers, { roleLabels } from './ProjectMembers.jsx';
+import MergeApproval from './MergeApproval.jsx';
 
 export default function ProjectAutomation({ project, user, role, onAiConfigured, onAccessChanged }) {
   const [configuration, setConfiguration] = useState(null),
@@ -39,6 +40,7 @@ export default function ProjectAutomation({ project, user, role, onAiConfigured,
             carte.
           </p>
           <ProjectMembers projectId={project.id} canManage={role === 'manager'} onChanged={onAccessChanged} />
+          <MergeApproval projectId={project.id} canManage={role === 'manager'} />
           <AiSettings projectId={project.id} user={user} onConfigured={onAiConfigured} />
           <ExecutionSettings projectId={project.id} repository={configuration.repository} user={user} />
           <DriveArchive key={configuration.repository || ''} projectId={project.id} user={user} />
