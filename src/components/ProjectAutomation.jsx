@@ -5,8 +5,9 @@ import { apiData } from '../lib/api-client.js';
 import AiSettings from './AiSettings.jsx';
 import ExecutionSettings from './ExecutionSettings.jsx';
 import DriveArchive from './DriveArchive.jsx';
+import ProjectMembers, { roleLabels } from './ProjectMembers.jsx';
 
-export default function ProjectAutomation({ project, user, onAiConfigured }) {
+export default function ProjectAutomation({ project, user, role, onAiConfigured, onAccessChanged }) {
   const [configuration, setConfiguration] = useState(null),
     [error, setError] = useState('');
   useEffect(() => {
@@ -21,7 +22,8 @@ export default function ProjectAutomation({ project, user, onAiConfigured }) {
   return (
     <div className="accounts-panel project-automation">
       <p>
-        <strong>{project.name}</strong> · identifiant : <code>{project.id}</code>
+        <strong>{project.name}</strong> · identifiant : <code>{project.id}</code> · votre rôle :{' '}
+        {roleLabels[role] || 'Lecture'}
       </p>
       {error && (
         <p role="alert" className="form-error">
@@ -36,6 +38,7 @@ export default function ProjectAutomation({ project, user, onAiConfigured }) {
             changements du dépôt passent par une PR fusionnée automatiquement ; les fichiers seuls sont livrés dans la
             carte.
           </p>
+          <ProjectMembers projectId={project.id} canManage={role === 'manager'} onChanged={onAccessChanged} />
           <AiSettings projectId={project.id} user={user} onConfigured={onAiConfigured} />
           <ExecutionSettings projectId={project.id} repository={configuration.repository} user={user} />
           <DriveArchive key={configuration.repository || ''} projectId={project.id} user={user} />

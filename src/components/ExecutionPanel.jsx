@@ -87,7 +87,17 @@ function MessageForm({ label, initial, submit, cancel, danger = false, busy, onS
 }
 
 // Suivi de l’exécution IA d’une carte et actions humaines (confier, annuler, valider, corriger).
-export default function ExecutionPanel({ projectId, cardId, execution, canStart, startHint, onChanged }) {
+// `canLaunch` : responsable du projet (confier, valider, faire corriger) ; `canCancel` : contributeur.
+export default function ExecutionPanel({
+  projectId,
+  cardId,
+  execution,
+  canStart,
+  startHint,
+  canLaunch = true,
+  canCancel = true,
+  onChanged,
+}) {
   const run = execution.current;
   const [form, setForm] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -178,7 +188,7 @@ export default function ExecutionPanel({ projectId, cardId, execution, canStart,
         />
       ) : (
         <div className="execution-actions">
-          {!active && (
+          {!active && canLaunch && (
             <button
               className="primary-button"
               disabled={busy || !canStart}
@@ -188,17 +198,17 @@ export default function ExecutionPanel({ projectId, cardId, execution, canStart,
               {run ? 'Relancer l’agent' : 'Confier à l’agent'}
             </button>
           )}
-          {run?.state === 'review' && (
+          {run?.state === 'review' && canLaunch && (
             <button className="primary-button" disabled={busy} onClick={() => void transition('accept')}>
               Valider le résultat
             </button>
           )}
-          {['review', 'merging'].includes(run?.state) && (
+          {['review', 'merging'].includes(run?.state) && canLaunch && (
             <button className="secondary-button" disabled={busy} onClick={() => setForm('reject')}>
               Demander des corrections
             </button>
           )}
-          {active && (
+          {active && canCancel && (
             <button className="secondary-button" disabled={busy} onClick={() => setForm('cancel')}>
               Annuler l’exécution
             </button>
@@ -206,6 +216,11 @@ export default function ExecutionPanel({ projectId, cardId, execution, canStart,
         </div>
       )}
       {!active && startHint && <p className="muted">{startHint}</p>}
+      {!canLaunch && (
+        <p className="muted">
+          Seuls les responsables du projet peuvent confier cette carte à l’agent ou valider son travail.
+        </p>
+      )}
       {error && (
         <p className="form-error" role="alert">
           {error}

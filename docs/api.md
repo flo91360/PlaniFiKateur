@@ -27,7 +27,7 @@ Ne pas inclure leurs valeurs dans le code, une URL ou un fichier HTML. Les fourn
 
 `PLANIFIKATEUR_HOST=0.0.0.0` permet une écoute réseau ; `PORT` choisit le port. Le serveur refuse cette exposition ou `NODE_ENV=production` sans les deux clés. Pour un déploiement, prévoir un volume persistant pour SQLite et un reverse proxy HTTPS qui conserve l’en-tête Host. Définir `PLANIFIKATEUR_PUBLIC_ORIGIN=https://votre-domaine` pour marquer le cookie de session Secure. Aucun domaine ou hébergement public n’est créé par ces commandes. L’API n’active pas de CORS : l’interface et l’API doivent partager la même origine ; les agents serveur peuvent utiliser HTTPS directement.
 
-L’espace est partagé entre les comptes actifs. Un administrateur invite les membres ; chacun se connecte avec son e-mail et son mot de passe. Les permissions par projet et les délégations d’agents restent des évolutions futures.
+Un administrateur invite les membres ; chacun se connecte avec son e-mail et son mot de passe. Chaque membre a sur chaque projet un rôle (lecture, contribution ou responsable), ou n’y a pas accès : voir [les droits par projet](accounts.md#droits-par-projet--v0127). Les routes de l’interface et la consultation avec une session n’exposent que les projets visibles par le compte ; un projet masqué répond 404, un rôle insuffisant 403 (`project_forbidden`).
 
 ## Routes GET
 
@@ -76,15 +76,17 @@ La spécification **OpenAPI 3.1** est servie à `/openapi.json` et conservée da
 
 ## Synchronisation de l’interface
 
-Les routes `/api/v1/session` et `/api/v1/workspace` sont réservées à l’interface. GET session indique le compte connecté et si le premier compte administrateur doit être créé ; il n’établit pas de session anonyme. POST session reçoit `{ "email": "…", "password": "…" }` ; DELETE termine la session. GET workspace fournit projets et révision.
+Les routes `/api/v1/session` et `/api/v1/workspace` sont réservées à l’interface. GET session indique le compte connecté et si le premier compte administrateur doit être créé ; il n’établit pas de session anonyme. POST session reçoit `{ "email": "…", "password": "…" }` ; DELETE termine la session. GET workspace fournit les projets visibles par le compte, la révision et `access`, le rôle du compte sur chacun (`viewer`, `editor`, `manager`).
 
-L’interface enregistre ses changements avec `PATCH /api/v1/workspace` et `{ "changes": [...] }` : seulement ce qui a changé depuis sa dernière lecture (voir [Modifier le tableau](#modifier-le-tableau)). Le serveur l’applique sur son état courant, sans révision à fournir. Deux navigateurs qui modifient des projets, des cartes ou des champs différents ne sont donc plus en conflit ; pour un même champ, la dernière écriture l’emporte. La réponse contient le tableau à jour, qui apporte aussi les changements des autres sessions. `PUT /api/v1/workspace` reste disponible pour remplacer tout le tableau : il exige l’en-tête `If-Match: "révision"` et renvoie 409 si le tableau a changé depuis.
+L’interface enregistre ses changements avec `PATCH /api/v1/workspace` et `{ "changes": [...] }` : seulement ce qui a changé depuis sa dernière lecture (voir [Modifier le tableau](#modifier-le-tableau)). Le serveur l’applique sur son état courant, sans révision à fournir. Deux navigateurs qui modifient des projets, des cartes ou des champs différents ne sont donc plus en conflit ; pour un même champ, la dernière écriture l’emporte. La réponse contient le tableau à jour, qui apporte aussi les changements des autres sessions. `PUT /api/v1/workspace` remplace tout le tableau : réservé aux administrateurs, il exige l’en-tête `If-Match: "révision"` et renvoie 409 si le tableau a changé depuis.
 
 Une sauvegarde refusée (statut piloté par une exécution IA, contenu invalide) ou en échec réseau laisse les modifications en mémoire. L’interface permet de les exporter, de relancer l’envoi ou de recharger explicitement le serveur. Les limites de contenu sont documentées dans `src/lib/workspace.js` ; une requête ne peut dépasser 4 Mo.
 
 ## Modifier le tableau
 
-Toutes ces routes exigent une **session personnelle** de la même origine ; une clé de lecture ou d’agent reçoit 401. Les auteurs, créateurs et dates sont attribués par le serveur, et chaque changement apparaît dans l’historique. Une suppression de projet, liste ou carte est précédée d’une sauvegarde de sécurité.
+Toutes ces routes exigent une **session personnelle** de la même origine ; une clé de lecture ou d’agent reçoit 401. Modifier des cartes, des listes ou des commentaires demande le rôle Contribution ; placer une carte au statut `ready`, modifier ou supprimer le projet demande le rôle Responsable (sinon 403 `project_forbidden`, pour tout le lot). Une modification qui vise un projet masqué est traitée comme un élément inexistant. Les auteurs, créateurs et dates sont attribués par le serveur, et chaque changement apparaît dans l’historique. Une suppression de projet, liste ou carte est précédée d’une sauvegarde de sécurité. Le créateur d’un projet en devient responsable.
+
+`GET /api/v1/projects/{projectId}/members` décrit les droits du projet : `memberRole` (rôle des membres non nommés, `none` pour masquer le projet) et, pour chaque compte actif, son rôle effectif et son rôle nommé. `PUT` sur la même route, réservé aux responsables, reçoit `{ memberRole?, members?: { identifiantDuCompte: rôle | null } }` ; `null` rend le membre à la règle commune. Un administrateur est toujours responsable.
 
 | Route | Usage |
 | --- | --- |

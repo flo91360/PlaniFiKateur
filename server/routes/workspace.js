@@ -33,12 +33,15 @@ export function workspaceRoutes({ store, config, auth, guards }) {
             ctx.res.end();
             return;
           }
-          const workspace = store.read();
+          // Seuls les projets visibles par le compte, avec son rôle sur chacun (access).
+          const workspace = store.readFor(auth.requireAccount(ctx.req));
           ctx.res.setHeader('ETag', `"${workspace.revision}"`);
           ctx.send(200, workspace);
         },
+        // Remplacement complet : réservé aux administrateurs, qui voient tous les projets
+        // (une session limitée supprimerait sinon les projets qu’elle ne voit pas).
         async PUT(ctx) {
-          auth.requireAccount(ctx.req);
+          const admin = auth.requireAdmin(ctx.req);
           const match = /^"(\d+)"$/.exec(ctx.req.headers['if-match'] || '');
           if (!match)
             throw httpError(428, 'precondition_required', 'Envoyez la révision obtenue à la lecture dans If-Match.');
@@ -63,7 +66,7 @@ export function workspaceRoutes({ store, config, auth, guards }) {
           }
           let saved;
           try {
-            saved = store.write(clean, revision, auth.requireAccount(ctx.req));
+            saved = store.write(clean, revision, admin);
           } catch (error) {
             throw httpError(error.status || 400, error.code || 'invalid_workspace', error.message);
           }
@@ -74,7 +77,7 @@ export function workspaceRoutes({ store, config, auth, guards }) {
               'Le tableau a changé dans une autre session. Rechargez les données avant de réessayer.',
             );
           ctx.res.setHeader('ETag', `"${saved.revision}"`);
-          ctx.send(200, saved);
+          ctx.send(200, store.readFor(admin));
         },
       },
     },

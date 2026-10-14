@@ -2390,3 +2390,34 @@ textarea::placeholder {
   font-size: 11px;
   color: var(--primary);
 }
+
+/* Membres et droits d’un projet */
+.project-members {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 0;
+  list-style: none;
+}
+.project-members li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  font-size: 12px;
+}
+.project-members select {
+  min-width: 190px;
+}
+.read-only-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border: 1px solid #ecd9a8;
+  border-radius: 999px;
+  background: #fdf8ea;
+  color: #6d5520;
+  font-size: 11px;
+  white-space: nowrap;
+}

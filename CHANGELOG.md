@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.27 — 2026-10-14
+<!-- planifikateur:audit-etape-5a-20261014 -->
+
+- **Droits par projet** : Chaque membre a désormais un rôle sur chaque projet : lecture, contribution ou responsable, ou aucun accès (le projet est alors masqué). Seuls les responsables et les administrateurs confient une carte à l’agent, valident ou font corriger son travail et gèrent le projet ; les contributeurs modifient les cartes, commentent et peuvent annuler une exécution. Les droits se règlent dans « Paramètres du projet → Membres et droits ». Après la mise à jour, les projets existants gardent leur créateur comme responsable et donnent le rôle contribution aux autres membres.
+
 ## 0.1.26 — 2026-10-14
 <!-- planifikateur:audit-etape-4b-20261014 -->
 

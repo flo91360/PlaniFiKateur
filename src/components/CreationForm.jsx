@@ -37,6 +37,7 @@ export default function CreationForm({
   type,
   lists,
   listId,
+  canLaunch = true,
   onCancel,
   onSubmit,
 }) {
@@ -155,7 +156,7 @@ export default function CreationForm({
             <label>
               Statut
               <select aria-label="Statut" value={status} onChange={e => setStatus(e.target.value)}>
-                <StatusOptions />
+                <StatusOptions canLaunch={canLaunch} />
               </select>
             </label>
             <label>

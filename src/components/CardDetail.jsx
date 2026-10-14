@@ -69,7 +69,7 @@ function CardResources({ card }) {
   );
 }
 
-function Discussion({ card, user, onUpdate }) {
+function Discussion({ card, user, readOnly, onUpdate }) {
   const [comment, setComment] = useState('');
   const publish = () => {
     if (!comment.trim()) return;
@@ -110,19 +110,23 @@ function Discussion({ card, user, onUpdate }) {
         </div>
       ))}
       {!card.comments.length && <p className="muted">Une question, une précision ? La discussion commence ici.</p>}
-      <LocalForm onConfirm={publish}>
-        <textarea
-          aria-label="Votre commentaire"
-          rows={2}
-          value={comment}
-          onChange={e => setComment(e.target.value)}
-          placeholder="Ajouter un commentaire…"
-        />
-        <button type="button" onClick={publish} className="secondary-button" disabled={!comment.trim()}>
-          Publier
-          <ArrowRight size={14} />
-        </button>
-      </LocalForm>
+      {readOnly ? (
+        <p className="muted">Lecture seule : votre rôle sur ce projet ne permet pas de commenter.</p>
+      ) : (
+        <LocalForm onConfirm={publish}>
+          <textarea
+            aria-label="Votre commentaire"
+            rows={2}
+            value={comment}
+            onChange={e => setComment(e.target.value)}
+            placeholder="Ajouter un commentaire…"
+          />
+          <button type="button" onClick={publish} className="secondary-button" disabled={!comment.trim()}>
+            Publier
+            <ArrowRight size={14} />
+          </button>
+        </LocalForm>
+      )}
     </div>
   );
 }
@@ -189,6 +193,7 @@ function CancelConfirm({ onConfirm, onRevert }) {
 
 export default function CardDetail({
   engine = 'codex',
+  role = 'manager',
   attachmentBytes = 0,
   onWorkflowRefresh,
   offline,
@@ -201,6 +206,9 @@ export default function CardDetail({
   onUpdate,
   onDelete,
 }) {
+  // Droits sur le projet : lecture seule pour un lecteur ; seul un responsable confie la carte à l’agent.
+  const readOnly = role === 'viewer',
+    canLaunch = role === 'manager';
   const tagsText = card.tags.join(', ');
   const [title, setTitle] = useState(card.title);
   const [description, setDescription] = useState(card.description);
@@ -276,6 +284,7 @@ export default function CardDetail({
             <input
               aria-label="Titre de la carte"
               className="detail-title"
+              readOnly={readOnly}
               value={title}
               maxLength={140}
               onChange={e => setTitle(e.target.value)}
@@ -301,28 +310,33 @@ export default function CardDetail({
             <textarea
               aria-label="Description"
               rows={4}
+              readOnly={readOnly}
               value={description}
               onChange={e => setDescription(e.target.value)}
               onBlur={() => saveFields()}
               placeholder="Décrivez la demande pour l’agent, le résultat attendu et les contraintes utiles…"
             />
           </label>
-          <DescriptionAssistant
-            value={description}
-            onChange={replaceDescription}
-            offline={offline}
-            projectId={projectId}
-            title={title}
-            listId={card.listId}
-          />
+          {!readOnly && (
+            <DescriptionAssistant
+              value={description}
+              onChange={replaceDescription}
+              offline={offline}
+              projectId={projectId}
+              title={title}
+              listId={card.listId}
+            />
+          )}
           <p className="muted">Cette description est l’objectif transmis à l’agent.</p>
           {!offline && !systemCards(projectId).includes(card.id) && (
             <ExecutionPanel
               projectId={projectId}
               cardId={card.id}
               execution={execution}
-              canStart={!startHint}
-              startHint={startHint}
+              canStart={canLaunch && !startHint}
+              startHint={canLaunch ? startHint : ''}
+              canLaunch={canLaunch}
+              canCancel={!readOnly}
               onChanged={onWorkflowRefresh}
             />
           )}
@@ -331,6 +345,7 @@ export default function CardDetail({
             Étiquettes
             <input
               value={tags}
+              readOnly={readOnly}
               onChange={e => setTags(e.target.value)}
               onBlur={() => saveFields()}
               placeholder="Interface, Recherche… (séparées par une virgule)"
@@ -339,9 +354,10 @@ export default function CardDetail({
           <Attachments
             otherBytes={attachmentBytes}
             attachments={card.attachments || []}
+            readOnly={readOnly}
             onChange={attachments => update({ attachments })}
           />
-          <Discussion card={card} user={user} onUpdate={onUpdate} />
+          <Discussion card={card} user={user} readOnly={readOnly} onUpdate={onUpdate} />
           {!offline && <ActivityPanel projectId={projectId} cardId={card.id} />}
         </div>
         <aside className="detail-side">
@@ -350,26 +366,31 @@ export default function CardDetail({
             Statut
             <select
               aria-label="Statut"
-              disabled={execution.managed}
+              disabled={execution.managed || readOnly}
               value={card.status}
               onChange={e => onUpdate({ status: e.target.value })}
             >
-              <StatusOptions />
+              <StatusOptions canLaunch={canLaunch} />
             </select>
           </label>
           <EffortSelect
             engine={execution.managed ? execution.ai?.engine || engine : engine}
             value={card.aiEffort || ''}
-            disabled={execution.managed}
+            disabled={execution.managed || readOnly}
             onChange={aiEffort => update({ aiEffort })}
           />
           <label>
             Priorité
-            <select aria-label="Priorité" value={card.priority} onChange={e => onUpdate({ priority: e.target.value })}>
+            <select
+              aria-label="Priorité"
+              value={card.priority}
+              disabled={readOnly}
+              onChange={e => onUpdate({ priority: e.target.value })}
+            >
               <PriorityOptions />
             </select>
           </label>
-          <DeleteCard onDelete={onDelete} cancelsExecution={runActive} />
+          {!readOnly && <DeleteCard onDelete={onDelete} cancelsExecution={runActive} />}
         </aside>
       </div>
       <div className="detail-footer">

@@ -27,7 +27,11 @@ export function eventRoutes({ store, config, auth, guards, streams }) {
           // Reconnexion automatique du navigateur après 5 s ; l’événement ready donne la révision.
           res.write('retry: 5000\n\n');
           send('ready', { revision: store.getRevision() });
-          const unsubscribe = store.subscribe(({ type, ...data }) => send(type, data));
+          // Les événements d’un projet ne parviennent qu’aux comptes qui le voient.
+          const unsubscribe = store.subscribe(({ type, ...data }) => {
+            if (data.projectId && !store.projectRole(ctx.user, data.projectId)) return;
+            send(type, data);
+          });
           // Commentaire périodique : garde la connexion ouverte à travers les proxys et vérifie
           // que la session est toujours valide (déconnexion, compte désactivé).
           const heartbeat = setInterval(() => {

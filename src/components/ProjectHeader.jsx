@@ -50,7 +50,14 @@ function ProjectStats({ cards }) {
   );
 }
 
-export default function ProjectHeader({ project, offline, onOpenSettings, onDelete }) {
+export default function ProjectHeader({
+  project,
+  offline,
+  canDelete = true,
+  readOnly = false,
+  onOpenSettings,
+  onDelete,
+}) {
   return (
     <>
       <div className="project-heading">
@@ -65,15 +72,22 @@ export default function ProjectHeader({ project, offline, onOpenSettings, onDele
           </div>
         </div>
         <div className="project-actions">
+          {readOnly && (
+            <span className="read-only-badge" title="Votre rôle sur ce projet ne permet pas de le modifier.">
+              Lecture seule
+            </span>
+          )}
           {!offline && (
             <button className="secondary-button" onClick={onOpenSettings}>
               Paramètres du projet
             </button>
           )}
-          <button className="delete-button project-delete" onClick={onDelete}>
-            <Trash2 size={16} />
-            Supprimer le projet
-          </button>
+          {canDelete && (
+            <button className="delete-button project-delete" onClick={onDelete}>
+              <Trash2 size={16} />
+              Supprimer le projet
+            </button>
+          )}
         </div>
       </div>
       <ProjectStats cards={project.cards} />

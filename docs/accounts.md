@@ -31,12 +31,32 @@ Les personnes déjà connectées peuvent également ouvrir un lien d’activatio
 
 | Action | Administrateur | Membre | Agent avec clé de lecture |
 | --- | --- | --- | --- |
-| Consulter et modifier les projets partagés | Oui | Oui | Consultation seulement |
-| Consulter l’historique | Oui | Oui | Non |
+| Consulter et modifier les projets | Tous | Selon son rôle sur chaque projet | Consultation seulement |
+| Consulter l’historique | Oui | Projets visibles | Non |
 | Inviter, désactiver et réactiver les membres | Oui | Non | Non |
+| Dépôt GitHub, moteur IA, profil d’exécution, clés d’agent | Oui | Non | Non |
 | Créer et télécharger les sauvegardes SQLite | Oui | Non | Non |
 
-Les projets sont communs à tous les comptes actifs. Il n’y a pas encore de permissions par projet ni de responsable assigné à une carte. L’administrateur initial est protégé contre la désactivation depuis l’interface.
+L’administrateur initial est protégé contre la désactivation depuis l’interface.
+
+## Droits par projet — v0.1.27
+
+Chaque membre a sur chaque projet l’un de ces rôles :
+
+| Rôle | Peut |
+| --- | --- |
+| **Lecture** | Voir le projet, ses cartes, discussions, exécutions IA et historique ; suivre une carte |
+| **Contribution** | En plus : créer, modifier, déplacer et supprimer les cartes et les listes, commenter (et donc répondre à l’agent), annuler une exécution |
+| **Responsable** | En plus : confier une carte à l’agent (statut « Prête à démarrer » ou bouton « Confier à l’agent »), valider ou faire corriger son travail, modifier ou supprimer le projet et gérer ses membres |
+
+Un administrateur est responsable de tous les projets. Dans **Paramètres du projet → Membres et droits**, un responsable choisit :
+
+- le rôle des **autres membres** : Lecture, Contribution, Responsable, ou **Aucun accès**, qui masque entièrement le projet (il n’apparaît ni dans le tableau, ni dans l’API, ni dans l’historique, la boîte « À traiter » ou le flux d’événements de ces comptes) ;
+- un rôle **nommé** pour certains membres, qui remplace la règle des autres membres.
+
+Le créateur d’un projet en devient responsable. À la mise à jour vers la v0.1.27, les projets existants gardent leur créateur (d’après l’historique) comme responsable et donnent le rôle **Contribution** aux autres membres : ils continuent de modifier les cartes, mais seuls les responsables et les administrateurs confient désormais une carte à l’agent, qui code, ouvre une PR et la fusionne sur la branche du projet. Un responsable peut rétablir l’ancien fonctionnement en donnant le rôle Responsable aux autres membres.
+
+Le serveur applique ces droits à toutes les routes ; l’interface masque en plus les actions indisponibles (badge « Lecture seule », option « Prête à démarrer (responsables) »). Le remplacement complet du tableau (`PUT /api/v1/workspace`) est réservé aux administrateurs. La clé de lecture des agents garde la consultation de tous les projets, et une clé d’agent celle de ses projets autorisés.
 
 ## Connexion, mot de passe et sessions
 

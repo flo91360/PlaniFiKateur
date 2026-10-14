@@ -28,6 +28,8 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
   const [saveStatus, setSaveStatus] = useState('saved');
   const [saveError, setSaveError] = useState('');
   const [syncError, setSyncError] = useState('');
+  // Rôle du compte sur chaque projet visible (viewer, editor, manager) ; null hors connexion.
+  const [access, setAccess] = useState(null);
   const paused = useRef(pauseRefresh),
     refreshing = useRef(false);
   paused.current = pauseRefresh;
@@ -49,6 +51,7 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
       }
       const workspace = await request('workspace');
       const clean = validateWorkspace(workspace.projects);
+      setAccess(workspace.access || {});
       current.current = clean;
       saved.current = clean;
       revision.current = workspace.revision;
@@ -95,6 +98,7 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
         saved.current = clean;
         revision.current = remote.revision;
         setState(clean);
+        setAccess(remote.access || {});
       }
       setSyncError('');
     } catch (error) {
@@ -161,6 +165,7 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
         const canonical = validateWorkspace(data.projects);
         revision.current = data.revision;
         saved.current = canonical;
+        setAccess(data.access || {});
         // Les modifications faites pendant l’envoi sont rejouées sur l’état renvoyé par le serveur.
         current.current =
           current.current === snapshot
@@ -219,6 +224,7 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
   };
   return {
     projects,
+    access,
     setProjects,
     ready,
     needsLogin,
