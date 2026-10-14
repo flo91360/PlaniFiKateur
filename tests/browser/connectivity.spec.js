@@ -1118,6 +1118,8 @@ test.describe('automatic GitHub delivery', () => {
     await page.getByRole('button', { name: 'Fermer', exact: true }).click();
     await configure('flo91360/Klaviflo');
     await page.reload();
+    // isVisible n’attend pas : vérifier le menu mobile seulement une fois le tableau rechargé.
+    await expect(page.locator('.topbar')).toBeVisible();
     const projectMenu = page.getByRole('button', { name: 'Ouvrir les projets', exact: true });
     if (await projectMenu.isVisible()) await projectMenu.click();
     await page
