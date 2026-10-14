@@ -280,13 +280,26 @@ function App() {
           <span className="tip-icon">
             <Sparkles size={19} />
           </span>
-          <h3>
-            Les idées d’abord.
-            <br />
-            Les agents, bientôt.
-          </h3>
-          <p>Préparez vos demandes aujourd’hui. Vos agents pourront prendre le relais demain.</p>
-          <span className="coming-soon">EN PRÉPARATION</span>
+          {offlineMode ? (
+            <>
+              <h3>Copie hors ligne.</h3>
+              <p>
+                Vos cartes restent dans ce navigateur. Importez-les dans le site connecté pour les confier à l’agent IA.
+              </p>
+            </>
+          ) : (
+            <>
+              <h3>
+                Une carte prête,
+                <br />
+                un agent au travail.
+              </h3>
+              <p>
+                Passez une carte au statut « Prête à démarrer » : l’agent IA la réalise, pose ses questions dans la
+                discussion et livre une PR fusionnée après les tests.
+              </p>
+            </>
+          )}
         </div>
         <div className="sidebar-footer">
           <Avatar name={workspace.user?.name} />
@@ -325,7 +338,11 @@ function App() {
                     ? 'Sauvegardé sur cet appareil'
                     : 'Sauvegardé sur le serveur'}
             </span>
-            <button className="icon-button" aria-label="Informations sur le prototype" onClick={() => setModal('info')}>
+            <button
+              className="icon-button"
+              aria-label="Informations sur PlaniFiKateur"
+              onClick={() => setModal('info')}
+            >
               <CircleHelp size={19} />
             </button>
             {!offlineMode && (
@@ -644,7 +661,7 @@ function App() {
                   <Layers3 size={14} />
                   Un esprit libre. Des idées bien rangées.
                 </span>
-                <span>PlaniFiKateur · Première version</span>
+                <span>PlaniFiKateur · v{appVersion}</span>
               </footer>
             </>
           ) : (
@@ -694,7 +711,7 @@ function App() {
                             ? 'Une nouvelle idée'
                             : modal === 'overview'
                               ? 'Votre espace personnel'
-                              : 'À propos de cette première version'
+                              : 'À propos de PlaniFiKateur'
           }
           onClose={() => setModal(null)}
         >
@@ -843,7 +860,7 @@ function App() {
                   <span className="info-illustration">
                     <Sparkles size={30} />
                   </span>
-                  <h2>Les fondations de vos futurs projets.</h2>
+                  <h2>De l’idée à la réalisation.</h2>
                   <p>
                     Créez des projets, organisez vos cartes et suivez leur avancement. Les exemples présents au départ
                     sont des données de démonstration.
@@ -857,10 +874,13 @@ function App() {
                     </p>
                   </div>
                   <div className="info-note">
-                    <strong>Les agents IA arrivent ensuite</strong>
+                    <strong>
+                      {offlineMode ? 'Agent IA indisponible hors ligne' : 'Confier une carte à l’agent IA'}
+                    </strong>
                     <p>
-                      Les statuts sont modifiables manuellement. Aucun agent n’est connecté et aucune tâche n’est
-                      déléguée automatiquement.
+                      {offlineMode
+                        ? 'Cette copie n’est pas reliée à l’agent : importez vos projets dans le site connecté pour lui confier des cartes.'
+                        : 'Une fois le dépôt GitHub et l’agent configurés dans les paramètres du projet, passez une carte au statut « Prête à démarrer » : l’agent la prend en charge, pose ses questions dans la discussion, ouvre une PR et la fusionne après les tests GitHub.'}
                     </p>
                   </div>
                 </>

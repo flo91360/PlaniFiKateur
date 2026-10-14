@@ -182,7 +182,10 @@ test('JSON import adds local cards to the API without replacing existing project
   appServer,
 }) => {
   await login(page, appServer);
-  await page.getByRole('button', { name: 'Informations sur le prototype', exact: true }).click();
+  await page.getByRole('button', { name: 'Informations sur PlaniFiKateur', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'À propos de PlaniFiKateur' })).toContainText(
+    'Confier une carte à l’agent IA',
+  );
   const imported = structuredClone(seed[0]);
   imported.name = 'Projet importé';
   imported.cards[0].title = 'Une idée importée';
@@ -339,7 +342,7 @@ test('owner can create and download a SQLite backup from the interface', async (
   await login(page, appServer);
   await newProject(page, 'Projet dans ma sauvegarde');
   await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
-  await page.getByRole('button', { name: 'Informations sur le prototype', exact: true }).click();
+  await page.getByRole('button', { name: 'Informations sur PlaniFiKateur', exact: true }).click();
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Créer et télécharger une sauvegarde SQLite', exact: true }).click();
   const download = await downloadPromise;
@@ -453,7 +456,7 @@ test('administrator invites a member whose cards, comments and actions carry the
   await member.getByRole('button', { name: 'Mon compte', exact: true }).click();
   await expect(member.getByRole('heading', { name: 'Membres de l’espace', exact: true })).toHaveCount(0);
   await member.getByRole('button', { name: 'Fermer', exact: true }).click();
-  await member.getByRole('button', { name: 'Informations sur le prototype', exact: true }).click();
+  await member.getByRole('button', { name: 'Informations sur PlaniFiKateur', exact: true }).click();
   await expect(
     member.getByRole('button', { name: 'Créer et télécharger une sauvegarde SQLite', exact: true }),
   ).toHaveCount(0);

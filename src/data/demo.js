@@ -57,12 +57,12 @@ export const seed = [
         listId: 'features',
         title: 'Confier une demande à un agent IA',
         description:
-          'Permettre de transmettre une carte prête à un agent et de suivre sa réalisation depuis le tableau. Cette fonctionnalité sera connectée à un orchestrateur dans une prochaine version.',
+          'Passer la carte au statut « Prête à démarrer » pour la confier à l’agent IA : il réalise la demande, pose ses questions dans la discussion et livre une PR fusionnée après les tests.',
         status: 'draft',
         priority: 'high',
         tags: ['Agents IA'],
         comments: [],
-        checklist: [{ id: 't3', text: 'Définir les critères d’acceptation', done: false }],
+        checklist: [{ id: 't3', text: 'Associer le dépôt GitHub du projet', done: false }],
       },
       {
         id: 'c5',

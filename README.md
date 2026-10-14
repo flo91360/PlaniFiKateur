@@ -19,7 +19,9 @@ Un tableau de projets inspiré de Trello, conçu pour préparer des demandes con
 - Sauvegardes SQLite automatiques, copies avant suppression, téléchargement administrateur et restauration avec copie de sécurité.
 - Import/export JSON pour transférer des projets locaux sans remplacer les projets existants.
 
-Les données initiales sont des exemples. Aucun agent n’est exécuté ni aucune tâche déléguée automatiquement.
+Les données initiales sont des exemples. Une carte n’est confiée à l’agent IA
+que lorsqu’elle passe au statut **Prête à démarrer**, dans un projet dont le
+dépôt GitHub et l’agent sont configurés (voir [Évolutions suivantes](#évolutions-suivantes)).
 
 ## Dicter et reformuler une demande
 

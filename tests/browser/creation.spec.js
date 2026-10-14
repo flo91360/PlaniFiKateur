@@ -30,6 +30,7 @@ for (const mode of ['standalone', 'sandbox-with-storage', 'sandbox-without-stora
 
     await openMenu();
     await expect(app.locator('.sidebar-footer small')).toHaveText(`v${version} · données locales`);
+    await expect(app.locator('.sidebar-tip h3')).toHaveText('Copie hors ligne.');
     await app.getByRole('button', { name: 'Nouveau projet', exact: true }).click();
     await expect(app.getByRole('button', { name: 'Créer le projet', exact: true })).toBeDisabled();
     await app.getByLabel('Nom du projet', { exact: true }).fill('test');
