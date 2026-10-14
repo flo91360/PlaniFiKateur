@@ -909,6 +909,20 @@ export function createWorkflows(
         return save(run, agent, action);
       });
     },
+    // Projet supprimé : son dépôt, ses réglages IA et d’exécution et l’accès des agents disparaissent
+    // avec lui (une restauration de sauvegarde les rétablit).
+    forgetProject(projectId) {
+      for (const table of ['github_projects', 'project_ai', 'project_execution', 'project_worker_status'])
+        db.prepare(`DELETE FROM ${table} WHERE project_id = ?`).run(projectId);
+      for (const agent of db.prepare('SELECT id, projects FROM agents').all()) {
+        const projects = JSON.parse(agent.projects);
+        if (projects.includes(projectId))
+          db.prepare('UPDATE agents SET projects = ? WHERE id = ?').run(
+            JSON.stringify(projects.filter(id => id !== projectId)),
+            agent.id,
+          );
+      }
+    },
     // Supprime les exécutions terminées dont la dernière activité précède `before` (date ISO),
     // avec le lien de leur PR. Renvoie le nombre d’exécutions supprimées.
     purge(before) {

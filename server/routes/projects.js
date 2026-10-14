@@ -122,7 +122,7 @@ export function projectRoutes({ store, config, auth, guards, refiner }) {
       path: '/api/v1/projects/:projectId/members',
       guard: guards.project,
       methods: {
-        GET: ctx => ctx.send(200, { data: store.projectAccess(ctx.params.projectId) }),
+        GET: ctx => ctx.send(200, { data: store.projectAccess(ctx.params.projectId, ctx.user) }),
         async PUT(ctx) {
           ctx.send(200, { data: store.configureProjectAccess(ctx.params.projectId, await ctx.body(), ctx.user) });
         },

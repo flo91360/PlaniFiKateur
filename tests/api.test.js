@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { createStore } from '../server/store.js';
 import { createAppServer } from '../server/index.js';
 import { readConfig } from '../server/config.js';
+import { clientAddress } from '../server/auth.js';
 import { seedAccount, testEmail, testPassword, loginRequest } from './helpers/accounts.mjs';
 
 async function fixture(t, config = {}, filename = ':memory:') {
@@ -242,22 +243,38 @@ test('oversized requests fail with JSON without preventing later reads', async t
   assert.equal((await get('/projects')).status, 200);
 });
 
-test('owner login attempts are rate limited', async t => {
+test('login attempts are rate limited per address and per account', async t => {
   const { base } = await fixture(t, { ownerToken: 'owner-test-key', readToken: 'read-test-key' });
-  for (let i = 0; i < 20; i++) {
-    const response = await fetch(base + '/api/v1/session', {
+  const attempt = (email, headers = {}) =>
+    fetch(base + '/api/v1/session', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: '{"email":"owner@example.test","password":"wrong"}',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify({ email, password: 'wrong' }),
     });
-    assert.equal(response.status, 401);
-  }
-  const response = await fetch(base + '/api/v1/session', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: '{"email":"owner@example.test","password":"wrong"}',
+  // Un même compte : 10 essais par minute, quelle que soit l’adresse.
+  for (let i = 0; i < 10; i++) assert.equal((await attempt('owner@example.test')).status, 401);
+  assert.equal((await attempt('owner@example.test')).status, 429);
+  // Une même adresse : 20 essais par minute, tous comptes confondus.
+  for (let i = 0; i < 9; i++) assert.equal((await attempt(`autre-${i}@example.test`)).status, 401);
+  assert.equal((await attempt('dernier@example.test')).status, 429);
+  // Sans mandataire de confiance, X-Forwarded-For ne permet pas de contourner la limite.
+  assert.equal((await attempt('encore@example.test', { 'X-Forwarded-For': '203.0.113.9' })).status, 429);
+});
+
+test('behind a trusted proxy, each client address has its own login limit', () => {
+  const req = (forwarded, remoteAddress = '10.0.0.1') => ({
+    headers: forwarded ? { 'x-forwarded-for': forwarded } : {},
+    socket: { remoteAddress },
   });
-  assert.equal(response.status, 429);
+  assert.equal(clientAddress(req('198.51.100.7'), 0), '10.0.0.1');
+  assert.equal(clientAddress(req('198.51.100.7'), 1), '198.51.100.7');
+  // Une valeur ajoutée par le client avant le mandataire est ignorée.
+  assert.equal(clientAddress(req('1.2.3.4, 198.51.100.7'), 1), '198.51.100.7');
+  assert.equal(clientAddress(req(''), 1), '10.0.0.1');
+  assert.equal(readConfig({ RAILWAY_ENVIRONMENT_ID: 'x' }).trustProxy, 1);
+  assert.equal(readConfig({}).trustProxy, 0);
+  assert.equal(readConfig({ PLANIFIKATEUR_TRUST_PROXY: '2' }).trustProxy, 2);
+  assert.throws(() => readConfig({ PLANIFIKATEUR_TRUST_PROXY: 'oui' }), /TRUST_PROXY/);
 });
 
 test('public binding requires separate owner and agent keys', () => {

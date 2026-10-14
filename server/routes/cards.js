@@ -12,7 +12,8 @@ export function cardRoutes({ store, guards }) {
         if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isSafeInteger(before) || before < 1)
           throw httpError(400, 'invalid_pagination', 'Pagination invalide.');
         const { projectId, cardId } = ctx.params;
-        const visible = projectId ? null : Object.keys(store.readFor(ctx.user).access);
+        // Historique global : les projets visibles du compte, et tout pour un administrateur.
+        const visible = projectId || ctx.user.role === 'admin' ? null : Object.keys(store.readFor(ctx.user).access);
         const events = store.activity({ projectId, cardId, limit, before, visible });
         ctx.send(200, { data: events, meta: { nextBefore: events.length === limit ? events.at(-1).id : null } });
       },

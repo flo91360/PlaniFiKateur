@@ -17,6 +17,20 @@ import { migrateWorkspace, readWorkspace, writeWorkspace } from './workspace-tab
 import { applyChanges, ChangeError } from '../src/lib/workspace-changes.js';
 import { allows, createAccess, MEMBER_ROLES, requirements, ROLES } from './access.js';
 
+// Un projet, une liste ou une carte présent avant et absent après ?
+export const removesContent = (before, after) => {
+  const ids = projects =>
+    new Set(
+      projects.flatMap(project => [
+        project.id,
+        ...project.lists.map(list => list.id),
+        ...project.cards.map(card => card.id),
+      ]),
+    );
+  const kept = ids(after);
+  return [...ids(before)].some(id => !kept.has(id));
+};
+
 // Actions qui notifient leurs destinataires (recipientIds : participants et abonnés de la carte,
 // sans l’auteur de l’action). Les messages de l’agent sont déjà annoncés par leur action work.*.
 export const NOTIFIED = [
@@ -33,6 +47,14 @@ export const NOTIFIED = [
   'work.reject',
   'work.approve',
   'project.access_changed',
+];
+// Réglages rattachés à un projet, effacés avec lui et rétablis par une restauration.
+export const PROJECT_SETTINGS = [
+  'project_policies',
+  'project_members',
+  'github_projects',
+  'project_ai',
+  'project_execution',
 ];
 const NOTIFIED_SQL = `action IN (${NOTIFIED.map(action => `'${action}'`).join(',')}) AND NOT (action = 'comment.created' AND json_extract(payload, '$.executionId') IS NOT NULL)`;
 
@@ -224,8 +246,168 @@ export function createStore(filename, { backupDirectory } = {}) {
         access.adopt(project.id, creator ? userById(creator) : null);
       }
   });
+  // Projet supprimé : droits, dépôt, réglages et accès des agents sont effacés, et son
+  // identifiant reste réservé.
+  const forgetProject = projectId => {
+    access.forgetProject(projectId);
+    workflows.forgetProject(projectId);
+    access.bury(projectId);
+  };
+  // Restauration : chaque projet revient avec les réglages qu’il avait dans la sauvegarde (droits,
+  // validation, dépôt, IA, exécution) et l’accès des agents qui existent encore.
+  const restoreProjectSettings = (projectId, { tables = {}, agents = [] }) => {
+    for (const [table, rows] of Object.entries(tables)) {
+      if (!PROJECT_SETTINGS.includes(table)) continue;
+      const columns = new Set(
+        db
+          .prepare(`PRAGMA table_info(${table})`)
+          .all()
+          .map(column => column.name),
+      );
+      db.prepare(`DELETE FROM ${table} WHERE project_id = ?`).run(projectId);
+      for (const row of rows.filter(row => row.project_id === projectId)) {
+        const names = Object.keys(row).filter(name => columns.has(name));
+        db.prepare(`INSERT INTO ${table}(${names.join(',')}) VALUES (${names.map(() => '?').join(',')})`).run(
+          ...names.map(name => row[name]),
+        );
+      }
+    }
+    for (const saved of agents) {
+      const current = db.prepare('SELECT projects FROM agents WHERE id = ? AND active = 1').get(saved.id);
+      if (!current || !saved.projects.includes(projectId)) continue;
+      const projects = JSON.parse(current.projects);
+      if (!projects.includes(projectId))
+        db.prepare('UPDATE agents SET projects = ? WHERE id = ?').run(
+          JSON.stringify([...projects, projectId]),
+          saved.id,
+        );
+    }
+  };
+  // Projets supprimés avant la 0.1.31 : leurs réglages restaient en place. Ils sont effacés, et
+  // les identifiants de projets supprimés d’après l’historique sont réservés.
+  transaction(() => {
+    const current = new Set(readProjects().map(project => project.id));
+    const leftovers = new Set(
+      [
+        ...PROJECT_SETTINGS.flatMap(table =>
+          db
+            .prepare(`SELECT DISTINCT project_id FROM ${table}`)
+            .all()
+            .map(row => row.project_id),
+        ),
+        ...db
+          .prepare(
+            "SELECT DISTINCT project_id FROM activity WHERE action = 'project.deleted' AND project_id IS NOT NULL",
+          )
+          .all()
+          .map(row => row.project_id),
+        ...db
+          .prepare('SELECT projects FROM agents')
+          .all()
+          .flatMap(row => JSON.parse(row.projects)),
+      ].filter(id => !current.has(id)),
+    );
+    for (const projectId of leftovers) forgetProject(projectId);
+  });
+  // Champs que seul le serveur renseigne (cartes Infos : téléchargement, README, changelog).
+  const withoutSystemFields = card => {
+    if (!card || typeof card !== 'object') return card;
+    const { downloads, readme, changelog, ...rest } = card;
+    return rest;
+  };
+  const sanitize = change => {
+    if (change?.type === 'card.create') return { ...change, card: withoutSystemFields(change.card) };
+    if (change?.type === 'project.create' && Array.isArray(change.project?.cards))
+      return { ...change, project: { ...change.project, cards: change.project.cards.map(withoutSystemFields) } };
+    return change;
+  };
+  // Contrôle des droits puis application d’un lot de modifications sur `before`.
+  const planChanges = (before, changes, actor, strict) => {
+    if (!Array.isArray(changes)) fail(400, 'invalid_change', 'Une liste de modifications est requise.');
+    // Droits par projet : un projet masqué se comporte comme un projet inexistant ; un rôle
+    // insuffisant sur un projet visible refuse tout le lot.
+    const roles = access.map(
+      actor,
+      before.projects.map(project => project.id),
+    );
+    const projects = new Map(before.projects.map(project => [project.id, project]));
+    const cardOf = (projectId, cardId) => projects.get(projectId)?.cards.find(card => card.id === cardId);
+    const lookup = { cardStatus: (projectId, cardId) => cardOf(projectId, cardId)?.status ?? null };
+    const allowed = [],
+      hidden = [];
+    changes = changes.map(sanitize);
+    changes.forEach((change, index) => {
+      if (change?.type === 'project.create' && access.isDeleted(change.project?.id))
+        fail(
+          409,
+          'project_deleted',
+          'Cet identifiant appartient à un projet supprimé : seul un administrateur peut le restaurer depuis une sauvegarde.',
+        );
+      const needs = requirements(change, lookup);
+      if (needs.some(([projectId]) => projects.has(projectId) && !roles[projectId]))
+        return hidden.push({ index, type: change?.type, reason: 'missing' });
+      const refused = needs.find(([projectId, role]) => projects.has(projectId) && !allows(roles[projectId], role));
+      if (refused)
+        fail(
+          403,
+          'project_forbidden',
+          refused[1] === 'manager'
+            ? 'Seuls les responsables du projet peuvent confier une carte à l’agent, modifier une carte qui l’attend ou gérer le projet.'
+            : 'Votre rôle sur ce projet ne permet que la lecture.',
+        );
+      // Un commentaire n’est modifié que par son auteur ; un responsable peut aussi le supprimer.
+      if (change?.type === 'comment.update' || change?.type === 'comment.delete') {
+        const comment = cardOf(change.projectId, change.cardId)?.comments.find(item => item.id === change.commentId);
+        const author = !!comment?.authorId && comment.authorId === actor?.id;
+        if (comment && !author && (change.type === 'comment.update' || !allows(roles[change.projectId], 'manager')))
+          fail(
+            403,
+            'comment_forbidden',
+            change.type === 'comment.update'
+              ? 'Seul l’auteur d’un commentaire peut le modifier.'
+              : 'Seuls l’auteur d’un commentaire et les responsables du projet peuvent le supprimer.',
+          );
+      }
+      // L’ordre des projets est commun : chacun ne range que les projets qu’il peut modifier.
+      if (change?.type === 'project.order' && Array.isArray(change.projectIds))
+        changes[index] = {
+          ...change,
+          projectIds: change.projectIds.filter(id => allows(roles[id], 'editor')),
+        };
+      allowed.push(index);
+    });
+    let result;
+    try {
+      result = applyChanges(
+        before.projects,
+        allowed.map(index => changes[index]),
+      );
+    } catch (error) {
+      if (error instanceof ChangeError) fail(400, 'invalid_change', error.message);
+      throw error;
+    }
+    const skipped = [...hidden, ...result.skipped.map(item => ({ ...item, index: allowed[item.index] }))].sort(
+      (a, b) => a.index - b.index,
+    );
+    const first = strict && skipped[0];
+    if (first)
+      fail(
+        first.reason === 'missing' ? 404 : 409,
+        `change_${first.reason}`,
+        first.reason === 'missing'
+          ? 'Élément inexistant : il a peut-être été supprimé.'
+          : first.reason === 'exists'
+            ? 'Cet identifiant est déjà utilisé.'
+            : 'Déplacez ou supprimez d’abord les cartes de cette liste.',
+      );
+    try {
+      return { clean: validateWorkspace(result.projects), skipped };
+    } catch (error) {
+      fail(400, 'invalid_workspace', error.message);
+    }
+  };
   // Enregistre un nouvel état validé : exécutions IA, auteurs et dates, historique, abonnements.
-  const commit = (before, clean, actor, { restore = false } = {}) => {
+  const commit = (before, clean, actor, { restore = false, settings = null } = {}) => {
     const date = new Date().toISOString();
     workflows.reconcile(before.projects, clean, actor, restore);
     const events = restore
@@ -233,7 +415,12 @@ export function createStore(filename, { backupDirectory } = {}) {
       : attributeChanges(validateWorkspace(before.projects), clean, actor, date);
     writeProjects(clean, date);
     const kept = new Set(clean.map(project => project.id));
-    for (const project of before.projects) if (!kept.has(project.id)) access.forgetProject(project.id);
+    for (const project of before.projects) if (!kept.has(project.id)) forgetProject(project.id);
+    if (restore)
+      for (const project of clean) {
+        access.revive(project.id);
+        if (settings) restoreProjectSettings(project.id, settings);
+      }
     for (const project of clean) if (!access.hasPolicy(project.id)) access.adopt(project.id, actor);
     const activeIds = activeUserIds();
     for (const event of events) {
@@ -501,20 +688,26 @@ export function createStore(filename, { backupDirectory } = {}) {
       return current;
     },
     // Membres d’un projet : règle pour les autres membres et rôle effectif de chaque compte actif.
-    projectAccess(projectId) {
+    // Sans `viewer` (ou pour un responsable) : tous les comptes actifs, pour gérer les membres ;
+    // les autres rôles ne voient que les comptes qui ont accès au projet.
+    projectAccess(projectId, viewer = null) {
       const explicit = access.explicit(projectId);
+      const manages = !viewer || allows(access.role(viewer, projectId), 'manager');
+      const members = db
+        .prepare('SELECT * FROM users WHERE active = 1 AND password_hash IS NOT NULL ORDER BY name,id')
+        .all()
+        .map(user => ({
+          id: user.id,
+          name: user.name,
+          admin: user.role === 'admin',
+          role: access.role(publicUser(user), projectId),
+          explicit: user.role === 'admin' ? null : explicit[user.id] || null,
+        }));
       return {
         memberRole: access.policy(projectId),
-        members: db
-          .prepare('SELECT * FROM users WHERE active = 1 AND password_hash IS NOT NULL ORDER BY name,id')
-          .all()
-          .map(user => ({
-            id: user.id,
-            name: user.name,
-            admin: user.role === 'admin',
-            role: access.role(publicUser(user), projectId),
-            explicit: user.role === 'admin' ? null : explicit[user.id] || null,
-          })),
+        members: manages
+          ? members
+          : members.filter(member => member.role).map(member => ({ ...member, explicit: null })),
       };
     },
     configureProjectAccess(projectId, data, actor) {
@@ -552,11 +745,20 @@ export function createStore(filename, { backupDirectory } = {}) {
       });
     },
     // Remplace tout le tableau, à condition que la session ait lu la révision courante.
-    write(projects, revision, actor = null, { restore = false } = {}) {
+    // Une restauration (`restore`) peut ramener des projets supprimés, avec leurs réglages (`settings`).
+    write(projects, revision, actor = null, { restore = false, settings = null } = {}) {
       return transaction(() => {
         const before = this.read();
         if (before.revision !== revision) return null;
-        commit(before, validateWorkspace(projects), actor, { restore });
+        const clean = validateWorkspace(projects);
+        const existing = new Set(before.projects.map(project => project.id));
+        if (!restore && clean.some(project => !existing.has(project.id) && access.isDeleted(project.id)))
+          fail(
+            409,
+            'project_deleted',
+            'Le tableau contient un projet supprimé : restaurez-le depuis une sauvegarde plutôt que de le recréer.',
+          );
+        commit(before, clean, actor, { restore, settings });
         return this.read();
       });
     },
@@ -566,65 +768,18 @@ export function createStore(filename, { backupDirectory } = {}) {
     change(changes, actor, { strict = false } = {}) {
       return transaction(() => {
         const before = this.read();
-        if (!Array.isArray(changes)) fail(400, 'invalid_change', 'Une liste de modifications est requise.');
-        // Droits par projet : un projet masqué se comporte comme un projet inexistant ; un rôle
-        // insuffisant sur un projet visible refuse tout le lot.
-        const roles = access.map(
-          actor,
-          before.projects.map(project => project.id),
-        );
-        const existing = new Set(before.projects.map(project => project.id));
-        const allowed = [],
-          hidden = [];
-        changes.forEach((change, index) => {
-          const needs = requirements(change);
-          if (needs.some(([projectId]) => existing.has(projectId) && !roles[projectId]))
-            return hidden.push({ index, type: change?.type, reason: 'missing' });
-          const refused = needs.find(([projectId, role]) => existing.has(projectId) && !allows(roles[projectId], role));
-          if (refused)
-            fail(
-              403,
-              'project_forbidden',
-              refused[1] === 'manager'
-                ? 'Seuls les responsables du projet peuvent confier une carte à l’agent ou gérer le projet.'
-                : 'Votre rôle sur ce projet ne permet que la lecture.',
-            );
-          allowed.push(index);
-        });
-        let result;
-        try {
-          result = applyChanges(
-            before.projects,
-            allowed.map(index => changes[index]),
-          );
-        } catch (error) {
-          if (error instanceof ChangeError) fail(400, 'invalid_change', error.message);
-          throw error;
-        }
-        result.skipped = [...hidden, ...result.skipped.map(item => ({ ...item, index: allowed[item.index] }))].sort(
-          (a, b) => a.index - b.index,
-        );
-        const refused = strict && result.skipped[0];
-        if (refused)
-          fail(
-            refused.reason === 'missing' ? 404 : 409,
-            `change_${refused.reason}`,
-            refused.reason === 'missing'
-              ? 'Élément inexistant : il a peut-être été supprimé.'
-              : refused.reason === 'exists'
-                ? 'Cet identifiant est déjà utilisé.'
-                : 'Déplacez ou supprimez d’abord les cartes de cette liste.',
-          );
-        let clean;
-        try {
-          clean = validateWorkspace(result.projects);
-        } catch (error) {
-          fail(400, 'invalid_workspace', error.message);
-        }
+        const { clean, skipped } = planChanges(before, changes, actor, strict);
         // Rien à enregistrer (modifications ignorées ou déjà appliquées) : la révision ne bouge pas.
         if (JSON.stringify(clean) !== JSON.stringify(before.projects)) commit(before, clean, actor);
-        return { ...this.readFor(actor), skipped: result.skipped };
+        return { ...this.readFor(actor), skipped };
       });
+    },
+    // Vérifie des modifications sans les enregistrer (mêmes refus que `change`) et indique si
+    // elles suppriment un élément : la sauvegarde de sécurité n’est faite qu’à cette condition.
+    previewChanges(changes, actor, { strict = false } = {}) {
+      const before = this.read();
+      const { clean } = planChanges(before, changes, actor, strict);
+      return { removes: removesContent(before.projects, clean) };
     },
     hasUsers() {
       return !!db.prepare('SELECT 1 FROM users LIMIT 1').get();
@@ -805,11 +960,12 @@ export function createStore(filename, { backupDirectory } = {}) {
       emit({ type: 'notifications', userIds: [user.id] });
       return this.notifications(user, { limit: 0 });
     },
-    // `visible` limite l’historique global aux projets d’un compte (les actions sans projet restent).
+    // `visible` limite l’historique global aux projets d’un compte ; les actions sans projet
+    // (comptes, agents) ne sont montrées qu’aux administrateurs (`visible` absent).
     activity({ projectId, cardId, before = Number.MAX_SAFE_INTEGER, limit = 50, visible = null } = {}) {
       const rows = db
         .prepare(
-          'SELECT * FROM activity WHERE id < ? AND (? IS NULL OR project_id = ?) AND (? IS NULL OR card_id = ?) AND (? IS NULL OR project_id IS NULL OR project_id IN (SELECT value FROM json_each(?))) ORDER BY id DESC LIMIT ?',
+          'SELECT * FROM activity WHERE id < ? AND (? IS NULL OR project_id = ?) AND (? IS NULL OR card_id = ?) AND (? IS NULL OR project_id IN (SELECT value FROM json_each(?))) ORDER BY id DESC LIMIT ?',
         )
         .all(
           before,

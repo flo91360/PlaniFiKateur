@@ -1,17 +1,7 @@
 import { createReadStream } from 'node:fs';
 import { validateWorkspace } from '../../src/lib/workspace.js';
 import { httpError } from '../http.js';
-
-// Une écriture qui retire un projet, une liste ou une carte est précédée d’une sauvegarde.
-const removesContent = (before, after) =>
-  before.some(p => {
-    const next = after.find(project => project.id === p.id);
-    return (
-      !next ||
-      p.cards.some(c => !next.cards.some(card => card.id === c.id)) ||
-      p.lists.some(l => !next.lists.some(list => list.id === l.id))
-    );
-  });
+import { removesContent } from '../store.js';
 
 // Tableau complet de l’interface (lecture conditionnelle, écriture par révision) et sauvegardes.
 export function workspaceRoutes({ store, config, auth, guards }) {
@@ -55,7 +45,7 @@ export function workspaceRoutes({ store, config, auth, guards }) {
           }
           if (config.backups && store.getRevision() === revision && removesContent(store.read().projects, clean)) {
             try {
-              config.backups.create();
+              config.backups.create({ kind: 'deletion' });
             } catch {
               throw httpError(
                 503,

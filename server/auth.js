@@ -17,7 +17,17 @@ function createLimiter(max, code, message) {
 }
 
 // Sessions personnelles (cookie HttpOnly), clés d’agent et clé de lecture.
-export function createAuth(store, { ownerToken = '', readToken = '', secureCookie = false } = {}) {
+// Adresse du client. Derrière `trustProxy` mandataires (Railway : 1), l’adresse ajoutée par le
+// dernier mandataire de confiance dans X-Forwarded-For ; sinon celle de la connexion.
+export function clientAddress(req, trustProxy = 0) {
+  const forwarded = String(req.headers['x-forwarded-for'] || '')
+    .split(',')
+    .map(entry => entry.trim())
+    .filter(Boolean);
+  return (trustProxy > 0 && forwarded.at(-trustProxy)) || req.socket?.remoteAddress || '';
+}
+
+export function createAuth(store, { ownerToken = '', readToken = '', secureCookie = false, trustProxy = 0 } = {}) {
   const cookie = (token, maxAge) =>
     `planifikateur_session=${token}; HttpOnly; SameSite=Strict; Path=/api; Max-Age=${maxAge}${secureCookie ? '; Secure' : ''}`;
   const sameOrigin = req => {
@@ -41,6 +51,12 @@ export function createAuth(store, { ownerToken = '', readToken = '', secureCooki
     return user;
   };
   const loginLimit = createLimiter(20, 'too_many_attempts', 'Trop de tentatives. Réessayez dans une minute.');
+  // Un même compte visé depuis plusieurs adresses reste limité.
+  const accountLimit = createLimiter(
+    10,
+    'too_many_attempts',
+    'Trop de tentatives pour ce compte. Réessayez dans une minute.',
+  );
   return {
     ownerToken,
     cookie,
@@ -73,7 +89,10 @@ export function createAuth(store, { ownerToken = '', readToken = '', secureCooki
         throw httpError(401, 'unauthorized', 'Une clé de lecture Bearer est requise.');
       return agent;
     },
-    loginLimit: req => loginLimit(req.socket.remoteAddress),
+    loginLimit(req, email = '') {
+      loginLimit(clientAddress(req, trustProxy));
+      if (email) accountLimit(email);
+    },
     // Chaque reformulation consomme le quota de l’abonnement Claude : limite par compte.
     refineLimit: createLimiter(
       10,

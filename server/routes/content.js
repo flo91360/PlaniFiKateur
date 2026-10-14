@@ -3,7 +3,6 @@ import { createId } from '../../src/lib/id.js';
 import { withInfos } from '../../src/lib/infos.js';
 import { CARD_FIELDS, LIST_FIELDS, PROJECT_FIELDS } from '../../src/lib/workspace-changes.js';
 
-// Une modification qui retire un projet, une liste ou une carte est précédée d’une sauvegarde.
 const REMOVALS = ['project.delete', 'list.delete', 'card.delete'];
 const DEFAULT_LISTS = [
   { name: 'Améliorations', color: 'green' },
@@ -23,10 +22,17 @@ const only = (body, allowed) => {
 // modifications par lot (PATCH /api/v1/workspace) ; les routes par élément servent aux
 // intégrations. Toutes s’appliquent sur l’état courant, sans révision à fournir.
 export function contentRoutes({ store, config, guards }) {
+  // Une modification qui retire réellement un projet, une liste ou une carte est précédée d’une
+  // sauvegarde, une fois les droits vérifiés : un compte sans droit n’en déclenche aucune.
   const apply = (ctx, changes, options) => {
-    if (config.backups && changes.some(change => REMOVALS.includes(change?.type)))
+    if (
+      config.backups &&
+      Array.isArray(changes) &&
+      changes.some(change => REMOVALS.includes(change?.type)) &&
+      store.previewChanges(changes, ctx.user, options).removes
+    )
       try {
-        config.backups.create();
+        config.backups.create({ kind: 'deletion' });
       } catch {
         throw httpError(
           503,
