@@ -72,7 +72,7 @@ Les réponses sont `{ "data": …, "meta": … }`. Une carte inclut `projectId`,
 
 Les erreurs renvoient `{ "error": { "code": "…", "message": "…" } }`, avec 400 pour un paramètre invalide, 401 pour un accès non autorisé et 404 pour une ressource absente. Les modifications de cartes via la clé agent sont refusées.
 
-La spécification **OpenAPI 3.1** est servie à `/openapi.json` et conservée dans `public/openapi.json`.
+La spécification **OpenAPI 3.1** est servie à `/openapi.json` et conservée dans `public/openapi.json`. Elle décrit toutes les routes servies, y compris celles réservées à l’interface (session, comptes, `workspace`, historique, sauvegardes, paramètres du projet, suivi des cartes) et au worker. `tests/openapi.test.js` échoue si une route servie par `server/api.js` n’y figure pas : toute nouvelle route doit être ajoutée à la spécification et à la liste de ce test.
 
 ## Synchronisation de l’interface
 
