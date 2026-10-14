@@ -155,8 +155,8 @@ contenu. Les préférences sont incluses dans les sauvegardes SQLite ; la
 restauration du contenu conserve les préférences actuelles des cartes encore
 présentes et retire celles des cartes supprimées.
 
-L’envoi de notifications reste une prochaine étape : cette version mémorise les
-abonnements et prépare les destinataires, sans envoyer d’e-mail ni d’alerte.
+Depuis la v0.1.28, les abonnés reçoivent les notifications de la carte dans le site
+(voir [Notifications](#notifications--v0128)) ; aucun e-mail n’est envoyé.
 
 ## Supprimer un compte — v0.1.10
 
