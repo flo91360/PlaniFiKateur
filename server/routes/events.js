@@ -1,0 +1,51 @@
+import { httpError } from '../http.js';
+
+const MAX_STREAMS = 200;
+const HEARTBEAT_MS = 25000;
+
+// Flux d’événements du serveur (Server-Sent Events) pour l’interface : il annonce les changements
+// du tableau, des exécutions IA et des abonnements, qui sont ensuite relus par les routes
+// habituelles. Les événements ne contiennent que des identifiants, une révision et un état.
+export function eventRoutes({ store, config, auth, guards, streams }) {
+  const heartbeatMs = config.eventHeartbeatMs || HEARTBEAT_MS;
+  return [
+    {
+      path: '/api/v1/events',
+      guard: guards.account,
+      methods: {
+        GET(ctx) {
+          if (streams.size >= MAX_STREAMS)
+            throw httpError(503, 'too_many_streams', 'Trop de connexions ouvertes. Réessayez plus tard.');
+          const { req, res } = ctx;
+          res.writeHead(200, {
+            'Content-Type': 'text/event-stream; charset=utf-8',
+            'Cache-Control': 'no-store, no-transform',
+            'X-Accel-Buffering': 'no',
+            Connection: 'keep-alive',
+          });
+          const send = (type, data) => res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
+          // Reconnexion automatique du navigateur après 5 s ; l’événement ready donne la révision.
+          res.write('retry: 5000\n\n');
+          send('ready', { revision: store.getRevision() });
+          const unsubscribe = store.subscribe(({ type, ...data }) => send(type, data));
+          // Commentaire périodique : garde la connexion ouverte à travers les proxys et vérifie
+          // que la session est toujours valide (déconnexion, compte désactivé).
+          const heartbeat = setInterval(() => {
+            if (!auth.currentUser(req)) close();
+            else res.write(': ping\n\n');
+          }, heartbeatMs);
+          heartbeat.unref();
+          const stream = { close: () => close() };
+          const close = () => {
+            clearInterval(heartbeat);
+            unsubscribe();
+            streams.delete(stream);
+            if (!res.writableEnded) res.end();
+          };
+          streams.add(stream);
+          req.on('close', close);
+        },
+      },
+    },
+  ];
+}

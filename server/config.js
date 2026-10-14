@@ -28,6 +28,14 @@ export function readConfig(env = process.env) {
   config.backupDirectory = resolve(env.PLANIFIKATEUR_BACKUP_DIR || join(dirname(config.database), 'backups'));
   config.backupIntervalMs = Number(env.PLANIFIKATEUR_BACKUP_INTERVAL_HOURS || 6) * 3600000;
   config.backupKeep = Number(env.PLANIFIKATEUR_BACKUP_KEEP || 28);
+  config.activityRetentionDays = Number(env.PLANIFIKATEUR_ACTIVITY_RETENTION_DAYS ?? 365);
+  config.executionRetentionDays = Number(env.PLANIFIKATEUR_EXECUTION_RETENTION_DAYS ?? 365);
+  for (const [name, value] of [
+    ['PLANIFIKATEUR_ACTIVITY_RETENTION_DAYS', config.activityRetentionDays],
+    ['PLANIFIKATEUR_EXECUTION_RETENTION_DAYS', config.executionRetentionDays],
+  ])
+    if (!Number.isInteger(value) || value < 0 || value > 3650)
+      throw new Error(`${name} invalide (0 pour tout conserver, sinon 1 à 3650 jours).`);
   if (
     !Number.isFinite(config.backupIntervalMs) ||
     config.backupIntervalMs < 3600000 ||

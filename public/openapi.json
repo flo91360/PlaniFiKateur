@@ -6321,6 +6321,59 @@
           }
         }
       }
+    },
+    "/api/v1/events": {
+      "get": {
+        "summary": "Interface : flux d’événements en temps réel",
+        "description": "Server-Sent Events. Événements : ready { revision } à la connexion, workspace { revision } après chaque enregistrement du tableau, work { projectId, cardId, executionId, state } après chaque étape d’une exécution IA, subscriptions { projectId, cardId } après un changement de suivi. Ils annoncent seulement un changement validé ; les données se relisent par les routes habituelles. Un commentaire est envoyé toutes les 25 secondes et le flux se ferme quand la session n’est plus valide.",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Flux ouvert.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session requise.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origine de la requête non autorisée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Trop de flux ouverts (too_many_streams).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {

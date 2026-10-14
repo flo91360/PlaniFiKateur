@@ -46,13 +46,37 @@ export function createStore(filename, { backupDirectory } = {}) {
       db.prepare('VACUUM INTO ?').run(join(directory, name));
     },
   });
+  // Événements diffusés aux navigateurs (flux /api/v1/events). Pendant une transaction, ils
+  // attendent sa validation : une écriture annulée n’est jamais annoncée. Un même événement
+  // (même type et même cible) n’est envoyé qu’une fois par transaction.
+  const listeners = new Set();
+  let queued = null;
+  const deliver = events => {
+    for (const event of events)
+      for (const listener of listeners)
+        try {
+          listener(event);
+        } catch {
+          /* Un flux fermé ne doit pas empêcher les autres de recevoir l’événement. */
+        }
+  };
+  const emit = event => {
+    if (!queued) return deliver([event]);
+    const key = JSON.stringify([event.type, event.projectId, event.cardId, event.executionId]);
+    queued.set(key, event);
+  };
   const transaction = fn => {
     db.exec('BEGIN IMMEDIATE');
+    queued = new Map();
     try {
       const result = fn();
       db.exec('COMMIT');
+      const events = [...queued.values()];
+      queued = null;
+      deliver(events);
       return result;
     } catch (error) {
+      queued = null;
       db.exec('ROLLBACK');
       throw error;
     }
@@ -62,7 +86,9 @@ export function createStore(filename, { backupDirectory } = {}) {
   // suivante de la même transaction s’en charge) : les navigateurs actualisent leur tableau.
   const writeProjects = (projects, date = new Date().toISOString(), { revision = true } = {}) => {
     writeWorkspace(db, projects);
-    if (revision) db.prepare('UPDATE workspace SET revision = revision + 1, updated_at = ? WHERE id = 1').run(date);
+    if (!revision) return;
+    db.prepare('UPDATE workspace SET revision = revision + 1, updated_at = ? WHERE id = 1').run(date);
+    emit({ type: 'workspace', revision: db.prepare('SELECT revision FROM workspace WHERE id = 1').get().revision });
   };
   const synchronizeInfos = () => {
     const previous = readProjects();
@@ -116,7 +142,15 @@ export function createStore(filename, { backupDirectory } = {}) {
       activeIds: activeUserIds(),
       actorId: actor?.id,
     });
-  const workflows = createWorkflows(db, { transaction, audit, findCard, readProjects, writeProjects, recipients });
+  const workflows = createWorkflows(db, {
+    transaction,
+    audit,
+    findCard,
+    readProjects,
+    writeProjects,
+    recipients,
+    emit,
+  });
   const versionFor = projectId => {
     const repository = workflows.githubProject(projectId);
     if (!repository) return { tag: 'Aucun tag disponible', date: '' };
@@ -160,6 +194,11 @@ export function createStore(filename, { backupDirectory } = {}) {
   };
   return {
     workflows,
+    // Abonnement aux événements validés ; renvoie la fonction de désabonnement.
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
     recordDriveRelease(repository, data) {
       return transaction(() => {
         repository = repository.toLowerCase();
@@ -300,11 +339,15 @@ export function createStore(filename, { backupDirectory } = {}) {
       const project = this.read().projects.find(project => project.id === projectId);
       if (!project) fail(404, 'project_not_found', 'Projet inexistant.');
       const members = activeMembers();
+      // Une seule lecture des préférences pour toutes les cartes du projet.
+      const prefsByCard = new Map(project.cards.map(card => [card.id, []]));
+      for (const row of db.prepare('SELECT card_id,user_id,following FROM card_subscriptions').all())
+        prefsByCard.get(row.card_id)?.push(row);
       return Object.fromEntries(
-        project.cards.map(card => {
-          const prefs = preferences(card.id);
-          return [card.id, members.filter(member => following(card, member.id, prefs))];
-        }),
+        project.cards.map(card => [
+          card.id,
+          members.filter(member => following(card, member.id, prefsByCard.get(card.id))),
+        ]),
       );
     },
     setSubscription(projectId, cardId, actor, enabled, userId = actor.id) {
@@ -318,6 +361,7 @@ export function createStore(filename, { backupDirectory } = {}) {
           db.prepare(
             'INSERT INTO card_subscriptions VALUES(?,?,?) ON CONFLICT(card_id,user_id) DO UPDATE SET following = excluded.following',
           ).run(cardId, userId, enabled ? 1 : 0);
+          emit({ type: 'subscriptions', projectId, cardId });
           audit(actor, userId !== actor.id ? 'card.subscriber_added' : enabled ? 'card.followed' : 'card.unfollowed', {
             projectId,
             projectName: project.name,
@@ -330,6 +374,16 @@ export function createStore(filename, { backupDirectory } = {}) {
         }
         return { following: enabled };
       });
+    },
+    // Rétention : supprime l’historique et les exécutions terminées plus anciens que le nombre
+    // de jours indiqué (0 : tout conserver). Les cartes et leurs commentaires ne sont jamais touchés.
+    purge({ activityDays = 0, executionDays = 0, now = Date.now() } = {}) {
+      const cutoff = days => new Date(now - days * 86400000).toISOString();
+      return transaction(() => ({
+        activity:
+          activityDays > 0 ? db.prepare('DELETE FROM activity WHERE date < ?').run(cutoff(activityDays)).changes : 0,
+        executions: executionDays > 0 ? workflows.purge(cutoff(executionDays)) : 0,
+      }));
     },
     backupVersion() {
       return `${this.getRevision()}:${db.prepare('SELECT COALESCE(MAX(id),0) AS id FROM activity').get().id}`;

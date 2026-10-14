@@ -14,6 +14,7 @@ import { apiData } from './lib/api-client.js';
 import { useWorkspace, offlineMode, exportWorkspace } from './lib/use-workspace.js';
 import { useCardFollowers } from './lib/use-card-followers.js';
 import { useAttention } from './lib/use-attention.js';
+import { useServerEvents } from './lib/use-server-events.js';
 import ConnectionScreen from './components/AccountScreen.jsx';
 import AccountsPanel from './components/AccountsPanel.jsx';
 import ActivityPanel from './components/ActivityPanel.jsx';
@@ -123,6 +124,7 @@ function App() {
   });
   const [projectAi, setProjectAi] = useProjectAi(project?.id, ready);
   const attention = useAttention({ enabled: !offlineMode && ready && !needsLogin, projects });
+  useServerEvents(!offlineMode && ready && !needsLogin);
 
   const updateProject = transform =>
     setProjects(ps => {

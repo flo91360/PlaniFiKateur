@@ -6,6 +6,7 @@ import { createApi } from './api.js';
 import { createStore } from './store.js';
 import { readConfig } from './config.js';
 import { createBackups } from './backups.js';
+import { createRetention } from './retention.js';
 import { createVersionSync } from './project-versions.js';
 import { createDriveArchive, readDriveConfig } from './drive-archive.js';
 import { createRepositoryContext } from './repository-context.js';
@@ -22,7 +23,7 @@ const mime = {
 
 export function createAppServer({ store, config = {}, dist = resolve('dist') }) {
   const api = createApi(store, config);
-  return createServer(async (req, res) => {
+  const server = createServer(async (req, res) => {
     if (await api(req, res)) return;
     if (!['GET', 'HEAD'].includes(req.method)) {
       res.writeHead(405);
@@ -70,6 +71,13 @@ export function createAppServer({ store, config = {}, dist = resolve('dist') }) 
       .on('error', () => res.destroy())
       .pipe(res);
   });
+  // Les flux d’événements restent ouverts indéfiniment : les fermer pour que l’arrêt aboutisse.
+  const close = server.close.bind(server);
+  server.close = callback => {
+    api.close();
+    return close(callback);
+  };
+  return server;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
@@ -87,6 +95,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     intervalMs: config.backupIntervalMs,
     keep: config.backupKeep,
   });
+  const retention = createRetention(store, {
+    activityDays: config.activityRetentionDays,
+    executionDays: config.executionRetentionDays,
+  });
   const server = createAppServer({ store, config });
   server.listen(config.port, config.host, () =>
     console.log(`PlaniFiKateur : serveur actif sur ${config.host}:${server.address().port}`),
@@ -96,6 +108,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       config.versions.close();
       config.driveArchive.close();
       config.backups.close();
+      retention.close();
       store.close();
       process.exit(0);
     });

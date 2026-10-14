@@ -5,6 +5,7 @@ import { createApi } from './server/api.js';
 import { createStore } from './server/store.js';
 import { readConfig } from './server/config.js';
 import { createBackups } from './server/backups.js';
+import { createRetention } from './server/retention.js';
 import { createVersionSync } from './server/project-versions.js';
 import { createRepositoryContext } from './server/repository-context.js';
 
@@ -36,10 +37,22 @@ export default defineConfig({
           intervalMs: config.backupIntervalMs,
           keep: config.backupKeep,
         });
-        server.middlewares.use(createApi(store, config));
+        const retention = createRetention(store, {
+          activityDays: config.activityRetentionDays,
+          executionDays: config.executionRetentionDays,
+        });
+        const api = createApi(store, config);
+        server.middlewares.use(api);
+        // Les flux d’événements restent ouverts : les fermer avant l’arrêt du serveur de développement.
+        const close = server.close.bind(server);
+        server.close = async () => {
+          api.close();
+          return close();
+        };
         server.httpServer?.once('close', () => {
           config.versions.close();
           config.backups.close();
+          retention.close();
           store.close();
         });
       },

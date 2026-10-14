@@ -23,7 +23,10 @@ const source = card =>
   ]);
 export const LEASE_MS = 5 * 60000;
 
-export function createWorkflows(db, { transaction, audit, findCard, readProjects, writeProjects, recipients }) {
+export function createWorkflows(
+  db,
+  { transaction, audit, findCard, readProjects, writeProjects, recipients, emit = () => {} },
+) {
   db.exec(`CREATE TABLE IF NOT EXISTS project_worker_status (project_id TEXT NOT NULL, agent_id TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(project_id,agent_id));
     CREATE TABLE IF NOT EXISTS project_execution (project_id TEXT PRIMARY KEY, data TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS project_ai (project_id TEXT PRIMARY KEY, data TEXT NOT NULL);
@@ -31,14 +34,29 @@ export function createWorkflows(db, { transaction, audit, findCard, readProjects
     CREATE TABLE IF NOT EXISTS github_pr_bindings (repository TEXT NOT NULL, number INTEGER NOT NULL, execution_id TEXT NOT NULL, PRIMARY KEY(repository,number));
     CREATE TABLE IF NOT EXISTS agents (id TEXT PRIMARY KEY, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, projects TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1);
     CREATE TABLE IF NOT EXISTS executions (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, card_id TEXT NOT NULL, state TEXT NOT NULL, version INTEGER NOT NULL, lease_hash TEXT, lease_expires INTEGER, data TEXT NOT NULL);
-    CREATE UNIQUE INDEX IF NOT EXISTS execution_active_card ON executions(card_id) WHERE state NOT IN ('done','cancelled');`);
+    CREATE UNIQUE INDEX IF NOT EXISTS execution_active_card ON executions(card_id) WHERE state NOT IN ('done','cancelled');
+    CREATE INDEX IF NOT EXISTS executions_state ON executions(state);
+    CREATE INDEX IF NOT EXISTS executions_card ON executions(project_id, card_id);`);
   const publicAgent = row => ({
     id: row.id,
     name: row.name,
     projectIds: JSON.parse(row.projects),
     active: !!row.active,
   });
-  const rows = () => db.prepare('SELECT * FROM executions ORDER BY rowid DESC').all();
+  // Exécutions filtrées par SQL (indexées par état et par carte), les plus récentes d’abord.
+  const rows = (where = '1', ...params) =>
+    db.prepare(`SELECT * FROM executions WHERE ${where} ORDER BY rowid DESC`).all(...params);
+  const OPEN = "state NOT IN ('done','cancelled')";
+  // Une exécution terminée garde la liste de ses pièces jointes, sans leur contenu : seul le
+  // worker en a besoin, pendant la réalisation.
+  const compact = run => {
+    if (!run.cardSnapshot?.attachments?.some(file => 'data' in file)) return run;
+    run.cardSnapshot = {
+      ...run.cardSnapshot,
+      attachments: run.cardSnapshot.attachments.map(({ data, ...file }) => file),
+    };
+    return run;
+  };
   const unpack = row => ({
     ...JSON.parse(row.data),
     id: row.id,
@@ -103,6 +121,7 @@ export function createWorkflows(db, { transaction, audit, findCard, readProjects
     return changed;
   };
   const save = (run, actor, action, { leaseHash = null, expires = null, syncCard = true } = {}) => {
+    if (isTerminal(run.state)) compact(run);
     run.leaseExpiresAt = expires ? new Date(expires).toISOString() : null;
     run.version++;
     run.updatedAt = new Date().toISOString();
@@ -114,6 +133,7 @@ export function createWorkflows(db, { transaction, audit, findCard, readProjects
       JSON.stringify(run),
       run.id,
     );
+    emit({ type: 'work', projectId: run.projectId, cardId: run.cardId, executionId: run.id, state: run.state });
     let context;
     try {
       context = findCard(run.projectId, run.cardId);
@@ -152,12 +172,11 @@ export function createWorkflows(db, { transaction, audit, findCard, readProjects
     return run;
   };
   const expire = () => {
-    for (const row of rows())
-      if (row.state === 'running' && row.lease_expires <= Date.now()) {
-        const run = transition(unpack(row), 'expire');
-        run.interruption = 'L’agent ne répond plus. La réservation a expiré.';
-        save(run, null, 'interrupted');
-      }
+    for (const row of rows("state = 'running' AND lease_expires <= ?", Date.now())) {
+      const run = transition(unpack(row), 'expire');
+      run.interruption = 'L’agent ne répond plus. La réservation a expiré.';
+      save(run, null, 'interrupted');
+    }
   };
   const scoped = (projectId, cardId, id) => {
     findCard(projectId, cardId);
@@ -248,12 +267,19 @@ export function createWorkflows(db, { transaction, audit, findCard, readProjects
           changed = true;
         }
       }
-    for (const row of rows()) {
+    for (const row of rows("json_array_length(data, '$.exchanges') > 0")) {
       const run = unpack(row),
         card = projects.find(p => p.id === run.projectId)?.cards.find(c => c.id === run.cardId);
       if (card) changed = questionComments(card, run, false) || changed;
     }
     if (changed) writeProjects(projects);
+    // Exécutions terminées avant la 0.1.26 : retirer le contenu des pièces jointes de leur copie de carte.
+    for (const row of rows("state IN ('done','cancelled') AND data LIKE '%\"data\":%'")) {
+      const run = JSON.parse(row.data),
+        snapshot = run.cardSnapshot;
+      if (compact(run).cardSnapshot !== snapshot)
+        db.prepare('UPDATE executions SET data = ? WHERE id = ?').run(JSON.stringify(run), row.id);
+    }
   });
   return {
     workerStatus(projectId) {
@@ -416,7 +442,7 @@ export function createWorkflows(db, { transaction, audit, findCard, readProjects
         )
           return { updated: false };
         let updated = false;
-        for (const row of rows()) {
+        for (const row of rows("state = 'merging'")) {
           const run = unpack(row),
             pr = run.submissions.at(-1)?.pullRequest;
           const profile = run.executionProfile || defaultExecutionProfile();
@@ -528,12 +554,8 @@ export function createWorkflows(db, { transaction, audit, findCard, readProjects
             JSON.stringify([...new Set(data.projectIds)]),
             id,
           );
-          for (const row of rows())
-            if (
-              !isTerminal(row.state) &&
-              JSON.parse(row.data).agent?.id === id &&
-              !data.projectIds.includes(row.project_id)
-            ) {
+          for (const row of rows(OPEN))
+            if (JSON.parse(row.data).agent?.id === id && !data.projectIds.includes(row.project_id)) {
               const run = transition(unpack(row), 'unassign');
               run.interruption = 'L’accès de l’agent au projet a été retiré.';
               save(run, actor, 'interrupted');
@@ -559,7 +581,7 @@ export function createWorkflows(db, { transaction, audit, findCard, readProjects
         if (!db.prepare('SELECT id FROM agents WHERE id=? AND active=1').get(id))
           fail(404, 'agent_not_found', 'Agent actif inexistant.');
         db.prepare('UPDATE agents SET active=0 WHERE id=?').run(id);
-        for (const row of rows())
+        for (const row of rows(OPEN))
           if (canTransition(row.state, 'revoke') && JSON.parse(row.data).agent?.id === id) {
             const run = transition(unpack(row), 'revoke');
             run.interruption = 'La clé de l’agent a été révoquée.';
@@ -574,9 +596,7 @@ export function createWorkflows(db, { transaction, audit, findCard, readProjects
         if (agent) checkAgent(agent, projectId);
         findCard(projectId, cardId);
         expire();
-        return rows()
-          .filter(row => row.project_id === projectId && row.card_id === cardId)
-          .map(unpack);
+        return rows('project_id = ? AND card_id = ?', projectId, cardId).map(unpack);
       });
     },
     // Exécutions qui attendent une personne : question de l’agent ou résultat sans PR à valider.
@@ -614,8 +634,9 @@ export function createWorkflows(db, { transaction, audit, findCard, readProjects
         const project = projects.find(p => p.id === projectId);
         if (autoPrepare && githubProject(projectId)) {
           const activeCards = new Set(
-            rows()
-              .filter(row => !isTerminal(row.state))
+            db
+              .prepare(`SELECT card_id FROM executions WHERE ${OPEN}`)
+              .all()
               .map(row => row.card_id),
           );
           for (const card of project?.cards || []) {
@@ -631,9 +652,7 @@ export function createWorkflows(db, { transaction, audit, findCard, readProjects
             prepare(projectId, card.id, {}, actor);
           }
         }
-        return rows()
-          .filter(row => row.project_id === projectId && ['ready', 'interrupted'].includes(row.state))
-          .map(unpack);
+        return rows("project_id = ? AND state IN ('ready','interrupted')", projectId).map(unpack);
       });
     },
     prepare(projectId, cardId, data, actor) {
@@ -861,8 +880,22 @@ export function createWorkflows(db, { transaction, audit, findCard, readProjects
         return save(run, agent, action);
       });
     },
+    // Supprime les exécutions terminées dont la dernière activité précède `before` (date ISO),
+    // avec le lien de leur PR. Renvoie le nombre d’exécutions supprimées.
+    purge(before) {
+      const old = db
+        .prepare(
+          "SELECT id FROM executions WHERE state IN ('done','cancelled') AND COALESCE(json_extract(data, '$.updatedAt'), json_extract(data, '$.createdAt'), '') < ?",
+        )
+        .all(before);
+      for (const { id } of old) {
+        db.prepare('DELETE FROM github_pr_bindings WHERE execution_id = ?').run(id);
+        db.prepare('DELETE FROM executions WHERE id = ?').run(id);
+      }
+      return old.length;
+    },
     reconcile(before, after, actor, restore) {
-      for (const row of rows())
+      for (const row of rows(OPEN))
         if (!isTerminal(row.state)) {
           const run = unpack(row),
             card = after.find(p => p.id === run.projectId)?.cards.find(c => c.id === run.cardId);

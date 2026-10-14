@@ -122,7 +122,18 @@ Les anciennes copies HTML restent indépendantes : les projets de votre navigate
 
 ## Actualisation et sauvegardes
 
-`GET /api/v1/workspace` accepte `If-None-Match: "révision"` et renvoie **304 sans corps** si la révision est inchangée. L’authentification du compte est vérifiée même pour cette réponse. Le site vérifie les changements toutes les 5 secondes et au retour sur l’onglet, sans envoyer de nouvelle écriture pour les données reçues. Les lectures sont suspendues pendant une fenêtre d’édition, un déplacement ou une sauvegarde ; une réponse arrivée pendant une saisie ou après une nouvelle sauvegarde est ignorée. Les modifications locales sont fusionnées par le serveur au moment de l’enregistrement. Un problème réseau d’actualisation est affiché sans remplacer le tableau, puis réessayé automatiquement. La copie HTML hors ligne n’effectue aucune actualisation serveur.
+`GET /api/v1/workspace` accepte `If-None-Match: "révision"` et renvoie **304 sans corps** si la révision est inchangée. L’authentification du compte est vérifiée même pour cette réponse.
+
+Le site reste à jour grâce au flux **`GET /api/v1/events`** (Server-Sent Events, session personnelle) :
+
+| Événement | Données | Envoyé |
+| --- | --- | --- |
+| `ready` | `{ revision }` | À la connexion et à chaque reconnexion |
+| `workspace` | `{ revision }` | Après chaque enregistrement du tableau, par une personne, l’agent ou GitHub |
+| `work` | `{ projectId, cardId, executionId, state }` | Après chaque étape d’une exécution IA |
+| `subscriptions` | `{ projectId, cardId }` | Après un changement de suivi d’une carte |
+
+Un événement n’est envoyé qu’après la validation de l’écriture et ne contient que des identifiants, une révision et un état : l’interface relit ensuite les données par les routes habituelles. Le serveur envoie un commentaire toutes les 25 secondes pour garder la connexion ouverte et ferme le flux quand la session n’est plus valide ; le navigateur se reconnecte seul. Tant que le flux est connecté, le site ne relit le tableau qu’une fois par minute par sécurité ; sans flux (proxy qui le bloque, coupure), il revient à une vérification toutes les 5 secondes et au retour sur l’onglet. Dans les deux cas, il n’envoie pas de nouvelle écriture pour les données reçues. Les lectures sont suspendues pendant une fenêtre d’édition, un déplacement ou une sauvegarde ; une réponse arrivée pendant une saisie ou après une nouvelle sauvegarde est ignorée. Les modifications locales sont fusionnées par le serveur au moment de l’enregistrement. Un problème réseau d’actualisation est affiché sans remplacer le tableau, puis réessayé automatiquement. La copie HTML hors ligne n’effectue aucune actualisation serveur.
 
 Les routes suivantes nécessitent une **session administrateur**, vérifient l’origine et refusent la clé agent :
 
