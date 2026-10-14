@@ -544,3 +544,42 @@ test('automatic queue ignores empty descriptions, missing configuration and unau
   assert.equal(f.store.workflows.queue(f.project.id, f.credentials.agent).length, 0);
   assert.equal(f.store.workflows.list(f.project.id, f.card.id).length, 0);
 });
+
+test('the attention list shows agent questions and results to validate until a person acts', async t => {
+  // Une exécution manuelle (antérieure à la livraison GitHub) peut encore attendre une validation humaine.
+  const f = await fixture(t, { legacyManual: true });
+  const list = async (options = { human: true }) => {
+    const r = await f.request('/attention', options);
+    return { status: r.status, data: (await r.json()).data };
+  };
+  assert.equal((await list({ token: f.credentials.token })).status, 401);
+  assert.deepEqual((await list()).data, []);
+  let run = await f.claim(await f.prepare());
+  run = await f.agentAction(run, 'question', { message: 'Quel menu faut-il modifier ?' });
+  let items = (await list()).data;
+  assert.equal(items.length, 1);
+  assert.deepEqual(
+    { ...items[0], since: undefined },
+    {
+      projectId: f.project.id,
+      projectName: f.project.name,
+      cardId: f.card.id,
+      cardTitle: f.card.title,
+      executionId: run.id,
+      state: 'waiting',
+      message: 'Quel menu faut-il modifier ?',
+      since: undefined,
+    },
+  );
+  run = await f.humanAction(run, 'answer', { message: 'Le menu principal.' });
+  assert.deepEqual((await list()).data, []);
+  run = await f.claim(run);
+  run = await f.agentAction(run, 'submit', { summary: 'Maquette livrée.', checks: 'Relue.', links: [] });
+  items = (await list()).data;
+  assert.deepEqual(
+    items.map(item => [item.state, item.message]),
+    [['review', 'Maquette livrée.']],
+  );
+  await f.humanAction(run, 'accept');
+  assert.deepEqual((await list()).data, []);
+});

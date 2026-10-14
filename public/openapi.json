@@ -5012,6 +5012,60 @@
           }
         }
       }
+    },
+    "/api/v1/attention": {
+      "get": {
+        "summary": "Cartes qui attendent une personne",
+        "description": "Questions de l’agent sans réponse et résultats à valider, du plus récent au plus ancien. La question technique d’un ancien worker, résolue automatiquement, n’est pas listée.",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Éléments à traiter.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AttentionItem"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session requise.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origine de la requête non autorisée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -5879,6 +5933,44 @@
           },
           "following": {
             "type": "boolean"
+          }
+        }
+      },
+      "AttentionItem": {
+        "type": "object",
+        "description": "Exécution qui attend une personne.",
+        "properties": {
+          "projectId": {
+            "type": "string"
+          },
+          "projectName": {
+            "type": "string"
+          },
+          "cardId": {
+            "type": "string"
+          },
+          "cardTitle": {
+            "type": "string"
+          },
+          "executionId": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "waiting",
+              "review"
+            ],
+            "description": "waiting : question de l’agent ; review : résultat sans PR à valider (anciennes exécutions manuelles)."
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Question de l’agent ou résumé du résultat."
+          },
+          "since": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       }

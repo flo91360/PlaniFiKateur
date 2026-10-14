@@ -579,6 +579,33 @@ export function createWorkflows(db, { transaction, audit, findCard, readProjects
           .map(unpack);
       });
     },
+    // Exécutions qui attendent une personne : question de l’agent ou résultat sans PR à valider.
+    // La question technique d’un ancien worker se résout seule et n’est pas listée.
+    attention() {
+      const projects = readProjects();
+      return db
+        .prepare("SELECT * FROM executions WHERE state IN ('waiting','review') ORDER BY rowid DESC")
+        .all()
+        .map(unpack)
+        .flatMap(run => {
+          const project = projects.find(p => p.id === run.projectId);
+          const card = project?.cards.find(c => c.id === run.cardId);
+          if (!card || legacyPublicationQuestion(run)) return [];
+          const message = run.state === 'waiting' ? run.exchanges.at(-1)?.question : run.submissions.at(-1)?.summary;
+          return [
+            {
+              projectId: project.id,
+              projectName: project.name,
+              cardId: card.id,
+              cardTitle: card.title,
+              executionId: run.id,
+              state: run.state,
+              message: (message || '').slice(0, 500),
+              since: run.updatedAt,
+            },
+          ];
+        });
+    },
     queue(projectId, agent, { autoPrepare = true } = {}) {
       return transaction(() => {
         checkAgent(agent, projectId);
