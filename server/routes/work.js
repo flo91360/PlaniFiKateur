@@ -46,6 +46,11 @@ export function workRoutes({ store, config, auth, guards }) {
       },
     },
     {
+      path: '/api/v1/attention',
+      guard: guards.account,
+      methods: { GET: ctx => ctx.send(200, { data: workflows.attention() }) },
+    },
+    {
       path: '/api/v1/projects/:projectId/work',
       methods: {
         GET: ctx =>

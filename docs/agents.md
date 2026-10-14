@@ -1,4 +1,4 @@
-# Parcours agent par projet — v0.1.23
+# Parcours agent par projet — v0.1.24
 
 Un seul agent actif, sans délégation. Le site pilote les demandes et confirme la fusion GitHub ;
 l’agent s’exécute dans un service externe. Le [worker Codex](worker.md) fournit ce
@@ -11,18 +11,31 @@ service : il doit être installé, connecté puis lancé séparément du site.
    l’agent, qui déduit les vérifications utiles et pose une question si nécessaire.
 2. Dans **Paramètres du projet**, configurer le dépôt GitHub et l’accès de l’agent.
    Ces paramètres s’appliquent à toutes les cartes de ce projet.
-3. Passer la carte au statut **Prête à démarrer**. Le worker la détecte lors
-   de sa prochaine consultation et le serveur crée automatiquement son exécution
-   avec le dépôt du projet. Aucun bouton de lancement supplémentaire n’est requis.
+3. Passer la carte au statut **Prête à démarrer**, ou cliquer **Confier à l’agent**
+   dans le panneau **Exécution IA** du détail. Le worker la détecte lors de sa
+   prochaine consultation et le serveur crée automatiquement son exécution avec
+   le dépôt du projet.
 4. L’agent prend la tâche et signale son avancement. Une question fait apparaître
    **À préciser** et ajoute la question dans la **Discussion** de la carte.
    Publier un commentaire dans cette même carte pour répondre et remettre la tâche en file.
+   La boîte **À traiter** de la barre supérieure, avec son badge, liste ces questions
+   pour tous les projets ; un clic ouvre la carte dans son projet.
 5. Le résultat passe en attente de tests et de fusion GitHub. La PR se fusionne
    automatiquement après les contrôles requis, puis le webhook termine la carte.
-   Aucun bouton de validation humaine n’est proposé pour les nouvelles tâches.
    L’avancement, le résultat, le lien vers la PR et la confirmation de fusion
-   apparaissent dans la discussion de la carte. Les routes API de correction
-   et d’annulation restent disponibles.
+   apparaissent dans la discussion de la carte.
+
+Le panneau **Exécution IA** du détail de la carte résume l’exécution en cours :
+étapes (prête, réalisation, PR et tests, terminée), dernier message, lien vers la
+PR, état des contrôles GitHub, moteur, modèle et effort. Il propose les actions
+humaines disponibles à cette étape :
+
+- **Annuler l’exécution**, avec un motif, tant qu’elle n’est pas terminée ;
+- **Demander des corrections** pendant les tests et la fusion de la PR : la
+  demande est transmise à l’agent, qui reprend la même PR ;
+- **Valider le résultat**, uniquement pour une ancienne exécution sans PR ;
+- **Relancer l’agent** après une annulation ou une fusion, qui prépare une
+  nouvelle exécution en conservant l’historique.
 
 Les listes restent l’organisation du projet ; les statuts des cartes suivent
 l’exécution automatiquement. Une carte en attente peut être retirée de la file en changeant son statut.
@@ -31,6 +44,11 @@ exécution après une fusion conserve l’historique de la précédente.
 
 L’interface actualise le travail toutes les cinq secondes. Elle conserve les
 brouillons des champs de la carte ; enregistrer ces champs avant toute action.
+Modifier la demande d’une exécution en cours (titre, description, étiquettes,
+pièces jointes ou effort) l’annulerait : le détail garde la saisie en brouillon et
+demande confirmation à sa fermeture (aussitôt pour une pièce jointe ou l’effort),
+avec la possibilité de rétablir la demande. La confirmation de suppression de la
+carte signale aussi l’annulation.
 Les transitions humaines exigent une version à jour pour éviter deux validations
 contradictoires. Tous les membres actifs peuvent répondre et demander des corrections dans cet
 espace actuellement partagé.
@@ -69,6 +87,7 @@ utilisent `{ "data": ... }`, les erreurs `{ "error": { "code", "message" } }`.
 | `GET /api/v1/projects/{projet}/cards/{carte}/work` | Membre ou agent autorisé | Historique des exécutions, sans réservation secrète |
 | `POST` sur cette dernière route | Membre | Préparer avec `{}` ; description de la carte, dépôt du projet, fusion automatique |
 | `POST .../work/{execution}/{action}` | Selon l’action ci-dessous | Transition contrôlée |
+| `GET /api/v1/attention` | Membre | Exécutions qui attendent une personne, tous projets confondus : questions de l’agent (`waiting`) et anciens résultats à valider (`review`) |
 
 Les actions d’agent :
 

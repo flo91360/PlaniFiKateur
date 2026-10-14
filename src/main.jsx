@@ -13,9 +13,11 @@ import { createId as uid } from './lib/id.js';
 import { apiData } from './lib/api-client.js';
 import { useWorkspace, offlineMode, exportWorkspace } from './lib/use-workspace.js';
 import { useCardFollowers } from './lib/use-card-followers.js';
+import { useAttention } from './lib/use-attention.js';
 import ConnectionScreen from './components/AccountScreen.jsx';
 import AccountsPanel from './components/AccountsPanel.jsx';
 import ActivityPanel from './components/ActivityPanel.jsx';
+import AttentionPanel from './components/AttentionPanel.jsx';
 import Board from './components/Board.jsx';
 import CardDetail from './components/CardDetail.jsx';
 import CreationForm from './components/CreationForm.jsx';
@@ -39,6 +41,7 @@ const dialogTitles = {
   'delete-project': 'Supprimer le projet',
   account: 'Mon compte',
   activity: 'Activité des projets',
+  attention: 'À traiter',
   reload: 'Recharger le tableau',
   card: 'Une nouvelle idée',
   overview: 'Votre espace personnel',
@@ -119,6 +122,7 @@ function App() {
     modal,
   });
   const [projectAi, setProjectAi] = useProjectAi(project?.id, ready);
+  const attention = useAttention({ enabled: !offlineMode && ready && !needsLogin, projects });
 
   const updateProject = transform =>
     setProjects(ps => {
@@ -143,6 +147,11 @@ function App() {
     setFilters(NO_FILTERS);
     setSelectedId(null);
     setSidebar(false);
+  };
+  const openCard = (id, cardId) => {
+    chooseProject(id);
+    setModal(null);
+    setSelectedId(cardId);
   };
 
   const createProject = values => {
@@ -235,6 +244,8 @@ function App() {
             }}
           />
         );
+      case 'attention':
+        return <AttentionPanel items={attention} onOpenCard={openCard} />;
       case 'activity':
         return (
           <div className="accounts-panel">
@@ -304,6 +315,7 @@ function App() {
           saveStatus={saveStatus}
           user={workspace.user}
           offline={offlineMode}
+          attentionCount={attention.length}
           onOpenSidebar={() => setSidebar(true)}
           onOpenModal={setModal}
         />

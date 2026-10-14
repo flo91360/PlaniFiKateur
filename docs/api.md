@@ -147,4 +147,6 @@ Le suivi personnel des cartes utilise les routes de souscription documentées da
 
 La consultation reste disponible avec la clé de lecture. Les transitions de travail utilisent une identité d’agent distincte, limitée aux projets autorisés, et des réservations exclusives. Voir [le parcours et le contrat API](agents.md). La validation des résultats exige toujours une session humaine.
 
+Avec une session personnelle, `GET /api/v1/attention` alimente la boîte « À traiter » : les exécutions de tous les projets qui attendent une personne (`projectId`, `projectName`, `cardId`, `cardTitle`, `executionId`, `state` parmi `waiting` et `review`, `message` limité à 500 caractères, `since`), de la plus récente à la plus ancienne. Une clé d’agent ou de lecture reçoit 401.
+
 Les livraisons GitHub utilisent le mode `delivery: "github"` et l’état `merging`. Voir [la fusion automatique et les webhooks](github.md).

@@ -943,6 +943,148 @@ test.describe('project task execution', () => {
     await action('claim');
     await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('progress', { timeout: 10000 });
   });
+
+  // Prépare un dépôt et une clé d’agent pour un projet ; renvoie l’en-tête de l’agent.
+  const agentFor = async (page, appServer, project, name) => {
+    await page.request.put(`${appServer}/api/v1/projects/${project.id}/github`, {
+      data: { repository: 'flo91360/PlaniFiKateur' },
+    });
+    const credentials = await page.request.post(`${appServer}/api/v1/agents`, {
+      data: { name, projectIds: [project.id] },
+    });
+    expect(credentials.status()).toBe(201);
+    return { Authorization: `Bearer ${(await credentials.json()).data.token}` };
+  };
+
+  test('the AI execution panel entrusts, follows, cancels and relaunches a card', async ({
+    page,
+    request,
+    appServer,
+  }) => {
+    await login(page, appServer);
+    const project = seed[0],
+      card = project.cards[0];
+    const headers = await agentFor(page, appServer, project, 'Agent du panneau');
+    const base = `${appServer}/api/v1/projects/${project.id}/cards/${card.id}/work`;
+    const history = async () => (await (await request.get(base, { headers })).json()).data;
+    await page.getByRole('heading', { name: card.title, exact: true }).click();
+    const panel = page.getByRole('region', { name: 'Exécution IA', exact: true });
+    await expect(panel).toContainText('Aucune exécution pour cette carte.');
+    await panel.getByRole('button', { name: 'Confier à l’agent', exact: true }).click();
+    await expect(panel).toContainText('En attente du worker');
+    await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('ready');
+    let [run] = await history();
+    const claimed = await request.post(`${base}/${run.id}/claim`, { headers, data: { version: run.version } });
+    expect(claimed.status()).toBe(200);
+    await expect(panel).toContainText('Agent du panneau réalise la demande.', { timeout: 10000 });
+    await expect(panel.locator('[aria-current="step"]')).toHaveText('Réalisation');
+    await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('progress');
+    await panel.getByRole('button', { name: 'Annuler l’exécution', exact: true }).click();
+    await panel.getByRole('button', { name: 'Garder l’exécution', exact: true }).click();
+    expect((await history())[0].state).toBe('running');
+    await panel.getByRole('button', { name: 'Annuler l’exécution', exact: true }).click();
+    await panel.getByLabel('Motif de l’annulation', { exact: true }).fill('Demande reportée.');
+    await panel.getByRole('button', { name: 'Confirmer l’annulation', exact: true }).click();
+    await expect(panel).toContainText('Exécution annulée.');
+    await expect(panel).toContainText('Demande reportée.');
+    await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('draft');
+    [run] = await history();
+    expect(run).toMatchObject({ state: 'cancelled', cancellation: 'Demande reportée.' });
+    await panel.getByRole('button', { name: 'Relancer l’agent', exact: true }).click();
+    await expect(panel).toContainText('En attente du worker');
+    await expect(panel).toContainText('2 exécutions');
+    expect((await history()).map(item => item.state)).toEqual(['ready', 'cancelled']);
+  });
+
+  test('changing the request of an active execution asks for confirmation before cancelling it', async ({
+    page,
+    request,
+    appServer,
+  }) => {
+    // Les navigateurs récents (Chrome 156) renvoient une promesse depuis scrollIntoView : le bandeau
+    // de confirmation ne doit pas la confondre avec une fonction de nettoyage React.
+    await page.addInitScript(() => {
+      const scroll = Element.prototype.scrollIntoView;
+      Element.prototype.scrollIntoView = function (...args) {
+        scroll.apply(this, args);
+        return Promise.resolve();
+      };
+    });
+    await login(page, appServer);
+    const project = seed[0],
+      card = project.cards[0];
+    const headers = await agentFor(page, appServer, project, 'Agent confirmé');
+    const base = `${appServer}/api/v1/projects/${project.id}/cards/${card.id}/work`;
+    const history = async () => (await (await request.get(base, { headers })).json()).data;
+    expect((await page.request.post(base, { data: {} })).status()).toBe(201);
+    await page.reload();
+    await page.getByRole('heading', { name: card.title, exact: true }).click();
+    const panel = page.getByRole('region', { name: 'Exécution IA', exact: true });
+    await expect(panel).toContainText('En attente du worker');
+    await page.getByRole('button', { name: 'Supprimer la carte', exact: true }).click();
+    await expect(page.locator('.delete-confirm')).toContainText('Son exécution IA en cours sera annulée.');
+    await page.locator('.delete-confirm').getByRole('button', { name: 'Annuler', exact: true }).click();
+    const description = page.getByLabel('Description', { exact: true });
+    await description.fill('Une autre demande');
+    await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+    await page.getByRole('button', { name: 'Rétablir la demande', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'Détail de la carte', exact: true })).toHaveCount(0);
+    expect((await history())[0].state).toBe('ready');
+    await page.getByRole('heading', { name: card.title, exact: true }).click();
+    await expect(description).toHaveValue(card.description);
+    await description.fill('Une autre demande');
+    await page.getByLabel('Titre de la carte', { exact: true }).click();
+    await expect(page.locator('.detail-footer')).toContainText('Demande modifiée : confirmation à la fermeture');
+    await expect(page.locator('.execution-confirm')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+    await expect(page.locator('.execution-confirm')).toContainText('l’exécution IA en cours sera annulée');
+    await page.getByRole('button', { name: 'Annuler l’exécution et enregistrer', exact: true }).click();
+    await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+    await page.getByRole('heading', { name: card.title, exact: true }).click();
+    await expect(description).toHaveValue('Une autre demande');
+    await expect(panel).toContainText('Exécution annulée.', { timeout: 10000 });
+    await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('draft');
+    expect((await history())[0].state).toBe('cancelled');
+  });
+
+  test('the inbox lists agent questions from every project and opens the card in its project', async ({
+    page,
+    request,
+    appServer,
+  }) => {
+    await login(page, appServer);
+    const project = seed[1],
+      card = project.cards[0];
+    const headers = await agentFor(page, appServer, project, 'Agent du site');
+    const base = `${appServer}/api/v1/projects/${project.id}/cards/${card.id}/work`;
+    await expect(page.getByRole('button', { name: 'À traiter', exact: true })).toBeVisible();
+    let run = (await (await page.request.post(base, { data: {} })).json()).data;
+    run = (await (await request.post(`${base}/${run.id}/claim`, { headers, data: { version: run.version } })).json())
+      .data;
+    const asked = await request.post(`${base}/${run.id}/question`, {
+      headers,
+      data: { version: run.version, leaseToken: run.leaseToken, message: 'Quelle couleur pour le bandeau ?' },
+    });
+    expect(asked.status()).toBe(200);
+    await page.reload();
+    await page.getByRole('button', { name: 'À traiter (1)', exact: true }).click();
+    const inbox = page.getByRole('list', { name: 'Cartes à traiter', exact: true });
+    await expect(inbox).toContainText('Question de l’agent · Site vitrine');
+    await expect(inbox).toContainText('Quelle couleur pour le bandeau ?');
+    await inbox.getByRole('button', { name: new RegExp(card.title) }).click();
+    await expect(page.locator('.project-heading h1')).toHaveText('Site vitrine');
+    await expect(page.getByLabel('Titre de la carte', { exact: true })).toHaveValue(card.title);
+    const panel = page.getByRole('region', { name: 'Exécution IA', exact: true });
+    await expect(panel).toContainText('L’agent attend votre réponse');
+    await expect(panel).toContainText('Quelle couleur pour le bandeau ?');
+    await page.getByLabel('Votre commentaire', { exact: true }).fill('Un vert sapin.');
+    await page.getByRole('button', { name: 'Publier', exact: true }).click();
+    await expect(panel).toContainText('En attente du worker', { timeout: 10000 });
+    await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'À traiter', exact: true })).toBeVisible({ timeout: 10000 });
+    await page.getByRole('button', { name: 'À traiter', exact: true }).click();
+    await expect(page.getByText('Rien à traiter', { exact: false })).toBeVisible();
+  });
 });
 
 test('administrator cancels then confirms account deletion and immediately revokes member access', async ({
