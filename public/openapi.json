@@ -4494,8 +4494,8 @@
         }
       },
       "put": {
-        "summary": "Interface : enregistrer le tableau",
-        "description": "Écriture conditionnelle par révision. Une suppression de projet, liste ou carte est précédée d’une sauvegarde.",
+        "summary": "Administration : remplacer tout le tableau",
+        "description": "Réservé aux administrateurs, qui voient tous les projets. Écriture conditionnelle par révision. Une suppression de projet, liste ou carte est précédée d’une sauvegarde.",
         "security": [
           {
             "ownerSession": []
@@ -4565,7 +4565,7 @@
             }
           },
           "403": {
-            "description": "Origine de la requête non autorisée.",
+            "description": "Administrateur requis ou origine non autorisée.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6374,6 +6374,192 @@
           }
         }
       }
+    },
+    "/api/v1/projects/{projectId}/members": {
+      "get": {
+        "summary": "Membres et droits d’un projet",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Règle des autres membres et rôle de chaque compte actif.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ProjectAccess"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session requise.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origine de la requête non autorisée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Projet inexistant ou masqué.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Modifier les membres et droits d’un projet",
+        "description": "Réservé aux responsables. members associe un identifiant de compte à un rôle, ou à null pour revenir au rôle des autres membres.",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "memberRole": {
+                    "type": "string",
+                    "enum": [
+                      "none",
+                      "viewer",
+                      "editor",
+                      "manager"
+                    ]
+                  },
+                  "members": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        "viewer",
+                        "editor",
+                        "manager",
+                        null
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Droits enregistrés.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ProjectAccess"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Rôle, compte ou champ invalide (invalid_access).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session requise.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Réservé aux responsables du projet (project_forbidden).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Projet inexistant ou masqué.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -6999,7 +7185,7 @@
       },
       "Workspace": {
         "type": "object",
-        "description": "Tableau complet, réservé à l’interface (réponse sans enveloppe data).",
+        "description": "Tableau réservé à l’interface (réponse sans enveloppe data) : les projets visibles par le compte et son rôle sur chacun.",
         "required": [
           "projects",
           "revision"
@@ -7017,6 +7203,18 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "access": {
+            "type": "object",
+            "description": "Rôle du compte sur chaque projet visible (viewer, editor, manager).",
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "viewer",
+                "editor",
+                "manager"
+              ]
+            }
           }
         }
       },
@@ -7479,6 +7677,88 @@
                     "exists",
                     "not_empty"
                   ]
+                }
+              }
+            }
+          },
+          "access": {
+            "type": "object",
+            "description": "Rôle du compte sur chaque projet visible (viewer, editor, manager).",
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "viewer",
+                "editor",
+                "manager"
+              ]
+            }
+          }
+        }
+      },
+      "ProjectAccess": {
+        "type": "object",
+        "description": "Droits d’un projet. viewer : lecture ; editor : modifier les cartes et commenter ; manager : confier les cartes à l’agent, valider son travail, gérer le projet et ses membres. Un administrateur est responsable de tous les projets.",
+        "required": [
+          "memberRole",
+          "members"
+        ],
+        "properties": {
+          "memberRole": {
+            "type": "string",
+            "enum": [
+              "none",
+              "viewer",
+              "editor",
+              "manager"
+            ],
+            "description": "Rôle des membres qui ne sont pas nommés ; none masque le projet."
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "name",
+                "admin",
+                "role",
+                "explicit"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "admin": {
+                  "type": "boolean"
+                },
+                "role": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "viewer",
+                    "editor",
+                    "manager",
+                    null
+                  ],
+                  "description": "Rôle effectif ; null : projet masqué."
+                },
+                "explicit": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "viewer",
+                    "editor",
+                    "manager",
+                    null
+                  ],
+                  "description": "Rôle nommé pour ce membre."
                 }
               }
             }

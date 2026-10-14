@@ -1,5 +1,5 @@
 import { createAuth } from './auth.js';
-import { httpError, readJson, sendJson } from './http.js';
+import { readJson, sendJson } from './http.js';
 import { createRefiner } from './refine.js';
 import { createRouter, dispatch } from './router.js';
 import { accountRoutes } from './routes/accounts.js';
@@ -19,10 +19,10 @@ export function apiRoutes(store, config = {}, auth = createAuth(store, config), 
   const guards = {
     account: ctx => (ctx.user = auth.requireAccount(ctx.req)),
     admin: ctx => (ctx.user = auth.requireAdmin(ctx.req)),
+    // Projet visible par le compte connecté (droits par projet) ; sinon 404.
     project: ctx => {
       guards.account(ctx);
-      if (!store.read().projects.some(project => project.id === ctx.params.projectId))
-        throw httpError(404, 'project_not_found', 'Projet inexistant.');
+      ctx.role = store.requireProject(ctx.user, ctx.params.projectId);
     },
   };
   const refiner = config.refiner || createRefiner({ token: config.claudeOauthToken, model: config.refineModel });

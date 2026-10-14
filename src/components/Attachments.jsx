@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createId } from '../lib/id.js';
 
 const imageTypes = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
-function Attachment({ file, onRemove, disabled }) {
+function Attachment({ file, onRemove, disabled, readOnly }) {
   const [url, setUrl] = useState('');
   useEffect(() => {
     const bytes = Uint8Array.from(atob(file.data), c => c.charCodeAt(0));
@@ -19,19 +19,22 @@ function Attachment({ file, onRemove, disabled }) {
         {file.name}
       </a>
       <span>{Math.ceil(file.size / 1024)} Ko</span>
-      <button
-        type="button"
-        className="delete-button"
-        disabled={disabled}
-        aria-label={`Retirer ${file.name}`}
-        onClick={onRemove}
-      >
-        Retirer
-      </button>
+      {!readOnly && (
+        <button
+          type="button"
+          className="delete-button"
+          disabled={disabled}
+          aria-label={`Retirer ${file.name}`}
+          onClick={onRemove}
+        >
+          Retirer
+        </button>
+      )}
     </li>
   );
 }
-export default function Attachments({ otherBytes = 0, attachments, onChange, onBusy = () => {} }) {
+// `readOnly` (lecteur du projet) : liste et téléchargement seulement.
+export default function Attachments({ otherBytes = 0, attachments, onChange, onBusy = () => {}, readOnly = false }) {
   const [error, setError] = useState(''),
     [busy, setBusy] = useState(false);
   const reading = useRef(false),
@@ -87,6 +90,7 @@ export default function Attachments({ otherBytes = 0, attachments, onChange, onB
     <section
       className="attachments"
       onPaste={e => {
+        if (readOnly) return;
         const files = [...e.clipboardData.files];
         if (files.length) {
           e.preventDefault();
@@ -99,22 +103,26 @@ export default function Attachments({ otherBytes = 0, attachments, onChange, onB
         Fichiers et captures pour l’agent, ou fichiers générés à télécharger. 10 fichiers par carte, 1 Mo par fichier et
         2 Mo au total dans les projets.
       </p>
-      <label>
-        Ajouter des fichiers
-        <input
-          type="file"
-          multiple
-          aria-label="Ajouter des fichiers"
-          disabled={busy}
-          onChange={e => {
-            void add([...e.target.files]);
-            e.target.value = '';
-          }}
-        />
-      </label>
-      <div tabIndex={0} className="attachment-paste" aria-label="Coller une capture d’écran">
-        Cliquez ici puis collez une capture d’écran.
-      </div>
+      {!readOnly && (
+        <>
+          <label>
+            Ajouter des fichiers
+            <input
+              type="file"
+              multiple
+              aria-label="Ajouter des fichiers"
+              disabled={busy}
+              onChange={e => {
+                void add([...e.target.files]);
+                e.target.value = '';
+              }}
+            />
+          </label>
+          <div tabIndex={0} className="attachment-paste" aria-label="Coller une capture d’écran">
+            Cliquez ici puis collez une capture d’écran.
+          </div>
+        </>
+      )}
       {busy && <p role="status">Lecture des fichiers…</p>}
       {error && (
         <p role="alert" className="form-error">
@@ -127,6 +135,7 @@ export default function Attachments({ otherBytes = 0, attachments, onChange, onB
             key={file.id}
             file={file}
             disabled={busy}
+            readOnly={readOnly}
             onRemove={() => onChange(attachments.filter(a => a.id !== file.id))}
           />
         ))}

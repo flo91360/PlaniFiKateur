@@ -25,7 +25,7 @@ export const LEASE_MS = 5 * 60000;
 
 export function createWorkflows(
   db,
-  { transaction, audit, findCard, readProjects, writeProjects, recipients, emit = () => {} },
+  { transaction, audit, findCard, readProjects, writeProjects, recipients, emit = () => {}, canLaunch = () => true },
 ) {
   db.exec(`CREATE TABLE IF NOT EXISTS project_worker_status (project_id TEXT NOT NULL, agent_id TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(project_id,agent_id));
     CREATE TABLE IF NOT EXISTS project_execution (project_id TEXT PRIMARY KEY, data TEXT NOT NULL);
@@ -649,6 +649,8 @@ export function createWorkflows(
             const actor = readiness?.actor_id
               ? { id: readiness.actor_id, name: readiness.actor_name }
               : card.updatedBy || card.createdBy || { id: 'system', name: 'Système' };
+            // Défense en profondeur : seule une carte rendue prête par un responsable part chez l’agent.
+            if (!canLaunch(actor, projectId)) continue;
             prepare(projectId, card.id, {}, actor);
           }
         }

@@ -512,6 +512,81 @@ test('administrator invites a member whose cards, comments and actions carry the
   await context.close();
 });
 
+test('project roles hide, open read-only or reserve the agent to managers', async ({
+  page,
+  browser,
+  request,
+  appServer,
+}) => {
+  await login(page, appServer);
+  // Compte de Bob créé et activé, puis projet confidentiel masqué aux autres membres.
+  const invited = await page.request.post(`${appServer}/api/v1/users`, {
+    data: { name: 'Bob', email: 'bob@example.test' },
+  });
+  const { token } = (await invited.json()).data;
+  const password = 'bob-browser-password-123';
+  expect(
+    (await request.post(`${appServer}/api/v1/accounts/accept`, { data: { token, name: 'Bob', password } })).status(),
+  ).toBe(200);
+  const secret = (
+    await (await page.request.post(`${appServer}/api/v1/projects`, { data: { name: 'Projet confidentiel' } })).json()
+  ).data;
+  expect(
+    (
+      await page.request.put(`${appServer}/api/v1/projects/${secret.id}/members`, { data: { memberRole: 'none' } })
+    ).status(),
+  ).toBe(200);
+  // Droits du site vitrine réglés depuis l’interface : lecture pour Bob, rien pour les autres.
+  await page.reload();
+  await expect(page.locator('.project-heading h1')).toHaveText('PlaniFiKateur');
+  const menu = page.getByRole('button', { name: 'Ouvrir les projets', exact: true });
+  if (await menu.isVisible()) await menu.click();
+  await page
+    .getByRole('navigation', { name: 'Projets' })
+    .getByRole('button', { name: /Site vitrine/ })
+    .click();
+  await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
+  await page.getByText('Membres et droits', { exact: true }).click();
+  await page.getByLabel('Rôle des autres membres', { exact: true }).selectOption('none');
+  await page.getByLabel('Rôle de Bob', { exact: true }).selectOption('viewer');
+  await page.getByRole('button', { name: 'Enregistrer les droits', exact: true }).click();
+  await expect(page.getByText('Droits enregistrés pour ce projet.', { exact: true })).toBeVisible();
+  const context = await browser.newContext();
+  const member = await context.newPage();
+  await member.goto(appServer);
+  await member.getByLabel('Adresse e-mail', { exact: true }).fill('bob@example.test');
+  await member.getByLabel('Mot de passe', { exact: true }).fill(password);
+  await member.getByRole('button', { name: 'Se connecter', exact: true }).click();
+  await expect(member.locator('.project-heading h1')).toHaveText('PlaniFiKateur');
+  const projects = member.getByRole('navigation', { name: 'Projets' });
+  await expect(projects.getByRole('button', { name: /Projet confidentiel/ })).toHaveCount(0);
+  // Contribution sur PlaniFiKateur : modifier oui, confier à l’agent non.
+  await member.getByRole('heading', { name: seed[0].cards[2].title, exact: true }).click();
+  await expect(member.getByLabel('Statut', { exact: true }).locator('option[value="ready"]')).toHaveAttribute(
+    'disabled',
+    '',
+  );
+  await expect(member.getByRole('region', { name: 'Exécution IA', exact: true })).toContainText(
+    'Seuls les responsables du projet peuvent confier cette carte',
+  );
+  await expect(member.getByRole('button', { name: 'Confier à l’agent', exact: true })).toHaveCount(0);
+  await member.getByLabel('Priorité', { exact: true }).selectOption('high');
+  await member.getByRole('button', { name: 'Terminé', exact: true }).click();
+  await expect(member.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+  // Lecture seule sur le site vitrine.
+  const memberMenu = member.getByRole('button', { name: 'Ouvrir les projets', exact: true });
+  if (await memberMenu.isVisible()) await memberMenu.click();
+  await projects.getByRole('button', { name: /Site vitrine/ }).click();
+  await expect(member.locator('.read-only-badge')).toHaveText('Lecture seule');
+  await expect(member.getByRole('button', { name: /^Ajouter une carte/ })).toHaveCount(0);
+  await expect(member.getByRole('button', { name: 'Supprimer le projet', exact: true })).toHaveCount(0);
+  await member.getByRole('heading', { name: seed[1].cards[0].title, exact: true }).click();
+  await expect(member.getByLabel('Titre de la carte', { exact: true })).not.toBeEditable();
+  await expect(member.getByLabel('Votre commentaire', { exact: true })).toHaveCount(0);
+  await expect(member.getByText('Lecture seule : votre rôle sur ce projet ne permet pas de commenter.')).toBeVisible();
+  await context.close();
+});
+
 test('personal password change and logout lead back to individual login', async ({ page, appServer }) => {
   await login(page, appServer);
   await page.getByRole('button', { name: 'Mon compte', exact: true }).click();

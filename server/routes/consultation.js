@@ -34,12 +34,14 @@ function pageNumber(url, key, fallback, max) {
 // Consultation en lecture seule : session, clé de lecture ou clé d’agent (limitée à ses projets).
 // Chaque réponse indique la révision du tableau lue.
 export function consultationRoutes({ store, auth }) {
+  // Une session ne consulte que ses projets ; la clé de lecture voit tout, une clé d’agent ses projets.
   const guard = ctx => {
     ctx.agent = auth.readAccess(ctx.req);
+    ctx.viewer = ctx.agent ? null : auth.currentUser(ctx.req);
   };
   const read = (ctx, data, meta = {}) => ctx.send(200, { data, meta: { revision: ctx.workspace.revision, ...meta } });
   const load = ctx => {
-    ctx.workspace = store.read();
+    ctx.workspace = ctx.viewer ? store.readFor(ctx.viewer) : store.read();
     return ctx.workspace.projects;
   };
   const allowed = (ctx, projectId) => {

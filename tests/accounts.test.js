@@ -9,6 +9,7 @@ import { createAppServer } from '../server/index.js';
 import { hashPassword, verifyPassword } from '../server/accounts.js';
 import { seedAccount, testEmail, testPassword } from './helpers/accounts.mjs';
 import { seed } from '../src/data/demo.js';
+import { diffWorkspace } from '../src/lib/workspace-changes.js';
 import { createBackups, restoreBackup } from '../server/backups.js';
 
 async function fixture(t, { initialized = true } = {}) {
@@ -272,9 +273,18 @@ test('the server stamps card and comment authors, preserves creators, and record
       headers: { 'If-Match': `"${data.revision}"` },
       data: { projects: data.projects },
     });
+  // Un membre enregistre ses modifications fines, comme l’interface (PUT est réservé aux administrateurs).
+  const patch = async (cookie, before, after) =>
+    f.request('/workspace', {
+      method: 'PATCH',
+      cookie,
+      data: { changes: diffWorkspace(before.projects, after.projects) },
+    });
+  assert.equal((await save(bob.cookie, snapshot)).status, 403);
   const created = await save(admin, snapshot);
   assert.equal(created.status, 200);
   snapshot = await created.json();
+  const base = structuredClone(snapshot);
   const actual = snapshot.projects[0].cards.find(c => c.id === card.id);
   assert.deepEqual(actual.createdBy, { id: alice.id, name: 'Alice' });
   assert.equal(actual.comments[0].authorId, alice.id);
@@ -292,7 +302,7 @@ test('the server stamps card and comment authors, preserves creators, and record
     text: 'Je prends cette tâche',
     date: '2000-01-01T00:00:00Z',
   });
-  assert.equal((await save(bob.cookie, snapshot)).status, 200);
+  assert.equal((await patch(bob.cookie, base, snapshot)).status, 200);
   const result = f.store.read().projects[0].cards.find(c => c.id === card.id);
   assert.equal(result.createdBy.id, alice.id);
   assert.equal(result.updatedBy.id, bob.user.id);
@@ -317,7 +327,7 @@ test('the server stamps card and comment authors, preserves creators, and record
   assert.equal((await f.request('/activity', { headers: { Authorization: 'Bearer agent-test-key' } })).status, 401);
   const deleted = f.store.read();
   deleted.projects[0].cards = deleted.projects[0].cards.filter(c => c.id !== card.id);
-  assert.equal((await save(bob.cookie, deleted)).status, 200);
+  assert.equal((await patch(bob.cookie, f.store.read(), deleted)).status, 200);
   assert.ok(f.store.activity({ projectId: 'planifikateur', cardId: card.id }).some(e => e.action === 'card.deleted'));
 });
 

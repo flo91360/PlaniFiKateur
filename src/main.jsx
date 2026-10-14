@@ -114,6 +114,11 @@ function App() {
   const [sidebar, setSidebar] = useState(false);
   const [notice, setNotice] = useNotice();
   const project = projects.find(p => p.id === projectId) || projects[0];
+  // Rôle sur le projet affiché : lecture, contribution ou responsable (tous les droits hors connexion).
+  // Un projet absent des droits reçus vient d’être créé dans cette page : son créateur en est responsable.
+  const role = offlineMode
+    ? 'manager'
+    : workspace.access?.[project?.id] || (workspace.access && project ? 'manager' : 'viewer');
   const selected = project?.cards.find(c => c.id === selectedId);
   const cardFollowers = useCardFollowers({
     project,
@@ -214,7 +219,14 @@ function App() {
     switch (kind) {
       case 'project-settings':
         return (
-          <ProjectAutomation key={project.id} project={project} user={workspace.user} onAiConfigured={setProjectAi} />
+          <ProjectAutomation
+            key={project.id}
+            project={project}
+            user={workspace.user}
+            role={role}
+            onAiConfigured={setProjectAi}
+            onAccessChanged={() => workspace.refresh({ whileEditing: true })}
+          />
         );
       case 'project':
       case 'list':
@@ -228,6 +240,7 @@ function App() {
             attachmentBytes={attachmentSize(projects)}
             lists={project?.lists || []}
             listId={modal.listId}
+            canLaunch={role === 'manager'}
             onCancel={close}
             onSubmit={values => {
               ({ project: createProject, list: createList, card: createCard })[kind](values);
@@ -338,12 +351,15 @@ function App() {
               <ProjectHeader
                 project={project}
                 offline={offlineMode}
+                canDelete={role === 'manager'}
+                readOnly={role === 'viewer'}
                 onOpenSettings={() => setModal('project-settings')}
                 onDelete={() => setModal({ type: 'delete-project', projectId: project.id })}
               />
               <Board
                 key={project.id}
                 project={project}
+                readOnly={role === 'viewer'}
                 followers={cardFollowers}
                 filters={filters}
                 onFilters={setFilters}
@@ -391,6 +407,7 @@ function App() {
       {selected && (
         <CardDetail
           engine={projectAi.engine}
+          role={role}
           attachmentBytes={attachmentSize(projects, selected.id)}
           onWorkflowRefresh={() => workspace.refresh({ whileEditing: true })}
           offline={offlineMode}

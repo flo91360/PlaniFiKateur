@@ -14,6 +14,7 @@ import { fail } from './http.js';
 import { notificationRecipients } from './recipients.js';
 import { migrateWorkspace, readWorkspace, writeWorkspace } from './workspace-tables.js';
 import { applyChanges, ChangeError } from '../src/lib/workspace-changes.js';
+import { allows, createAccess, MEMBER_ROLES, requirements, ROLES } from './access.js';
 
 // `backupDirectory` reçoit la copie faite avant la migration du tableau en tables.
 export function createStore(filename, { backupDirectory } = {}) {
@@ -122,8 +123,14 @@ export function createStore(filename, { backupDirectory } = {}) {
   const preferences = cardId =>
     db.prepare('SELECT user_id,following FROM card_subscriptions WHERE card_id = ?').all(cardId);
   const participants = card => [card.createdBy?.id, ...card.comments.map(c => c.authorId)].filter(Boolean);
-  const activeMembers = () =>
-    db.prepare('SELECT id,name FROM users WHERE active = 1 AND password_hash IS NOT NULL ORDER BY name,id').all();
+  const access = createAccess(db);
+  // Membres actifs, limités à ceux qui voient le projet quand il est précisé.
+  const activeMembers = projectId =>
+    db
+      .prepare('SELECT id,name,role FROM users WHERE active = 1 AND password_hash IS NOT NULL ORDER BY name,id')
+      .all()
+      .filter(user => !projectId || access.role(user, projectId))
+      .map(({ id, name }) => ({ id, name }));
   const following = (card, userId, prefs = preferences(card.id)) => {
     const preference = prefs.find(row => row.user_id === userId);
     return preference ? !!preference.following : participants(card).includes(userId);
@@ -142,7 +149,13 @@ export function createStore(filename, { backupDirectory } = {}) {
       activeIds: activeUserIds(),
       actorId: actor?.id,
     });
+  // Une carte « Prête à démarrer » n’est confiée à l’agent que si un responsable l’y a placée.
+  const canLaunch = (actor, projectId) => {
+    const user = actor?.id ? userById(actor.id) : null;
+    return !!user && allows(access.role(publicUser(user), projectId), 'manager');
+  };
   const workflows = createWorkflows(db, {
+    canLaunch,
     transaction,
     audit,
     findCard,
@@ -167,6 +180,19 @@ export function createStore(filename, { backupDirectory } = {}) {
     return { ...version, repository, changelog, ...(downloads ? { downloads: JSON.parse(downloads.data) } : {}) };
   };
   transaction(synchronizeInfos);
+  // Projets antérieurs aux droits par projet : règle par défaut, et leur créateur (d’après
+  // l’historique) en devient responsable.
+  transaction(() => {
+    for (const project of readProjects())
+      if (!access.hasPolicy(project.id)) {
+        const creator = db
+          .prepare(
+            "SELECT actor_id FROM activity WHERE action = 'project.created' AND project_id = ? ORDER BY id LIMIT 1",
+          )
+          .get(project.id)?.actor_id;
+        access.adopt(project.id, creator ? userById(creator) : null);
+      }
+  });
   // Enregistre un nouvel état validé : exécutions IA, auteurs et dates, historique, abonnements.
   const commit = (before, clean, actor, { restore = false } = {}) => {
     const date = new Date().toISOString();
@@ -175,6 +201,9 @@ export function createStore(filename, { backupDirectory } = {}) {
       ? [{ action: 'workspace.restored' }]
       : attributeChanges(validateWorkspace(before.projects), clean, actor, date);
     writeProjects(clean, date);
+    const kept = new Set(clean.map(project => project.id));
+    for (const project of before.projects) if (!kept.has(project.id)) access.forgetProject(project.id);
+    for (const project of clean) if (!access.hasPolicy(project.id)) access.adopt(project.id, actor);
     const activeIds = activeUserIds();
     for (const event of events) {
       // Les participants calculés par attributeChanges sont complétés par les abonnés de la carte.
@@ -333,12 +362,12 @@ export function createStore(filename, { backupDirectory } = {}) {
     cardMembers(projectId, cardId) {
       const { card } = findCard(projectId, cardId);
       const prefs = preferences(card.id);
-      return activeMembers().map(user => ({ ...user, following: following(card, user.id, prefs) }));
+      return activeMembers(projectId).map(user => ({ ...user, following: following(card, user.id, prefs) }));
     },
     projectCardFollowers(projectId) {
       const project = this.read().projects.find(project => project.id === projectId);
       if (!project) fail(404, 'project_not_found', 'Projet inexistant.');
-      const members = activeMembers();
+      const members = activeMembers(projectId);
       // Une seule lecture des préférences pour toutes les cartes du projet.
       const prefsByCard = new Map(project.cards.map(card => [card.id, []]));
       for (const row of db.prepare('SELECT card_id,user_id,following FROM card_subscriptions').all())
@@ -354,7 +383,7 @@ export function createStore(filename, { backupDirectory } = {}) {
       return transaction(() => {
         const { project, card } = findCard(projectId, cardId);
         const target = userById(userId);
-        if (!target?.active || !target.password_hash)
+        if (!target?.active || !target.password_hash || !access.role(publicUser(target), projectId))
           fail(400, 'invalid_subscriber', 'Choisissez un membre actif du projet.');
         const previous = preferences(cardId).find(row => row.user_id === userId);
         if (!previous || !!previous.following !== enabled) {
@@ -398,6 +427,81 @@ export function createStore(filename, { backupDirectory } = {}) {
       const row = db.prepare('SELECT revision, updated_at FROM workspace WHERE id = 1').get();
       return { projects: readProjects(), revision: row.revision, updatedAt: row.updated_at };
     },
+    // Tableau vu par un compte : seulement ses projets, avec son rôle sur chacun (`access`).
+    readFor(user) {
+      const workspace = this.read();
+      const roles = access.map(
+        user,
+        workspace.projects.map(project => project.id),
+      );
+      return { ...workspace, projects: workspace.projects.filter(project => roles[project.id]), access: roles };
+    },
+    projectRole: (user, projectId) => access.role(user, projectId),
+    // Exige un rôle minimal sur un projet ; un projet masqué est signalé comme inexistant.
+    requireProject(user, projectId, role = 'viewer') {
+      const current = this.read().projects.some(project => project.id === projectId) && access.role(user, projectId);
+      if (!current) fail(404, 'project_not_found', 'Projet inexistant.');
+      if (!allows(current, role))
+        fail(
+          403,
+          'project_forbidden',
+          role === 'manager'
+            ? 'Cette action est réservée aux responsables du projet.'
+            : 'Votre rôle sur ce projet ne permet que la lecture.',
+        );
+      return current;
+    },
+    // Membres d’un projet : règle pour les autres membres et rôle effectif de chaque compte actif.
+    projectAccess(projectId) {
+      const explicit = access.explicit(projectId);
+      return {
+        memberRole: access.policy(projectId),
+        members: db
+          .prepare('SELECT * FROM users WHERE active = 1 AND password_hash IS NOT NULL ORDER BY name,id')
+          .all()
+          .map(user => ({
+            id: user.id,
+            name: user.name,
+            admin: user.role === 'admin',
+            role: access.role(publicUser(user), projectId),
+            explicit: user.role === 'admin' ? null : explicit[user.id] || null,
+          })),
+      };
+    },
+    configureProjectAccess(projectId, data, actor) {
+      return transaction(() => {
+        this.requireProject(actor, projectId, 'manager');
+        if (!data || typeof data !== 'object' || Array.isArray(data))
+          fail(400, 'invalid_access', 'Un objet JSON est attendu.');
+        const unknown = Object.keys(data).filter(key => !['memberRole', 'members'].includes(key));
+        if (unknown.length) fail(400, 'invalid_access', `Champs inconnus : ${unknown.join(', ')}.`);
+        if (data.memberRole !== undefined && !MEMBER_ROLES.includes(data.memberRole))
+          fail(400, 'invalid_access', 'Rôle des autres membres inconnu.');
+        const members = data.members ?? {};
+        if (!members || typeof members !== 'object' || Array.isArray(members))
+          fail(400, 'invalid_access', 'members : objet { identifiant: rôle } attendu.');
+        for (const [userId, role] of Object.entries(members)) {
+          const user = userById(userId);
+          if (!user?.active || !user.password_hash) fail(400, 'invalid_access', 'Choisissez des membres actifs.');
+          if (user.role === 'admin')
+            fail(400, 'invalid_access', 'Un administrateur est responsable de tous les projets.');
+          if (role !== null && !ROLES.includes(role)) fail(400, 'invalid_access', 'Rôle inconnu.');
+        }
+        access.configure(projectId, { memberRole: data.memberRole, members });
+        // La visibilité des projets change : les navigateurs relisent le tableau.
+        db.prepare('UPDATE workspace SET revision = revision + 1, updated_at = ? WHERE id = 1').run(
+          new Date().toISOString(),
+        );
+        emit({ type: 'workspace', revision: this.getRevision() });
+        audit(actor, 'project.access_changed', {
+          projectId,
+          projectName: this.read().projects.find(project => project.id === projectId)?.name,
+          details: { memberRole: data.memberRole, members },
+          recipientIds: Object.keys(members),
+        });
+        return this.projectAccess(projectId);
+      });
+    },
     // Remplace tout le tableau, à condition que la session ait lu la révision courante.
     write(projects, revision, actor = null, { restore = false } = {}) {
       return transaction(() => {
@@ -413,13 +517,44 @@ export function createStore(filename, { backupDirectory } = {}) {
     change(changes, actor, { strict = false } = {}) {
       return transaction(() => {
         const before = this.read();
+        if (!Array.isArray(changes)) fail(400, 'invalid_change', 'Une liste de modifications est requise.');
+        // Droits par projet : un projet masqué se comporte comme un projet inexistant ; un rôle
+        // insuffisant sur un projet visible refuse tout le lot.
+        const roles = access.map(
+          actor,
+          before.projects.map(project => project.id),
+        );
+        const existing = new Set(before.projects.map(project => project.id));
+        const allowed = [],
+          hidden = [];
+        changes.forEach((change, index) => {
+          const needs = requirements(change);
+          if (needs.some(([projectId]) => existing.has(projectId) && !roles[projectId]))
+            return hidden.push({ index, type: change?.type, reason: 'missing' });
+          const refused = needs.find(([projectId, role]) => existing.has(projectId) && !allows(roles[projectId], role));
+          if (refused)
+            fail(
+              403,
+              'project_forbidden',
+              refused[1] === 'manager'
+                ? 'Seuls les responsables du projet peuvent confier une carte à l’agent ou gérer le projet.'
+                : 'Votre rôle sur ce projet ne permet que la lecture.',
+            );
+          allowed.push(index);
+        });
         let result;
         try {
-          result = applyChanges(before.projects, changes);
+          result = applyChanges(
+            before.projects,
+            allowed.map(index => changes[index]),
+          );
         } catch (error) {
           if (error instanceof ChangeError) fail(400, 'invalid_change', error.message);
           throw error;
         }
+        result.skipped = [...hidden, ...result.skipped.map(item => ({ ...item, index: allowed[item.index] }))].sort(
+          (a, b) => a.index - b.index,
+        );
         const refused = strict && result.skipped[0];
         if (refused)
           fail(
@@ -438,9 +573,8 @@ export function createStore(filename, { backupDirectory } = {}) {
           fail(400, 'invalid_workspace', error.message);
         }
         // Rien à enregistrer (modifications ignorées ou déjà appliquées) : la révision ne bouge pas.
-        if (JSON.stringify(clean) === JSON.stringify(before.projects)) return { ...before, skipped: result.skipped };
-        commit(before, clean, actor);
-        return { ...this.read(), skipped: result.skipped };
+        if (JSON.stringify(clean) !== JSON.stringify(before.projects)) commit(before, clean, actor);
+        return { ...this.readFor(actor), skipped: result.skipped };
       });
     },
     hasUsers() {
@@ -534,6 +668,7 @@ export function createStore(filename, { backupDirectory } = {}) {
           fail(400, 'protected_admin', 'Le compte administrateur ne peut pas être supprimé.');
         db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
         db.prepare('DELETE FROM card_subscriptions WHERE user_id = ?').run(id);
+        access.forgetUser(id);
         db.prepare('DELETE FROM users WHERE id = ?').run(id);
         audit(actor, 'account.deleted', { userId: id, userName: user.name });
         return { deleted: true };
@@ -568,12 +703,22 @@ export function createStore(filename, { backupDirectory } = {}) {
     deleteSession(token) {
       if (token) db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(tokenHash(token));
     },
-    activity({ projectId, cardId, before = Number.MAX_SAFE_INTEGER, limit = 50 } = {}) {
+    // `visible` limite l’historique global aux projets d’un compte (les actions sans projet restent).
+    activity({ projectId, cardId, before = Number.MAX_SAFE_INTEGER, limit = 50, visible = null } = {}) {
       const rows = db
         .prepare(
-          'SELECT * FROM activity WHERE id < ? AND (? IS NULL OR project_id = ?) AND (? IS NULL OR card_id = ?) ORDER BY id DESC LIMIT ?',
+          'SELECT * FROM activity WHERE id < ? AND (? IS NULL OR project_id = ?) AND (? IS NULL OR card_id = ?) AND (? IS NULL OR project_id IS NULL OR project_id IN (SELECT value FROM json_each(?))) ORDER BY id DESC LIMIT ?',
         )
-        .all(before, projectId || null, projectId || null, cardId || null, cardId || null, limit);
+        .all(
+          before,
+          projectId || null,
+          projectId || null,
+          cardId || null,
+          cardId || null,
+          visible && JSON.stringify(visible),
+          visible && JSON.stringify(visible),
+          limit,
+        );
       return rows.map(row => ({
         ...JSON.parse(row.payload),
         id: row.id,

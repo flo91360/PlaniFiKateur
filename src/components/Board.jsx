@@ -72,11 +72,11 @@ function Priority({ value }) {
   );
 }
 
-function CardPreview({ card, color, followers, dragging, onDragStart, onDragEnd, onOpen }) {
+function CardPreview({ card, color, followers, dragging, readOnly, onDragStart, onDragEnd, onOpen }) {
   const links = cardLinks(card);
   const preview = (
     <button
-      draggable
+      draggable={!readOnly}
       onDragStart={e => {
         onDragStart(card.id);
         e.dataTransfer.effectAllowed = 'move';
@@ -141,6 +141,7 @@ export default function Board({
   onOpenCard,
   onAddCard,
   onAddList,
+  readOnly = false,
 }) {
   const [dropList, setDropList] = useState(null);
   const filtering = filters.query || filters.statusFilter !== 'all';
@@ -164,7 +165,9 @@ export default function Board({
           <span className="tiny-dot" />
           {filtering
             ? `${visible.length} carte${visible.length > 1 ? 's' : ''} trouvée${visible.length > 1 ? 's' : ''}`
-            : 'Glissez les cartes pour les organiser'}
+            : readOnly
+              ? 'Lecture seule sur ce projet'
+              : 'Glissez les cartes pour les organiser'}
         </span>
       </div>
       <div className="board" aria-label="Tableau du projet">
@@ -195,13 +198,15 @@ export default function Board({
                   <h2>{list.name}</h2>
                   <span className="list-count">{cards.length}</span>
                 </div>
-                <button
-                  className="icon-button"
-                  aria-label={`Ajouter une carte dans ${list.name}`}
-                  onClick={() => onAddCard(list.id)}
-                >
-                  <Plus size={17} />
-                </button>
+                {!readOnly && (
+                  <button
+                    className="icon-button"
+                    aria-label={`Ajouter une carte dans ${list.name}`}
+                    onClick={() => onAddCard(list.id)}
+                  >
+                    <Plus size={17} />
+                  </button>
+                )}
               </header>
               <div className="cards">
                 {cards.map(card => (
@@ -211,6 +216,7 @@ export default function Board({
                     color={list.color}
                     followers={followers[card.id] || []}
                     dragging={dragging === card.id}
+                    readOnly={readOnly}
                     onDragStart={onDragging}
                     onDragEnd={endDrag}
                     onOpen={onOpenCard}
@@ -223,17 +229,21 @@ export default function Board({
                   </div>
                 )}
               </div>
-              <button className="add-card" onClick={() => onAddCard(list.id)}>
-                <Plus size={16} />
-                Ajouter une carte
-              </button>
+              {!readOnly && (
+                <button className="add-card" onClick={() => onAddCard(list.id)}>
+                  <Plus size={16} />
+                  Ajouter une carte
+                </button>
+              )}
             </section>
           );
         })}
-        <button className="add-list" onClick={onAddList}>
-          <Plus size={17} />
-          Ajouter une liste
-        </button>
+        {!readOnly && (
+          <button className="add-list" onClick={onAddList}>
+            <Plus size={17} />
+            Ajouter une liste
+          </button>
+        )}
       </div>
       <footer className="board-footer">
         <span>

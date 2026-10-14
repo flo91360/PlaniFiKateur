@@ -15,6 +15,7 @@ Un tableau de projets inspiré de Trello, conçu pour préparer des demandes con
 - Mode connecté : données SQLite partagées entre le site et l’API de consultation, rangées en tables (projets, listes, cartes, commentaires, pièces jointes).
 - Enregistrement des seules modifications : deux personnes peuvent travailler en même temps sur des cartes ou des champs différents sans conflit, et des routes par élément (`POST`, `PATCH`, `DELETE`) permettent aux intégrations de modifier projets, listes, cartes et commentaires.
 - Comptes individuels par e-mail et mot de passe, invitations, déconnexion et gestion des membres par l’administrateur.
+- Droits par projet : lecture, contribution ou responsable, projet masqué aux autres membres ; seuls les responsables confient une carte à l’agent.
 - Créateur des cartes et auteur des commentaires attribués par le serveur ; historique des actions pour préparer les notifications.
 - Accès agent en lecture seule avec une clé dédiée.
 - Consultation des cartes avec projet obligatoire, pour éviter de mélanger des titres identiques entre projets.
@@ -173,7 +174,7 @@ dans votre dossier Google Drive, avec un sous-dossier par dépôt et par version
 nouveau projet n’a besoin que de son dépôt GitHub. La carte Infos reçoit le lien de
 téléchargement. Voir [l’archivage Google Drive](docs/google-drive.md).
 
-Héberger le serveur sur une origine HTTPS avec un volume de données persistant. Le parcours d’un seul agent est disponible : préparation, réservation exclusive, questions, résultats et validation humaine. Connecter un service agent externe avec sa clé dédiée ; voir [le guide agent](docs/agents.md). Les droits des membres par projet, les notifications et la délégation restent à ajouter.
+Héberger le serveur sur une origine HTTPS avec un volume de données persistant. Le parcours d’un seul agent est disponible : préparation, réservation exclusive, questions, résultats et validation humaine. Connecter un service agent externe avec sa clé dédiée ; voir [le guide agent](docs/agents.md). Les droits des membres sont réglés par projet ([droits par projet](docs/accounts.md#droits-par-projet--v0127)) ; les notifications et la délégation restent à ajouter.
 
 Les comptes peuvent suivre ou ne plus suivre une carte depuis son détail, même sans en être auteurs. Les abonnements persistants alimentent les destinataires des futures notifications ; aucun envoi de notification n’est encore actif. Voir [la documentation des comptes](docs/accounts.md#suivre-une-carte).
 

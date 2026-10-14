@@ -9,7 +9,7 @@ export function projectRoutes({ store, config, auth, guards, refiner }) {
   return [
     {
       path: '/api/v1/projects/:projectId/github',
-      guard: guards.account,
+      guard: guards.project,
       methods: {
         GET(ctx) {
           const { projectId } = ctx.params;
@@ -84,11 +84,11 @@ export function projectRoutes({ store, config, auth, guards, refiner }) {
     },
     {
       path: '/api/v1/projects/:projectId/refine',
-      guard: guards.account,
+      guard: guards.project,
       methods: {
         async POST(ctx) {
+          store.requireProject(ctx.user, ctx.params.projectId, 'editor');
           const project = store.read().projects.find(item => item.id === ctx.params.projectId);
-          if (!project) throw httpError(404, 'project_not_found', 'Projet inexistant.');
           const request = validateRefinement(await ctx.body());
           if (!refiner.enabled) throw httpError(503, 'ai_not_configured', notConfigured);
           auth.refineLimit(ctx.user.id);
@@ -105,6 +105,16 @@ export function projectRoutes({ store, config, auth, guards, refiner }) {
             project: { name: project.name, description: project.description, repository },
           });
           ctx.send(200, { data: { ...result, sources: documents.map(file => file.name) } });
+        },
+      },
+    },
+    {
+      path: '/api/v1/projects/:projectId/members',
+      guard: guards.project,
+      methods: {
+        GET: ctx => ctx.send(200, { data: store.projectAccess(ctx.params.projectId) }),
+        async PUT(ctx) {
+          ctx.send(200, { data: store.configureProjectAccess(ctx.params.projectId, await ctx.body(), ctx.user) });
         },
       },
     },

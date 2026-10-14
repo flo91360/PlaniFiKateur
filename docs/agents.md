@@ -50,8 +50,11 @@ demande confirmation à sa fermeture (aussitôt pour une pièce jointe ou l’ef
 avec la possibilité de rétablir la demande. La confirmation de suppression de la
 carte signale aussi l’annulation.
 Les transitions humaines exigent une version à jour pour éviter deux validations
-contradictoires. Tous les membres actifs peuvent répondre et demander des corrections dans cet
-espace actuellement partagé.
+contradictoires. Depuis la v0.1.27, les droits par projet s’appliquent : confier une carte à
+l’agent (statut « Prête à démarrer » ou « Confier à l’agent »), valider son résultat et demander
+des corrections sont réservés aux **responsables** du projet et aux administrateurs ; les
+contributeurs peuvent répondre à ses questions et annuler une exécution. Voir
+[les droits par projet](accounts.md#droits-par-projet--v0127).
 
 ## Connecter l’agent
 

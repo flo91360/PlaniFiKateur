@@ -4,7 +4,7 @@ import { httpError } from '../http.js';
 export function cardRoutes({ store, guards }) {
   const card = '/api/v1/projects/:projectId/cards/:cardId';
   const history = {
-    guard: guards.account,
+    guard: ctx => (ctx.params.projectId ? guards.project(ctx) : guards.account(ctx)),
     methods: {
       GET(ctx) {
         const limit = Number(ctx.url.searchParams.get('limit') || 50),
@@ -12,7 +12,8 @@ export function cardRoutes({ store, guards }) {
         if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isSafeInteger(before) || before < 1)
           throw httpError(400, 'invalid_pagination', 'Pagination invalide.');
         const { projectId, cardId } = ctx.params;
-        const events = store.activity({ projectId, cardId, limit, before });
+        const visible = projectId ? null : Object.keys(store.readFor(ctx.user).access);
+        const events = store.activity({ projectId, cardId, limit, before, visible });
         ctx.send(200, { data: events, meta: { nextBefore: events.length === limit ? events.at(-1).id : null } });
       },
     },
@@ -20,15 +21,17 @@ export function cardRoutes({ store, guards }) {
   return [
     {
       path: '/api/v1/projects/:projectId/card-followers',
-      guard: guards.account,
+      guard: guards.project,
       methods: { GET: ctx => ctx.send(200, { data: store.projectCardFollowers(ctx.params.projectId) }) },
     },
     {
       path: `${card}/subscribers`,
-      guard: guards.account,
+      guard: guards.project,
       methods: {
         GET: ctx => ctx.send(200, { data: store.cardMembers(ctx.params.projectId, ctx.params.cardId) }),
+        // Ajouter un autre membre au suivi : contributeurs et responsables.
         async PUT(ctx) {
+          store.requireProject(ctx.user, ctx.params.projectId, 'editor');
           const data = await ctx.body();
           if (typeof data?.userId !== 'string' || !data.userId)
             throw httpError(400, 'invalid_subscriber', 'Choisissez un membre du projet.');
@@ -40,7 +43,7 @@ export function cardRoutes({ store, guards }) {
     },
     {
       path: `${card}/subscription`,
-      guard: guards.account,
+      guard: guards.project,
       methods: {
         GET: ctx => ctx.send(200, { data: store.subscription(ctx.params.projectId, ctx.params.cardId, ctx.user.id) }),
         async PUT(ctx) {
