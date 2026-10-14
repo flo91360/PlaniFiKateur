@@ -9,11 +9,11 @@ import Dialog from './Dialog.jsx';
 import LocalForm from './LocalForm.jsx';
 import Status, { PriorityOptions, StatusOptions } from './Status.jsx';
 import { EffortSelect } from './AiSettings.jsx';
-import { effortLabels } from '../../worker/ai-settings.mjs';
 import { cardLinks } from '../lib/infos.js';
 import { createId as uid } from '../lib/id.js';
 import { parseTags } from '../lib/tags.js';
-import { useCardExecutions } from '../lib/use-card-executions.js';
+import { unfinished, useCardExecutions } from '../lib/use-card-executions.js';
+import ExecutionPanel from './ExecutionPanel.jsx';
 
 function CommentText({ text }) {
   return (
@@ -127,11 +127,11 @@ function Discussion({ card, user, onUpdate }) {
   );
 }
 
-function DeleteCard({ onDelete }) {
+function DeleteCard({ onDelete, cancelsExecution }) {
   const [confirming, setConfirming] = useState(false);
   return confirming ? (
     <div className="delete-confirm">
-      <p>Supprimer définitivement cette carte ?</p>
+      <p>Supprimer définitivement cette carte ?{cancelsExecution && ' Son exécution IA en cours sera annulée.'}</p>
       <button className="danger-button" onClick={onDelete}>
         Oui, supprimer
       </button>
@@ -148,6 +148,37 @@ function DeleteCard({ onDelete }) {
 }
 
 const saveLabels = { saved: 'Modifications enregistrées', saving: 'Enregistrement en cours…' };
+
+// Champs qui forment la demande : les modifier annule l’exécution en cours (server/workflows.js, source).
+const requestFields = {
+  title: value => value,
+  description: value => value,
+  tags: value => JSON.stringify(value),
+  attachments: value => JSON.stringify(value || []),
+  aiEffort: value => value || '',
+};
+const changesRequest = (card, patch) =>
+  Object.entries(requestFields).some(
+    ([key, normalize]) => key in patch && normalize(patch[key]) !== normalize(card[key]),
+  );
+const systemCards = projectId => [`${projectId}-git-version`, `${projectId}-readme`, `${projectId}-changelog`];
+
+function CancelConfirm({ onConfirm, onRevert }) {
+  return (
+    <div className="execution-confirm" role="alert">
+      <p>
+        Cette modification change la demande : l’exécution IA en cours sera annulée et la carte repassera « À explorer »
+        jusqu’à ce qu’elle soit de nouveau confiée à l’agent.
+      </p>
+      <button className="danger-button" onClick={onConfirm}>
+        Annuler l’exécution et enregistrer
+      </button>
+      <button className="secondary-button" onClick={onRevert}>
+        Rétablir la demande
+      </button>
+    </div>
+  );
+}
 
 export default function CardDetail({
   engine = 'codex',
@@ -189,20 +220,43 @@ export default function CardDetail({
     },
   });
 
-  const saveFields = (nextDescription = description) => {
-    onUpdate({ title: title.trim() || card.title, description: nextDescription.trim(), tags: parseTags(tags) });
+  const runActive = unfinished(execution.current);
+  // Modification qui annulerait l’exécution en cours : { patch, close } en attente de confirmation.
+  const [pending, setPending] = useState(null);
+  const update = (patch, { close = false } = {}) => {
+    if (runActive && changesRequest(card, patch)) return setPending({ patch, close });
+    onUpdate(patch);
+    if (close) onClose();
+  };
+  const saveFields = (nextDescription = description, options) => {
+    update({ title: title.trim() || card.title, description: nextDescription.trim(), tags: parseTags(tags) }, options);
     if (!title.trim()) setTitle(card.title);
   };
   const replaceDescription = text => {
     setDescription(text);
     saveFields(text);
   };
-  const close = () => {
-    saveFields();
-    onClose();
+  const close = () => saveFields(description, { close: true });
+  const confirmPending = () => {
+    onUpdate(pending.patch);
+    setPending(null);
+    if (pending.close) onClose();
   };
+  const revertPending = () => {
+    setTitle(card.title);
+    setDescription(card.description);
+    setTags(tagsText);
+    setPending(null);
+    if (pending.close) onClose();
+  };
+  const startHint = !card.description.trim()
+    ? 'Rédigez la description : c’est la demande transmise à l’agent.'
+    : !fieldsSaved || saveStatus !== 'saved'
+      ? 'Enregistrez la carte avant de la confier à l’agent.'
+      : '';
   return (
     <Dialog title="Détail de la carte" wide onClose={close}>
+      {pending && <CancelConfirm onConfirm={confirmPending} onRevert={revertPending} />}
       <div className="detail-body">
         <div className="detail-main">
           <label className="detail-title-label">
@@ -250,13 +304,17 @@ export default function CardDetail({
             listId={card.listId}
           />
           <p className="muted">Cette description est l’objectif transmis à l’agent.</p>
-          <CardResources card={card} />
-          {execution.ai && (
-            <p className="muted">
-              Exécution : {execution.ai.engine === 'codex' ? 'Codex' : 'Claude Code'} · modèle{' '}
-              {execution.ai.model || 'par défaut'} · effort {effortLabels[execution.ai.effort || '']}.
-            </p>
+          {!offline && !systemCards(projectId).includes(card.id) && (
+            <ExecutionPanel
+              projectId={projectId}
+              cardId={card.id}
+              execution={execution}
+              canStart={!startHint}
+              startHint={startHint}
+              onChanged={onWorkflowRefresh}
+            />
           )}
+          <CardResources card={card} />
           <label className="detail-label">
             Étiquettes
             <input
@@ -269,7 +327,7 @@ export default function CardDetail({
           <Attachments
             otherBytes={attachmentBytes}
             attachments={card.attachments || []}
-            onChange={attachments => onUpdate({ attachments })}
+            onChange={attachments => update({ attachments })}
           />
           <Discussion card={card} user={user} onUpdate={onUpdate} />
           {!offline && <ActivityPanel projectId={projectId} cardId={card.id} />}
@@ -291,7 +349,7 @@ export default function CardDetail({
             engine={execution.managed ? execution.ai?.engine || engine : engine}
             value={card.aiEffort || ''}
             disabled={execution.managed}
-            onChange={aiEffort => onUpdate({ aiEffort })}
+            onChange={aiEffort => update({ aiEffort })}
           />
           <label>
             Priorité
@@ -299,7 +357,7 @@ export default function CardDetail({
               <PriorityOptions />
             </select>
           </label>
-          <DeleteCard onDelete={onDelete} />
+          <DeleteCard onDelete={onDelete} cancelsExecution={runActive} />
         </aside>
       </div>
       <div className="detail-footer">

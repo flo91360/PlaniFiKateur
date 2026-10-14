@@ -2178,3 +2178,134 @@ textarea::placeholder {
     grid-column: 1 / -1;
   }
 }
+
+/* Exécution IA d’une carte */
+.execution-panel {
+  margin: 18px 0 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fbfdfc;
+}
+.execution-panel h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.execution-panel h3 span {
+  margin-left: auto;
+  color: #8ba59b;
+  font-size: 10px;
+}
+.execution-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+.execution-steps li {
+  counter-increment: step;
+  padding-top: 8px;
+  border-top: 3px solid var(--border);
+  color: var(--muted);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.execution-steps li::before {
+  content: counter(step) '. ';
+}
+.execution-steps li.done {
+  border-color: #8fc4a3;
+  color: #4e7b5b;
+}
+.execution-steps li.current {
+  border-color: var(--primary);
+  color: #263b33;
+  font-weight: 600;
+}
+.execution-steps.cancelled li {
+  border-color: var(--border);
+  color: #b3bfba;
+}
+.execution-headline {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.execution-headline.waiting,
+.execution-headline.interrupted {
+  color: #8e6d29;
+}
+.execution-headline.cancelled {
+  color: var(--muted);
+}
+.execution-detail {
+  margin: 0 0 8px;
+  padding-left: 10px;
+  border-left: 2px solid var(--border);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.execution-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0 0 8px;
+  font-size: 12px;
+}
+.execution-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--primary);
+}
+.execution-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.execution-form label {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 12px;
+}
+.execution-form textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  resize: vertical;
+}
+.execution-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 14px 25px 0;
+  padding: 12px 14px;
+  border: 1px solid #ecd9a8;
+  border-radius: 10px;
+  background: #fdf8ea;
+}
+.execution-confirm p {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #6d5520;
+}
+@media (max-width: 700px) {
+  .execution-confirm {
+    margin: 12px 12px 0;
+  }
+}
