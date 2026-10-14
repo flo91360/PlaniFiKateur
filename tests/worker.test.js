@@ -694,7 +694,13 @@ test('a model question is relayed literally, a card reply resumes the thread and
   assert.equal(card.attachments.length, 1);
   assert.equal(card.attachments[0].name, 'personne.ui');
   assert.equal(Buffer.from(card.attachments[0].data, 'base64').toString('utf8'), qtForm);
-  assert.ok(card.comments.at(-1).text.includes('personne.ui'));
+  // Le résultat figure dans l’exécution (bandeau), la discussion garde seulement l’échange.
+  assert.equal(card.comments.at(-1).text, 'Un champ Nom suffit.');
+  const [delivered] = f.store.workflows.list(snapshot.projects[0].id, card.id);
+  assert.deepEqual(
+    delivered.submissions.at(-1).files.map(file => file.name),
+    ['personne.ui'],
+  );
   assert.equal(f.pr, undefined);
   assert.equal(
     f.calls.some(call => call.command[0] === 'git' && call.command[1] === 'push'),

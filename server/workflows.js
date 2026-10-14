@@ -158,25 +158,11 @@ export function createWorkflows(
       card.status = CARD_STATUS[run.state];
       card.updatedAt = run.updatedAt;
       card.updatedBy = actor ? { id: actor.id, name: actor.name } : null;
+      // La discussion ne reçoit que les échanges entre l’agent et les personnes (questions, réponses).
+      // L’activité de l’agent (avancement, résultat, contrôles, fusion, interruption) reste dans
+      // l’exécution, affichée par le bandeau « Exécution IA » de la carte.
       if (['question', 'answer'].includes(action) || (action === 'checks' && run.state === 'waiting'))
         questionComments(card, run);
-      let message;
-      if (action === 'progress') message = run.updates.at(-1)?.text;
-      if (['interrupt', 'interrupted'].includes(action)) message = run.interruption;
-      if (action === 'submit') {
-        const result = run.submissions.at(-1);
-        message = `${result.pullRequest ? `PR : ${result.pullRequest.url}\n\n` : ''}${result.summary}${result.files?.length ? `\n\nFichiers disponibles dans les pièces jointes : ${result.files.map(file => file.name).join(', ')}` : ''}\n\nVérifications : ${result.checks}`;
-      }
-      if (action === 'merged')
-        message = `La PR a été fusionnée. La tâche est terminée.\n${run.submissions.at(-1).pullRequest.url}`;
-      // Contrôles en échec (reprise par l’agent) ou terminés sans verdict (à relancer sur GitHub).
-      if (
-        action === 'checks' &&
-        (run.state === 'ready' ||
-          (run.state === 'merging' && !['success', 'cancelled'].includes(run.githubChecks?.conclusion)))
-      )
-        message = run.updates.at(-1)?.text;
-      if (message) addComment(card, run, actor, `work-${run.id}-${action}-${run.version}`, message);
       writeProjects(projects, run.updatedAt);
     }
     audit(actor, `work.${action}`, {
@@ -926,7 +912,7 @@ export function createWorkflows(
             // run that produced them. Subsequent human changes remain protected.
             run.source = source(delivered);
             run.cardSnapshot = { ...run.cardSnapshot, attachments: delivered.attachments };
-            // Ni révision ni date ici : save() les met à jour juste après avec le commentaire de résultat.
+            // Ni révision ni date ici : save() les met à jour juste après avec le statut de la carte.
             writeProjects(clean, undefined, { revision: false });
             audit(
               agent,

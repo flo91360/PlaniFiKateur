@@ -83,8 +83,14 @@ test('a UI-created card is readable by an agent and another browser', async ({ p
   await page.getByRole('button', { name: 'Ajouter une carte dans Bugs', exact: true }).click();
   await expect(page.getByLabel('Effort IA', { exact: true })).toHaveValue('medium');
   await expect(page.getByLabel('Effort IA', { exact: true }).locator('option[value=""]')).toHaveCount(0);
+  // Le bandeau d’exécution IA est présent dès la création ; son bouton attend une description.
+  const creationPanel = page.getByRole('region', { name: 'Exécution IA', exact: true });
+  const entrustAtCreation = creationPanel.getByRole('button', { name: 'Créer et confier à l’agent', exact: true });
+  await expect(creationPanel).toBeVisible();
   await page.getByLabel('Titre de la carte', { exact: true }).fill('Bug visible par les agents');
+  await expect(entrustAtCreation).toBeDisabled();
   await page.getByLabel('Description', { exact: true }).fill('Le contexte de la demande.');
+  await expect(entrustAtCreation).toBeEnabled();
   await page.getByLabel('Statut', { exact: true }).selectOption('ready');
   await page.getByLabel('Votre commentaire').fill('Une précision');
   await page.getByRole('button', { name: 'Créer la carte', exact: true }).click();
@@ -1027,8 +1033,13 @@ test.describe('project task execution', () => {
     await action('claim');
     const pullRequest = { url: 'https://github.com/flo91360/PlaniFiKateur/pull/7', headSha: 'a'.repeat(40) };
     await action('submit', { summary: 'Menu réalisé.', checks: 'Navigation mobile testée.', links: [], pullRequest });
-    await expect(discussion).toContainText('Menu réalisé.', { timeout: 10000 });
-    await expect(discussion.getByRole('link', { name: pullRequest.url, exact: true })).toBeVisible();
+    // L’activité de l’agent figure dans le bandeau ; la discussion garde seulement la question et la réponse.
+    const executionPanel = page.getByRole('region', { name: 'Exécution IA', exact: true });
+    await expect(executionPanel).toContainText('Menu réalisé.', { timeout: 10000 });
+    await expect(executionPanel).toContainText('Navigation mobile testée.');
+    await expect(executionPanel.getByRole('link', { name: 'PR #7' })).toBeVisible();
+    await expect(discussion).not.toContainText('Menu réalisé.');
+    await expect(discussion).not.toContainText('Navigation mobile testée.');
     const event = {
       action: 'closed',
       repository: { full_name: 'flo91360/PlaniFiKateur' },
@@ -1052,7 +1063,8 @@ test.describe('project task execution', () => {
     });
     expect(merged.status()).toBe(200);
     await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('done', { timeout: 10000 });
-    await expect(discussion).toContainText('La PR a été fusionnée. La tâche est terminée.');
+    await expect(executionPanel).toContainText('PR fusionnée : tâche terminée.');
+    await expect(discussion).not.toContainText('PR a été fusionnée');
     await page.getByRole('button', { name: 'Terminé', exact: true }).click();
     await page.reload();
     await page.getByRole('heading', { name: card.title, exact: true }).click();
@@ -1149,7 +1161,10 @@ test.describe('project task execution', () => {
     await page.getByLabel('Titre de la carte', { exact: true }).fill(card.title);
     await page.getByRole('button', { name: 'Terminé', exact: true }).click();
     await page.getByRole('heading', { name: card.title, exact: true }).click();
-    await expect(page.locator('.comments-section')).toContainText('Connexion à l’outil interrompue.');
+    await expect(page.getByRole('region', { name: 'Exécution IA', exact: true })).toContainText(
+      'Connexion à l’outil interrompue.',
+    );
+    await expect(page.locator('.comments-section')).not.toContainText('Connexion à l’outil interrompue.');
     await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('ready');
     await action('claim');
     await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('progress', { timeout: 10000 });
@@ -1181,10 +1196,18 @@ test.describe('project task execution', () => {
     await page.getByRole('heading', { name: card.title, exact: true }).click();
     const panel = page.getByRole('region', { name: 'Exécution IA', exact: true });
     await expect(panel).toContainText('Aucune exécution pour cette carte.');
-    await panel.getByRole('button', { name: 'Confier à l’agent', exact: true }).click();
+    // Bouton inactif sans description, actif dès la saisie : la carte est enregistrée avant d’être confiée.
+    const entrust = panel.getByRole('button', { name: 'Confier à l’agent', exact: true });
+    const description = page.getByLabel('Description', { exact: true });
+    await description.fill('');
+    await expect(entrust).toBeDisabled();
+    await description.fill('Demande saisie puis confiée sans autre action.');
+    await expect(entrust).toBeEnabled();
+    await entrust.click();
     await expect(panel).toContainText('En attente du worker');
     await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('ready');
     let [run] = await history();
+    expect(run.objective).toBe('Demande saisie puis confiée sans autre action.');
     const claimed = await request.post(`${base}/${run.id}/claim`, { headers, data: { version: run.version } });
     expect(claimed.status()).toBe(200);
     await expect(panel).toContainText('Agent du panneau réalise la demande.', { timeout: 10000 });
@@ -1287,7 +1310,9 @@ test.describe('project task execution', () => {
     await expect(page.getByLabel('Titre de la carte', { exact: true })).toHaveValue(card.title);
     const panel = page.getByRole('region', { name: 'Exécution IA', exact: true });
     await expect(panel).toContainText('L’agent attend votre réponse');
-    await expect(panel).toContainText('Quelle couleur pour le bandeau ?');
+    // La question appartient à la discussion, sans doublon dans le bandeau.
+    await expect(page.locator('.comments-section')).toContainText('Quelle couleur pour le bandeau ?');
+    await expect(panel).not.toContainText('Quelle couleur pour le bandeau ?');
     await page.getByLabel('Votre commentaire', { exact: true }).fill('Un vert sapin.');
     await page.getByRole('button', { name: 'Publier', exact: true }).click();
     await expect(panel).toContainText('En attente du worker', { timeout: 10000 });
@@ -1383,7 +1408,8 @@ test.describe('project task execution', () => {
       headers,
       data: { version: run.version, leaseToken: run.leaseToken, message: 'Une question en direct ?' },
     });
-    await expect(panel).toContainText('Une question en direct ?');
+    await expect(panel).toContainText('L’agent attend votre réponse');
+    await expect(page.locator('.comments-section')).toContainText('Une question en direct ?');
     await expect(page.getByRole('button', { name: 'À traiter (1)', exact: true })).toBeVisible();
   });
 });
@@ -1637,9 +1663,12 @@ test.describe('automatic GitHub delivery', () => {
     expect(submitted.status()).toBe(200);
     await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('review', { timeout: 10000 });
     await expect(page.getByRole('button', { name: 'Valider le résultat', exact: true })).toHaveCount(0);
-    await expect(
-      discussion.getByRole('link', { name: 'https://github.com/flo91360/PlaniFiKateur/pull/7', exact: true }),
-    ).toBeVisible();
+    const executionPanel = page.getByRole('region', { name: 'Exécution IA', exact: true });
+    await expect(executionPanel.getByRole('link', { name: 'PR #7' })).toHaveAttribute(
+      'href',
+      'https://github.com/flo91360/PlaniFiKateur/pull/7',
+    );
+    await expect(discussion).not.toContainText('Menu corrigé');
     const event = {
       action: 'closed',
       repository: { full_name: 'flo91360/PlaniFiKateur' },
@@ -1663,7 +1692,8 @@ test.describe('automatic GitHub delivery', () => {
     });
     expect(response.status()).toBe(200);
     await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('done', { timeout: 10000 });
-    await expect(discussion).toContainText('La PR a été fusionnée. La tâche est terminée.');
+    await expect(executionPanel).toContainText('PR fusionnée : tâche terminée.');
+    await expect(discussion).not.toContainText('PR a été fusionnée');
     await page.getByRole('button', { name: 'Terminé', exact: true }).click();
     await page.getByRole('heading', { name: card.title, exact: true }).click();
     await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('done');

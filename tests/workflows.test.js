@@ -434,9 +434,20 @@ test('upgrading backfills existing agent questions once and a comment can resume
   const run = await f.agentAction(progress, 'question', { message: 'Configuration corrigée ?' });
   const snapshot = f.store.read(),
     db = new DatabaseSync(f.file);
+  // L’avancement reste dans le bandeau d’exécution : seule la question rejoint la discussion.
+  const discussion = snapshot.projects[0].cards[0].comments;
+  assert.ok(!discussion.some(c => c.text === 'Avancement historique de l’agent.'));
   snapshot.projects[0].cards[0].comments = snapshot.projects[0].cards[0].comments.filter(
     c => !c.id.startsWith(`work-${run.id}-question-`),
   );
+  // Commentaire d’agent publié par une ancienne version, sans type d’auteur.
+  snapshot.projects[0].cards[0].comments.push({
+    id: 'historic-progress',
+    author: run.agent.name,
+    authorId: run.agent.id,
+    text: 'Avancement historique de l’agent.',
+    date: new Date().toISOString(),
+  });
   snapshot.projects[0].cards[0].comments.forEach(comment => {
     delete comment.authorKind;
   });
