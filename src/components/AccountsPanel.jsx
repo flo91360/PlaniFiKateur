@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { apiData } from '../lib/api-client.js';
 
 const request = (path, options) => apiData(path, { fallback: 'Action impossible.', ...options });
@@ -13,12 +13,12 @@ export default function AccountsPanel({ user, onLogout }) {
   const [deletingId, setDeletingId] = useState(null);
   const [currentPassword, setCurrent] = useState(''),
     [password, setPassword] = useState('');
-  const load = async () => {
+  const load = useCallback(async () => {
     if (user.role === 'admin') setUsers(await request('users'));
-  };
+  }, [user.role]);
   useEffect(() => {
     void load().catch(cause => setError(cause.message));
-  }, []);
+  }, [load]);
   const action = async fn => {
     setBusy(true);
     setError('');

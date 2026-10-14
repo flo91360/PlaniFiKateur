@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Bell, BellOff, UserPlus } from 'lucide-react';
 import { apiData } from '../lib/api-client.js';
 
@@ -9,18 +9,23 @@ export default function CardSubscription({ projectId, cardId, saveStatus }) {
     [busy, setBusy] = useState(false),
     [error, setError] = useState('');
   const base = `projects/${projectId}/cards/${cardId}`;
-  const request = (suffix, options = {}) =>
-    apiData(`${base}/${suffix}`, { fallback: 'Suivi indisponible.', ...options });
-  const read = async signal => {
-    const [subscription, people] = await Promise.all([
-      request('subscription', { signal }),
-      request('subscribers', { signal }),
-    ]);
-    if (!signal?.aborted) {
-      setFollowing(subscription.following);
-      setMembers(people);
-    }
-  };
+  const request = useCallback(
+    (suffix, options = {}) => apiData(`${base}/${suffix}`, { fallback: 'Suivi indisponible.', ...options }),
+    [base],
+  );
+  const read = useCallback(
+    async signal => {
+      const [subscription, people] = await Promise.all([
+        request('subscription', { signal }),
+        request('subscribers', { signal }),
+      ]);
+      if (!signal?.aborted) {
+        setFollowing(subscription.following);
+        setMembers(people);
+      }
+    },
+    [request],
+  );
   useEffect(() => {
     if (busy) return;
     const controller = new AbortController();
@@ -28,7 +33,7 @@ export default function CardSubscription({ projectId, cardId, saveStatus }) {
       if (!controller.signal.aborted) setError(cause.message);
     });
     return () => controller.abort();
-  }, [base, saveStatus, busy]);
+  }, [read, saveStatus, busy]);
   useEffect(() => {
     setFollowing(null);
     setMembers(null);

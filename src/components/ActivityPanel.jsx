@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api-client.js';
 
 const labels = {
@@ -52,24 +52,27 @@ export default function ActivityPanel({ projectId, cardId }) {
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false);
   const path = projectId ? `projects/${projectId}/${cardId ? `cards/${cardId}/` : ''}activity` : 'activity';
-  const load = async before => {
-    setBusy(true);
-    setError('');
-    try {
-      const result = await apiFetch(`${path}${before ? `?before=${before}` : ''}`, {
-        fallback: 'Historique indisponible.',
-      });
-      setEvents(previous => (before ? [...previous, ...result.data] : result.data));
-      setNext(result.meta.nextBefore);
-    } catch (cause) {
-      setError(cause.message);
-    } finally {
-      setBusy(false);
-    }
-  };
+  const load = useCallback(
+    async before => {
+      setBusy(true);
+      setError('');
+      try {
+        const result = await apiFetch(`${path}${before ? `?before=${before}` : ''}`, {
+          fallback: 'Historique indisponible.',
+        });
+        setEvents(previous => (before ? [...previous, ...result.data] : result.data));
+        setNext(result.meta.nextBefore);
+      } catch (cause) {
+        setError(cause.message);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [path],
+  );
   useEffect(() => {
     void load();
-  }, [path]);
+  }, [load]);
   return (
     <section className="activity-panel">
       <h3>Historique des actions</h3>
