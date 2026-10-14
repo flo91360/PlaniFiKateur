@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import GithubSetup from './GithubSetup.jsx';
-import AgentSetup, { workRequest } from './AgentSetup.jsx';
+import AgentSetup from './AgentSetup.jsx';
+import { apiData } from '../lib/api-client.js';
 import AiSettings from './AiSettings.jsx';
 import ExecutionSettings from './ExecutionSettings.jsx';
 import DriveArchive from './DriveArchive.jsx';
@@ -10,7 +11,7 @@ export default function ProjectAutomation({ project, user, onAiConfigured }) {
     [error, setError] = useState('');
   useEffect(() => {
     const controller = new AbortController();
-    workRequest(`projects/${project.id}/github`, 'GET', null, controller.signal)
+    apiData(`projects/${project.id}/github`, { signal: controller.signal })
       .then(setConfiguration)
       .catch(cause => {
         if (!controller.signal.aborted) setError(cause.message);

@@ -8,11 +8,15 @@ comptes, sauvegardes, Google Drive, multi-projets).
 
 ## Structure
 
-- `src/` : interface React 19 + Vite (`main.jsx`, `components/`). `src/lib/` est
+- `src/` : interface React 19 + Vite. `main.jsx` garde l’état et les actions ;
+  l’affichage est dans `components/` (tableau, détail de carte, formulaires…).
+  Tout appel à l’API passe par `src/lib/api-client.js`. `src/lib/` est aussi
   partagé avec le serveur (validation du workspace, infos, releases Drive).
 - `server/` : API Node sans framework, montée dans Vite en dev (`vite.config.js`)
-  et par `server/index.js` en production. Stockage SQLite via `node:sqlite`
-  (`store.js`), parcours agent dans `workflows.js`.
+  et par `server/index.js` en production. `api.js` assemble la table de routes
+  (`router.js`) décrite par domaine dans `server/routes/` ; `auth.js` gère
+  sessions, clés et limites. Stockage SQLite via `node:sqlite` (`store.js`),
+  parcours agent dans `workflows.js`.
 - `worker/` : worker IA séparé (Codex ou Claude Agent SDK), avec **son propre
   `package.json`**. Profils d’exécution par dépôt dans `execution-profile.mjs`.
 - `scripts/` : client agent de référence, sauvegarde/restauration, export HTML,
@@ -46,9 +50,9 @@ Hors CI, Playwright cherche Chromium via `PLAYWRIGHT_CHROMIUM_EXECUTABLE` ou
 - Peu de dépendances : préférer les modules intégrés de Node (`node:sqlite`,
   `node:crypto`, `node:test`) avant d’ajouter un paquet.
 - Réponses API `{ "data": ... }`, erreurs `{ "error": { "code", "message" } }`.
-  Toute route ajoutée ou modifiée se reflète dans `public/openapi.json`, la
-  liste de `tests/openapi.test.js` et `docs/api.md` (ou `docs/agents.md` pour
-  le parcours agent).
+  Toute route ajoutée ou modifiée se reflète dans `public/openapi.json` (le
+  test `tests/openapi.test.js` compare la spécification à la table de routes)
+  et dans `docs/api.md` (ou `docs/agents.md` pour le parcours agent).
 - Les secrets (`PLANIFIKATEUR_*_TOKEN`, clés GitHub, Drive, IA) ne sont jamais
   transmis au navigateur, ni écrits dans une carte, une URL, Git ou un journal.
 - Les profils d’exécution du worker sont du code installé de confiance : ne

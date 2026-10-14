@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.23 — 2026-10-14
+<!-- planifikateur:audit-etape-2-20261014 -->
+
+- **Lisibilité du code** : Le code est réorganisé sans changement de comportement visible. L’interface est découpée en composants (tableau, détail de carte, formulaires, barre latérale…) et tous ses appels passent par un client API unique. Le serveur déclare ses routes dans une table par domaine, vérifiée contre la spécification OpenAPI, et les transitions des exécutions IA suivent une machine d’états explicite et testée. Le worker enchaîne des étapes nommées (préparation, réalisation, vérifications, publication). ESLint refuse désormais tout avertissement, et un test navigateur instable sur mobile a été rendu fiable.
+
 ## 0.1.22 — 2026-10-14
 <!-- planifikateur:audit-etape-1-20261014 -->
 

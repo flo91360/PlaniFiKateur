@@ -1,22 +1,20 @@
 import React, { useEffect, useState } from 'react';
+import { apiBlob, apiData, apiFetch } from '../lib/api-client.js';
 
 export default function BackupsPanel() {
   const [status, setStatus] = useState(null),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false);
   const load = async () => {
-    const response = await fetch('/api/v1/backups', { credentials: 'same-origin' });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error?.message || 'Impossible de consulter les sauvegardes.');
-    setStatus(data);
+    // Réponse sans enveloppe data : fichiers, erreur, intervalle et rétention.
+    setStatus(await apiFetch('backups', { fallback: 'Impossible de consulter les sauvegardes.' }));
   };
   useEffect(() => {
     void load().catch(cause => setError(cause.message));
   }, []);
   const download = async name => {
-    const response = await fetch(`/api/v1/backups/${name}`, { credentials: 'same-origin' });
-    if (!response.ok) throw new Error('Impossible de télécharger la sauvegarde.');
-    const url = URL.createObjectURL(await response.blob());
+    const blob = await apiBlob(`backups/${name}`, { fallback: 'Impossible de télécharger la sauvegarde.' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
     link.download = name;
@@ -28,10 +26,7 @@ export default function BackupsPanel() {
     setError('');
     try {
       if (!name) {
-        const response = await fetch('/api/v1/backups', { method: 'POST', credentials: 'same-origin' });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error?.message || 'Impossible de créer la sauvegarde.');
-        name = data.data.name;
+        name = (await apiData('backups', { method: 'POST', fallback: 'Impossible de créer la sauvegarde.' })).name;
         await load();
       }
       await download(name);

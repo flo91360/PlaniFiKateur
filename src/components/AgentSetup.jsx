@@ -1,15 +1,6 @@
 import React, { useEffect, useState } from 'react';
-export async function workRequest(path, method = 'GET', data, signal) {
-  const response = await fetch(`/api/v1/${path}`, {
-    method,
-    credentials: 'same-origin',
-    signal,
-    ...(data ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) } : {}),
-  });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error?.message || 'Action indisponible.');
-  return result.data;
-}
+import { apiData } from '../lib/api-client.js';
+
 export default function AgentSetup({ projectId }) {
   const [agent, setAgent] = useState(null),
     [name, setName] = useState('Agent principal'),
@@ -19,7 +10,7 @@ export default function AgentSetup({ projectId }) {
     [loaded, setLoaded] = useState(false),
     [confirm, setConfirm] = useState(false);
   const load = async () => {
-    setAgent((await workRequest('agents')).find(a => a.active) || null);
+    setAgent((await apiData('agents')).find(a => a.active) || null);
     setLoaded(true);
   };
   useEffect(() => {
@@ -53,9 +44,9 @@ export default function AgentSetup({ projectId }) {
               disabled={busy}
               onClick={() =>
                 void action(() =>
-                  workRequest(`agents/${agent.id}`, 'PUT', {
-                    name: agent.name,
-                    projectIds: [...agent.projectIds, projectId],
+                  apiData(`agents/${agent.id}`, {
+                    method: 'PUT',
+                    data: { name: agent.name, projectIds: [...agent.projectIds, projectId] },
                   }),
                 )
               }
@@ -71,7 +62,7 @@ export default function AgentSetup({ projectId }) {
                 disabled={busy}
                 onClick={() =>
                   void action(async () => {
-                    await workRequest(`agents/${agent.id}`, 'DELETE');
+                    await apiData(`agents/${agent.id}`, { method: 'DELETE' });
                     setToken('');
                     setConfirm(false);
                   })
@@ -100,7 +91,7 @@ export default function AgentSetup({ projectId }) {
             disabled={busy || !loaded || !name.trim()}
             onClick={() =>
               void action(async () => {
-                const result = await workRequest('agents', 'POST', { name, projectIds: [projectId] });
+                const result = await apiData('agents', { method: 'POST', data: { name, projectIds: [projectId] } });
                 setToken(result.token);
               })
             }

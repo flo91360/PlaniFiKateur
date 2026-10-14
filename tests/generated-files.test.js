@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, symlink, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { collectOutputs } from '../worker/outputs.mjs';
+import { checkGeneratedFile, collectOutputs } from '../worker/outputs.mjs';
 import { createCodexRunner } from '../worker/codex.mjs';
 import { createStore } from '../server/store.js';
 
@@ -167,4 +167,32 @@ test('artifact delivery enforces the lease, workspace limits and a real file; a 
   } finally {
     store.close();
   }
+});
+
+test('generated files are checked by type before delivery', async () => {
+  const calls = [];
+  const command = async args => {
+    calls.push(args);
+    return '';
+  };
+  const json = { name: 'data.json', size: 2, data: Buffer.from('{}').toString('base64') };
+  assert.equal(await checkGeneratedFile(json, command), 'data.json : JSON valide');
+  await assert.rejects(
+    checkGeneratedFile({ ...json, data: Buffer.from('{').toString('base64') }, command),
+    SyntaxError,
+  );
+  const form = { name: 'form.ui', size: 5, path: '.planifikateur/generated/form.ui' };
+  assert.equal(await checkGeneratedFile(form, command), 'form.ui : structure XML Qt Designer vérifiée');
+  assert.deepEqual([calls[0][0], calls[0][1], calls[0][3]], ['python3', '-c', form.path]);
+  await assert.rejects(
+    checkGeneratedFile(form, async () => {
+      throw new Error('Document Qt Designer .ui incomplet');
+    }),
+    /incomplet/,
+  );
+  assert.equal(
+    await checkGeneratedFile({ name: 'notes.txt', size: 12 }, command),
+    'notes.txt : fichier généré (12 octets)',
+  );
+  assert.equal(calls.length, 1);
 });

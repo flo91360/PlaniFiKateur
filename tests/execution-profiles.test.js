@@ -10,7 +10,7 @@ import { defaultExecutionProfile, validateExecutionProfile } from '../worker/exe
 import { readWorkerConfig } from '../worker/config.mjs';
 import { mergeAgentPullRequest } from '../worker/merge.mjs';
 import { createSiteClient } from '../worker/clients.mjs';
-import { checkWorkflowTrigger } from '../worker/runtime.mjs';
+import { checkWorkflowTrigger, runtimeEnvironment } from '../worker/runtime.mjs';
 
 test('project discovery is scoped, read-only and refreshes authorizations without changing worker environment', async t => {
   const store = createStore(':memory:'),
@@ -265,4 +265,16 @@ test('project diagnostics reject branch and path filters that would leave an age
   );
   assert.throws(() => checkWorkflowTrigger('on:\n  push:\n', 'main'), /pull requests/);
   assert.throws(() => checkWorkflowTrigger('on:\n  pull_request:\n    paths: ["src/**"]', 'main'), /filtre de chemins/);
+});
+
+test('preset environments reach the profile commands without changing the validated profile', () => {
+  const config = { node22Bin: '/opt/node22/bin' };
+  const defilordi = validateExecutionProfile({ preset: 'defilordi' });
+  assert.equal(runtimeEnvironment(defilordi, config).ELECTRON_SKIP_BINARY_DOWNLOAD, '1');
+  assert.ok(runtimeEnvironment(defilordi, config).PATH.startsWith('/opt/node22/bin'));
+  assert.equal(
+    runtimeEnvironment(validateExecutionProfile({ preset: 'planifikateur' }), config).ELECTRON_SKIP_BINARY_DOWNLOAD,
+    undefined,
+  );
+  assert.equal('environment' in defilordi, false);
 });

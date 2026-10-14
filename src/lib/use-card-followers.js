@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { apiData } from './api-client.js';
 
 export function useCardFollowers({ project, enabled, saveStatus, selectedId, modal }) {
   const [snapshot, setSnapshot] = useState(null);
@@ -10,13 +11,8 @@ export function useCardFollowers({ project, enabled, saveStatus, selectedId, mod
       if (loading || document.visibilityState === 'hidden') return;
       loading = true;
       try {
-        const response = await fetch(`/api/v1/projects/${project.id}/card-followers`, {
-          credentials: 'same-origin',
-          signal: controller.signal,
-        });
-        if (!response.ok) return;
-        const result = await response.json();
-        if (!controller.signal.aborted) setSnapshot({ projectId: project.id, followers: result.data });
+        const followers = await apiData(`projects/${project.id}/card-followers`, { signal: controller.signal });
+        if (!controller.signal.aborted) setSnapshot({ projectId: project.id, followers });
       } catch {
         // Keep the last known followers until the next successful refresh.
       } finally {

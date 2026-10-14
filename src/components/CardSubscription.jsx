@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Bell, BellOff, UserPlus } from 'lucide-react';
+import { apiData } from '../lib/api-client.js';
 
 export default function CardSubscription({ projectId, cardId, saveStatus }) {
   const [following, setFollowing] = useState(null),
@@ -7,23 +8,24 @@ export default function CardSubscription({ projectId, cardId, saveStatus }) {
   const [selected, setSelected] = useState(''),
     [busy, setBusy] = useState(false),
     [error, setError] = useState('');
-  const base = `/api/v1/projects/${projectId}/cards/${cardId}`;
-  const request = async (suffix, options = {}) => {
-    const response = await fetch(`${base}/${suffix}`, { credentials: 'same-origin', ...options });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error?.message || 'Suivi indisponible.');
-    return result.data;
-  };
-  const read = async signal => {
-    const [subscription, people] = await Promise.all([
-      request('subscription', { signal }),
-      request('subscribers', { signal }),
-    ]);
-    if (!signal?.aborted) {
-      setFollowing(subscription.following);
-      setMembers(people);
-    }
-  };
+  const base = `projects/${projectId}/cards/${cardId}`;
+  const request = useCallback(
+    (suffix, options = {}) => apiData(`${base}/${suffix}`, { fallback: 'Suivi indisponible.', ...options }),
+    [base],
+  );
+  const read = useCallback(
+    async signal => {
+      const [subscription, people] = await Promise.all([
+        request('subscription', { signal }),
+        request('subscribers', { signal }),
+      ]);
+      if (!signal?.aborted) {
+        setFollowing(subscription.following);
+        setMembers(people);
+      }
+    },
+    [request],
+  );
   useEffect(() => {
     if (busy) return;
     const controller = new AbortController();
@@ -31,7 +33,7 @@ export default function CardSubscription({ projectId, cardId, saveStatus }) {
       if (!controller.signal.aborted) setError(cause.message);
     });
     return () => controller.abort();
-  }, [base, saveStatus, busy]);
+  }, [read, saveStatus, busy]);
   useEffect(() => {
     setFollowing(null);
     setMembers(null);
@@ -41,11 +43,7 @@ export default function CardSubscription({ projectId, cardId, saveStatus }) {
     setBusy(true);
     setError('');
     try {
-      const result = await request(suffix, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
+      const result = await request(suffix, { method: 'PUT', data });
       if (suffix === 'subscription') {
         setFollowing(result.following);
       } else {

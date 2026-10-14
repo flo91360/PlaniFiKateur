@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { workRequest } from './AgentSetup.jsx';
+import React, { useCallback, useEffect, useState } from 'react';
+import { apiData } from '../lib/api-client.js';
 
 const labels = {
   archived: 'Archivée',
@@ -17,19 +17,19 @@ export default function DriveArchive({ projectId, user }) {
   const [status, setStatus] = useState(null),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false);
-  const load = signal => workRequest(`projects/${projectId}/drive`, 'GET', null, signal).then(setStatus);
+  const load = useCallback(signal => apiData(`projects/${projectId}/drive`, { signal }).then(setStatus), [projectId]);
   useEffect(() => {
     const controller = new AbortController();
     load(controller.signal).catch(cause => {
       if (!controller.signal.aborted) setError(cause.message);
     });
     return () => controller.abort();
-  }, [projectId]);
+  }, [load]);
   const start = async () => {
     setBusy(true);
     setError('');
     try {
-      setStatus(await workRequest(`projects/${projectId}/drive`, 'POST'));
+      setStatus(await apiData(`projects/${projectId}/drive`, { method: 'POST' }));
     } catch (cause) {
       setError(cause.message);
     } finally {

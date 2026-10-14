@@ -1,7 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-const fail = (status, code, message) => {
-  throw Object.assign(new Error(message), { status, code });
-};
+import { fail } from './http.js';
 export async function githubEvent(req, secret) {
   if (!secret) fail(503, 'github_not_configured', 'Le secret du webhook GitHub n’est pas configuré.');
   const signature = req.headers['x-hub-signature-256'];

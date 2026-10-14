@@ -10,10 +10,9 @@ import { publicUser, tokenHash } from './accounts.js';
 import { attributeChanges } from './activity.js';
 import { createWorkflows } from './workflows.js';
 import { validateDriveRelease } from '../src/lib/drive-release.js';
+import { fail } from './http.js';
+import { notificationRecipients } from './recipients.js';
 
-const fail = (status, code, message) => {
-  throw Object.assign(new Error(message), { status, code });
-};
 export function createStore(filename) {
   if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true, mode: 0o700 });
   const db = new DatabaseSync(filename);
@@ -45,17 +44,18 @@ export function createStore(filename) {
       throw error;
     }
   };
+  const readProjects = () => JSON.parse(db.prepare('SELECT projects FROM workspace WHERE id = 1').get().projects);
+  // Toute écriture du contenu augmente la révision : les navigateurs rechargent ou détectent le conflit.
+  const writeProjects = (projects, date = new Date().toISOString()) =>
+    db
+      .prepare('UPDATE workspace SET projects = ?, revision = revision + 1, updated_at = ? WHERE id = 1')
+      .run(JSON.stringify(projects), date);
   const synchronizeInfos = () => {
-    const row = db.prepare('SELECT projects FROM workspace WHERE id = 1').get();
-    const previous = JSON.parse(row.projects);
+    const previous = readProjects();
     const projects = previous.map(project => withInfos(project, versionFor(project.id)));
     // Comment migrations may reorder properties without changing their values.
     // Only an actual Infos change should increment the workspace revision.
-    if (!isDeepStrictEqual(projects, previous))
-      db.prepare('UPDATE workspace SET projects = ?, revision = revision + 1, updated_at = ? WHERE id = 1').run(
-        JSON.stringify(validateWorkspace(projects)),
-        new Date().toISOString(),
-      );
+    if (!isDeepStrictEqual(projects, previous)) writeProjects(validateWorkspace(projects));
   };
   const audit = (actor, action, payload = {}, revision = null) =>
     db
@@ -74,8 +74,7 @@ export function createStore(filename) {
       );
   const userById = id => db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   const findCard = (projectId, cardId) => {
-    const row = db.prepare('SELECT projects FROM workspace WHERE id = 1').get();
-    const project = JSON.parse(row.projects).find(p => p.id === projectId);
+    const project = readProjects().find(p => p.id === projectId);
     const card = project?.cards.find(c => c.id === cardId);
     if (!card) fail(404, 'card_not_found', 'Carte inexistante dans ce projet.');
     return { project, card };
@@ -89,7 +88,21 @@ export function createStore(filename) {
     const preference = prefs.find(row => row.user_id === userId);
     return preference ? !!preference.following : participants(card).includes(userId);
   };
-  const workflows = createWorkflows(db, { transaction, audit, findCard });
+  const activeUserIds = () =>
+    new Set(
+      db
+        .prepare('SELECT id FROM users WHERE active = 1 AND password_hash IS NOT NULL')
+        .all()
+        .map(user => user.id),
+    );
+  const recipients = (card, actor, extra = []) =>
+    notificationRecipients({
+      participants: [...participants(card), ...extra],
+      preferences: preferences(card.id),
+      activeIds: activeUserIds(),
+      actorId: actor?.id,
+    });
+  const workflows = createWorkflows(db, { transaction, audit, findCard, readProjects, writeProjects, recipients });
   const versionFor = projectId => {
     const repository = workflows.githubProject(projectId);
     if (!repository) return { tag: 'Aucun tag disponible', date: '' };
@@ -302,24 +315,17 @@ export function createStore(filename) {
         const events = restore
           ? [{ action: 'workspace.restored' }]
           : attributeChanges(validateWorkspace(before.projects), clean, actor, date);
-        db.prepare('UPDATE workspace SET projects = ?, revision = revision + 1, updated_at = ? WHERE id = 1').run(
-          JSON.stringify(clean),
-          date,
-        );
-        const activeUsers = new Set(
-          db
-            .prepare('SELECT id FROM users WHERE active = 1 AND password_hash IS NOT NULL')
-            .all()
-            .map(user => user.id),
-        );
+        writeProjects(clean, date);
+        const activeIds = activeUserIds();
         for (const event of events) {
-          if (event.cardId) {
-            const prefs = preferences(event.cardId);
-            const optedOut = new Set(prefs.filter(p => !p.following).map(p => p.user_id));
-            event.recipientIds = [
-              ...new Set([...(event.recipientIds || []), ...prefs.filter(p => p.following).map(p => p.user_id)]),
-            ].filter(id => id !== actor?.id && activeUsers.has(id) && !optedOut.has(id));
-          }
+          // Les participants calculés par attributeChanges sont complétés par les abonnés de la carte.
+          if (event.cardId)
+            event.recipientIds = notificationRecipients({
+              participants: event.recipientIds,
+              preferences: preferences(event.cardId),
+              activeIds,
+              actorId: actor?.id,
+            });
           audit(actor, event.action, event, revision + 1);
         }
         const survivingCards = new Set(clean.flatMap(p => p.cards.map(c => c.id)));

@@ -26,6 +26,8 @@ export const executionPresets = {
       ['npm', 'run', 'build'],
     ],
     workflow: { file: 'build-windows.yml', name: 'Windows .exe', jobs: ['build'] },
+    // Variables ajoutées aux commandes du profil (hors du profil validé, qui reste comparable).
+    environment: { ELECTRON_SKIP_BINARY_DOWNLOAD: '1' },
   },
   trameergo: {
     label: 'TrameErgo — Qt Windows',
