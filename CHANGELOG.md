@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.32 — 2026-10-14
+<!-- planifikateur:etape-6-fiabilite-worker -->
+
+- **Fiabilité du worker et des fusions** : Le worker exécute les commandes de ses presets installés, quel que soit le profil reçu du site. Une erreur sur une tâche ou un projet n’arrête plus le traitement des autres cartes. Le serveur rattrape seul les webhooks GitHub perdus en relisant les PR en attente. Après un échec de CI, le modèle reçoit les jobs en échec et la fin de leurs journaux ; au troisième échec consécutif, une personne est consultée, et un contrôle sans verdict n’est plus renvoyé au modèle.
+
 ## 0.1.31 — 2026-10-14
 <!-- planifikateur:etape-6-securite-serveur -->
 

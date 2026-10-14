@@ -1,7 +1,7 @@
 import { dirname, join, delimiter } from 'node:path';
 import { access, mkdir } from 'node:fs/promises';
 import { commandEnvironment } from './commands.mjs';
-import { executionPresets, validateExecutionProfile } from './execution-profile.mjs';
+import { executionPresets, installedProfile } from './execution-profile.mjs';
 import { parse } from 'yaml';
 import picomatch from 'picomatch';
 
@@ -60,6 +60,14 @@ export async function checkRuntime(profile, config, execute, signal) {
   return env;
 }
 export async function projectDiagnostic(project, config, github, execute, signal) {
+  // Les contrôles portent sur le profil installé (commandes et workflow du worker), pas sur celui du site.
+  let installed = null;
+  try {
+    installed = installedProfile(project.executionProfile);
+  } catch {
+    /* Signalé par le contrôle « Outils du projet ». */
+  }
+  if (installed) project = { ...project, executionProfile: installed };
   const checks = [];
   const check = async (name, callback) => {
     try {
@@ -69,7 +77,7 @@ export async function projectDiagnostic(project, config, github, execute, signal
     }
   };
   await check('Outils du projet', async () => {
-    await checkRuntime(validateExecutionProfile(project.executionProfile), config, execute, signal);
+    await checkRuntime(installedProfile(project.executionProfile), config, execute, signal);
     return `Node ${project.executionProfile.nodeMajor}${project.executionProfile.godotVersion ? ` · Godot ${project.executionProfile.godotVersion}` : ''} disponibles.`;
   });
   await check('Authentification IA', async () => {

@@ -1,7 +1,7 @@
-# PR d’agent : tests puis fusion automatique — v0.1.31
+# PR d’agent : tests puis fusion automatique — v0.1.32
 
 Toutes les nouvelles tâches sont livrées par PR GitHub avec fusion automatique,
-sans sélection du mode de livraison. Depuis la v0.1.31, un responsable peut exiger
+sans sélection du mode de livraison. Depuis la v0.1.32, un responsable peut exiger
 dans **Paramètres du projet → Validation avant fusion** que chaque PR soit en plus
 approuvée depuis la carte (**Approuver la fusion**) : `merge-eligibility` répond
 alors `approval_required` tant que le commit testé n’est pas approuvé, et une
@@ -93,10 +93,16 @@ réelles sur le VPS.
    pendant cette attente, sans envoyer de heartbeat : sa réservation de travail
    est libérée à la soumission.
 6. Si les tests échouent, leur webhook remet l’exécution en file. Réserver à
-   nouveau, corriger, pousser et soumettre la nouvelle référence de commit.
-   Une exécution annulée reste en attente des tests et de la fusion : elle ne
-   renvoie pas la tâche à Codex lorsque GitHub remplace les premiers contrôles
-   par ceux déclenchés par l’ajout du label.
+   nouveau, corriger, pousser et soumettre la nouvelle référence de commit. Le
+   worker transmet au modèle les jobs et étapes en échec avec la fin de leurs
+   journaux. Après **trois échecs consécutifs**, l’exécution passe en question
+   (« À préciser ») : une personne consulte les journaux puis répond pour
+   relancer une correction, ou annule. Une exécution annulée reste en attente
+   des tests et de la fusion : elle ne renvoie pas la tâche à Codex lorsque
+   GitHub remplace les premiers contrôles par ceux déclenchés par l’ajout du
+   label. Un contrôle terminé sans verdict (délai dépassé, approbation requise,
+   ignoré…) ne renvoie pas non plus la tâche au modèle : la carte l’indique, et
+   les contrôles sont à relancer depuis GitHub.
 7. Si GitHub demande de remettre la branche à jour, retirer le label, utiliser
    `POST .../work/{execution}/revise` avec la version courante pour reprendre
    l’exécution, mettre la branche à jour, pousser puis soumettre à nouveau avant
@@ -130,7 +136,12 @@ Un succès CI laisse la carte **Tests et fusion GitHub en attente**. Seul un
 webhook `pull_request` fermé avec `merged: true`, la bonne PR et le bon commit,
 signé avec le secret, la fait passer **Terminée — PR fusionnée**. Les événements
 répétés sont sans effet ; fermer une PR sans fusion ne termine pas la carte.
-En cas de webhook perdu, utiliser la redélivraison depuis GitHub. Un échec de
+En cas de webhook perdu (redéploiement du site, panne de livraison), le serveur
+rattrape seul la situation depuis la v0.1.32 : toutes les 5 minutes, pour chaque
+PR de l’agent en attente depuis plus de 3 minutes, il relit la PR et les
+exécutions de son workflow auprès de l’API GitHub, avec
+`PLANIFIKATEUR_GITHUB_TOKEN` (nécessaire pour un dépôt privé), et applique les
+mêmes règles qu’au webhook. La redélivraison depuis GitHub reste possible. Un échec de
 fusion est publié en annotation GitHub, consultable automatiquement via l’API,
 et ne clôture pas la carte.
 

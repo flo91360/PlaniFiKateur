@@ -22,6 +22,8 @@ const source = card =>
     ...(card.aiEffort ? [{ aiEffort: card.aiEffort }] : []),
   ]);
 export const LEASE_MS = 5 * 60000;
+// Échecs consécutifs des contrôles GitHub avant de demander l’avis d’une personne.
+export const MAX_CI_FAILURES = 3;
 
 export function createWorkflows(
   db,
@@ -156,7 +158,8 @@ export function createWorkflows(
       card.status = CARD_STATUS[run.state];
       card.updatedAt = run.updatedAt;
       card.updatedBy = actor ? { id: actor.id, name: actor.name } : null;
-      if (['question', 'answer'].includes(action)) questionComments(card, run);
+      if (['question', 'answer'].includes(action) || (action === 'checks' && run.state === 'waiting'))
+        questionComments(card, run);
       let message;
       if (action === 'progress') message = run.updates.at(-1)?.text;
       if (['interrupt', 'interrupted'].includes(action)) message = run.interruption;
@@ -166,7 +169,13 @@ export function createWorkflows(
       }
       if (action === 'merged')
         message = `La PR a été fusionnée. La tâche est terminée.\n${run.submissions.at(-1).pullRequest.url}`;
-      if (action === 'checks' && run.state === 'ready') message = run.updates.at(-1)?.text;
+      // Contrôles en échec (reprise par l’agent) ou terminés sans verdict (à relancer sur GitHub).
+      if (
+        action === 'checks' &&
+        (run.state === 'ready' ||
+          (run.state === 'merging' && !['success', 'cancelled'].includes(run.githubChecks?.conclusion)))
+      )
+        message = run.updates.at(-1)?.text;
       if (message) addComment(card, run, actor, `work-${run.id}-${action}-${run.version}`, message);
       writeProjects(projects, run.updatedAt);
     }
@@ -477,25 +486,65 @@ export function createWorkflows(
             conclusion: check.conclusion,
             url: check.html_url,
           };
+          const date = new Date().toISOString();
           // Labeling a newly opened PR starts another CI run and supersedes the
           // first one. A cancelled run must not send the task back to Codex.
           if (check.conclusion === 'cancelled') {
             run.updates.push({
               text: 'Une exécution des contrôles GitHub a été annulée. La tâche reste en attente des tests et de la fusion.',
-              date: new Date().toISOString(),
+              date,
             });
-          } else if (check.conclusion !== 'success') {
-            transition(run, 'checksFailed');
+          } else if (check.conclusion !== 'success' && check.conclusion !== 'failure') {
+            // Délai dépassé, approbation requise, contrôle ignoré… : le code n’est pas en cause, le
+            // modèle n’a rien à corriger. Les contrôles doivent être relancés depuis GitHub.
             run.updates.push({
-              text: 'Les contrôles GitHub ont échoué. Le worker reprend la tâche pour corriger puis soumettre à nouveau la PR.',
-              date: new Date().toISOString(),
+              text: `Les contrôles GitHub se sont terminés sans verdict (${check.conclusion}). Relancez-les depuis GitHub : la tâche reste en attente des tests et de la fusion.`,
+              date,
             });
+          } else if (check.conclusion === 'failure') {
+            run.ciFailures = (run.ciFailures || 0) + 1;
+            if (run.ciFailures >= MAX_CI_FAILURES) {
+              // Les corrections automatiques tournent en rond : une personne décide de la suite.
+              transition(run, 'checksStalled');
+              run.exchanges.push({
+                question: `Les contrôles GitHub ont échoué ${run.ciFailures} fois de suite malgré les corrections de l’agent. Consultez les journaux de la PR, puis répondez pour relancer une correction (en précisant si possible la cause), ou annulez l’exécution.`,
+                date,
+                answer: null,
+              });
+            } else {
+              transition(run, 'checksFailed');
+              run.updates.push({
+                text: 'Les contrôles GitHub ont échoué. Le worker reprend la tâche avec leurs journaux pour corriger puis soumettre à nouveau la PR.',
+                date,
+              });
+            }
           }
           save(run, { id: 'github', name: 'GitHub' }, 'checks');
           updated = true;
         }
         return { updated };
       });
+    },
+    // PR en attente de tests ou de fusion depuis au moins `quietMs` : le serveur vérifie lui-même
+    // leur état auprès de GitHub si un webhook s’est perdu (server/github-sync.js).
+    mergingPullRequests({ quietMs = 0, now = Date.now() } = {}) {
+      return rows("state = 'merging'")
+        .map(unpack)
+        .filter(run => Date.parse(run.updatedAt || run.createdAt || 0) <= now - quietMs)
+        .flatMap(run => {
+          const pr = run.submissions.at(-1)?.pullRequest;
+          if (!pr?.repository || !pr.number || !pr.headSha) return [];
+          const profile = run.executionProfile || defaultExecutionProfile();
+          return [
+            {
+              executionId: run.id,
+              repository: pr.repository,
+              number: pr.number,
+              headSha: pr.headSha,
+              workflowFile: profile.workflow.file,
+            },
+          ];
+        });
     },
     githubMerged(event) {
       return transaction(() => {
@@ -693,6 +742,8 @@ export function createWorkflows(
         if (action === 'answer') {
           const answer = text(data?.message, 'Réponse', 10000);
           run.exchanges.at(-1).answer = { text: answer, actor: decidedBy, date: new Date().toISOString() };
+          // Une réponse humaine redonne leurs cycles de correction aux contrôles GitHub.
+          run.ciFailures = 0;
         }
         if (action === 'accept') {
           checkSource(run);

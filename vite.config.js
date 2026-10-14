@@ -6,6 +6,7 @@ import { createStore } from './server/store.js';
 import { readConfig } from './server/config.js';
 import { createBackups } from './server/backups.js';
 import { createRetention } from './server/retention.js';
+import { createGithubSync } from './server/github-sync.js';
 import { createVersionSync } from './server/project-versions.js';
 import { createRepositoryContext } from './server/repository-context.js';
 
@@ -37,6 +38,7 @@ export default defineConfig({
           intervalMs: config.backupIntervalMs,
           keep: config.backupKeep,
         });
+        const githubSync = createGithubSync(store, { token: process.env.PLANIFIKATEUR_GITHUB_TOKEN || '' });
         const retention = createRetention(store, {
           activityDays: config.activityRetentionDays,
           executionDays: config.executionRetentionDays,
@@ -53,6 +55,7 @@ export default defineConfig({
           config.versions.close();
           config.backups.close();
           retention.close();
+          githubSync.close();
           store.close();
         });
       },

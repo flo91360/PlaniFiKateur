@@ -1,6 +1,6 @@
 import { mergeAgentPullRequest } from './merge.mjs';
 import { setTimeout as delay } from 'node:timers/promises';
-import { defaultExecutionProfile, validateExecutionProfile } from './execution-profile.mjs';
+import { defaultExecutionProfile, installedProfile } from './execution-profile.mjs';
 
 export class PublicationPendingError extends Error {
   constructor() {
@@ -109,7 +109,7 @@ export function createGithubClient(token, transport = fetch, wait = delay) {
     request,
     pull,
     async mergeWhenReady(repo, pr, eligible, signal, executionProfile = defaultExecutionProfile()) {
-      const profile = validateExecutionProfile(executionProfile);
+      const profile = installedProfile(executionProfile);
       const query = new URLSearchParams({
         branch: pr.head.ref,
         event: 'pull_request',
@@ -204,6 +204,50 @@ export function createGithubClient(token, transport = fetch, wait = delay) {
         if (error.status !== 422) throw error;
       }
       return add();
+    },
+    // Jobs en échec d’une exécution de workflow, avec leurs étapes en échec et la fin de leur journal,
+    // transmis au modèle pour qu’il corrige la cause réelle. Le journal est téléchargé depuis l’adresse
+    // temporaire fournie par GitHub, sans y envoyer le token.
+    async failedChecks(repo, runId, signal, { maxJobs = 3, tail = 6000 } = {}) {
+      const { jobs = [] } = await request(
+        `/repos/${repo}/actions/runs/${runId}/jobs?filter=latest&per_page=100`,
+        'GET',
+        undefined,
+        signal,
+      );
+      const failed = jobs.filter(job => job.conclusion === 'failure').slice(0, maxJobs);
+      return Promise.all(
+        failed.map(async job => {
+          let log = '';
+          try {
+            const response = await transport(`https://api.github.com/repos/${repo}/actions/jobs/${job.id}/logs`, {
+              redirect: 'manual',
+              signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000),
+              headers: {
+                Authorization: `Bearer ${token}`,
+                Accept: 'application/vnd.github+json',
+                'X-GitHub-Api-Version': '2022-11-28',
+              },
+            });
+            const location = response.headers.get('location');
+            if (location && new URL(location).protocol === 'https:') {
+              const download = await transport(location, {
+                redirect: 'error',
+                signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000),
+              });
+              if (download.ok) log = (await download.text()).slice(-tail);
+            }
+          } catch (error) {
+            if (signal?.aborted) throw error;
+            // Journal indisponible : le nom du job et de ses étapes en échec reste utile.
+          }
+          return {
+            name: job.name,
+            steps: (job.steps || []).filter(step => step.conclusion === 'failure').map(step => step.name),
+            log,
+          };
+        }),
+      );
     },
     unlabel: (repo, number, signal) =>
       request(`/repos/${repo}/issues/${number}/labels/planifikateur-agent`, 'DELETE', undefined, signal),
