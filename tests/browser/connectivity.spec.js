@@ -512,6 +512,50 @@ test('administrator invites a member whose cards, comments and actions carry the
   await context.close();
 });
 
+const accentColor = page =>
+  page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--primary').trim());
+
+test('the accent chosen in « Mon compte » applies at once and follows the account in another browser', async ({
+  page,
+  browser,
+  appServer,
+}) => {
+  await login(page, appServer);
+  await expect.poll(() => accentColor(page)).toBe('#28734b');
+  await page.getByRole('button', { name: 'Mon compte', exact: true }).click();
+  const palette = page.getByRole('group', { name: 'Couleur dominante', exact: true });
+  const forest = palette.getByRole('button', { name: 'Forêt (par défaut)', exact: true });
+  const plum = palette.getByRole('button', { name: 'Prune', exact: true });
+  const reset = page.getByRole('button', { name: 'Rétablir la couleur par défaut', exact: true });
+  await expect(forest).toHaveAttribute('aria-pressed', 'true');
+  await expect(reset).toBeDisabled();
+  await plum.click();
+  await expect(plum).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.sidebar')).toHaveCSS('background-color', 'rgb(43, 29, 79)');
+  await expect(page.locator('.accounts-panel [role="status"]')).toHaveText('Couleur enregistrée sur votre compte.');
+  await expect.poll(() => accentColor(page)).toBe('#6d28d9');
+
+  const context = await browser.newContext();
+  const other = await context.newPage();
+  await login(other, appServer);
+  await expect(other.locator('.sidebar')).toHaveCSS('background-color', 'rgb(43, 29, 79)');
+  await context.close();
+
+  await reset.click();
+  await expect(page.locator('.sidebar')).toHaveCSS('background-color', 'rgb(25, 61, 47)');
+  await expect.poll(() => accentColor(page)).toBe('#28734b');
+  await expect(forest).toHaveAttribute('aria-pressed', 'true');
+  await expect(reset).toBeDisabled();
+
+  await palette.getByRole('button', { name: 'Océan', exact: true }).click();
+  await expect(page.locator('.sidebar')).toHaveCSS('background-color', 'rgb(23, 46, 87)');
+  await page.getByRole('button', { name: 'Se déconnecter', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Se connecter', exact: true })).toBeVisible();
+  await expect.poll(() => accentColor(page)).toBe('#28734b');
+  await login(page, appServer);
+  await expect(page.locator('.sidebar')).toHaveCSS('background-color', 'rgb(23, 46, 87)');
+});
+
 test('project roles hide, open read-only or reserve the agent to managers', async ({
   page,
   browser,
