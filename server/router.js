@@ -23,8 +23,28 @@ const decode = groups =>
     }),
   );
 
+// Plusieurs modules peuvent décrire le même chemin (consultation en GET, modifications en
+// POST/PATCH/DELETE) : leurs méthodes sont regroupées et chacune garde le garde de son module.
+const group = routes => {
+  const byPath = new Map();
+  for (const route of routes) {
+    const methods = Object.fromEntries(
+      Object.entries(route.methods).map(([method, handler]) => [method, { guard: route.guard, handler }]),
+    );
+    const existing = byPath.get(route.path);
+    if (!existing) byPath.set(route.path, { ...route, methods });
+    else {
+      const duplicate = Object.keys(methods).find(method => existing.methods[method]);
+      if (duplicate) throw new Error(`Route déclarée deux fois : ${duplicate} ${route.path}`);
+      existing.methods = { ...existing.methods, ...methods };
+      existing.notAllowed = undefined;
+    }
+  }
+  return [...byPath.values()];
+};
+
 export function createRouter(routes) {
-  const compiled = routes.map(route => ({ ...route, pattern: compile(route.path) }));
+  const compiled = group(routes).map(route => ({ ...route, pattern: compile(route.path) }));
   return {
     // Liste méthode + chemin, utilisée par le test de couverture OpenAPI.
     routes: compiled.flatMap(route => Object.keys(route.methods).map(method => ({ method, path: route.path }))),
@@ -41,8 +61,8 @@ export function createRouter(routes) {
 
 export async function dispatch({ route, params }, ctx) {
   ctx.params = params;
-  await route.guard?.(ctx);
-  const handler = route.methods[ctx.req.method];
-  if (!handler) throw httpError(405, 'method_not_allowed', route.notAllowed || 'Méthode non autorisée.');
-  await handler(ctx);
+  const method = route.methods[ctx.req.method];
+  await (method ? method.guard : route.guard)?.(ctx);
+  if (!method) throw httpError(405, 'method_not_allowed', route.notAllowed || 'Méthode non autorisée.');
+  await method.handler(ctx);
 }

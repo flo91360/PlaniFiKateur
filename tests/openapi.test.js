@@ -11,7 +11,7 @@ test.after(() => store.close());
 const routes = {};
 for (const route of apiRoutes(store)) {
   const path = route.path.replace(/:([a-zA-Z]+)/g, '{$1}');
-  routes[path] = Object.keys(route.methods).map(method => method.toLowerCase());
+  routes[path] = [...(routes[path] || []), ...Object.keys(route.methods).map(method => method.toLowerCase())];
 }
 
 const resolve = ref => {

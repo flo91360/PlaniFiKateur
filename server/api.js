@@ -5,13 +5,15 @@ import { createRouter, dispatch } from './router.js';
 import { accountRoutes } from './routes/accounts.js';
 import { cardRoutes } from './routes/cards.js';
 import { consultationFallback, consultationRoutes } from './routes/consultation.js';
+import { contentRoutes } from './routes/content.js';
 import { githubRoutes } from './routes/github.js';
 import { projectRoutes } from './routes/projects.js';
 import { workRoutes } from './routes/work.js';
 import { workspaceRoutes } from './routes/workspace.js';
 
-// Table des routes de l’API. Chaque module décrit un domaine ; l’ordre n’a pas d’importance
-// car les chemins sont exacts. tests/openapi.test.js vérifie qu’elles sont toutes documentées.
+// Table des routes de l’API. Chaque module décrit un domaine ; les chemins sont exacts. Quand
+// deux modules partagent un chemin, le garde du premier s’applique aux méthodes inconnues : la
+// consultation précède donc les modifications. tests/openapi.test.js vérifie la documentation.
 export function apiRoutes(store, config = {}, auth = createAuth(store, config)) {
   const guards = {
     account: ctx => (ctx.user = auth.requireAccount(ctx.req)),
@@ -32,6 +34,7 @@ export function apiRoutes(store, config = {}, auth = createAuth(store, config)) 
     ...cardRoutes(app),
     ...workspaceRoutes(app),
     ...consultationRoutes(app),
+    ...contentRoutes(app),
   ];
 }
 

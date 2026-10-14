@@ -55,6 +55,47 @@ test('the group guard runs before the method check, then an unknown method is re
   assert.deepEqual(sent, []);
 });
 
+test('modules sharing a path keep their own guard for each method and cannot declare a method twice', async () => {
+  const reader = ctx => {
+    if (!ctx.req.reader) throw httpError(401, 'unauthorized', 'Clé de lecture requise.');
+  };
+  const writer = ctx => {
+    if (!ctx.req.writer) throw httpError(401, 'unauthorized', 'Session requise.');
+  };
+  const router = createRouter([
+    { path: '/items', guard: reader, notAllowed: 'Lecture seule.', methods: { GET: ctx => ctx.send(200, 'read') } },
+    { path: '/items', guard: writer, methods: { POST: ctx => ctx.send(201, 'written') } },
+  ]);
+  const call = async (method, req) => {
+    const sent = [];
+    await dispatch(router.match('/items'), {
+      req: { method, ...req },
+      send: (status, data) => sent.push({ status, data }),
+    });
+    return sent[0];
+  };
+  assert.deepEqual(await call('GET', { reader: true }), { status: 200, data: 'read' });
+  await assert.rejects(call('POST', { reader: true }), error => error.message === 'Session requise.');
+  assert.deepEqual(await call('POST', { writer: true }), { status: 201, data: 'written' });
+  await assert.rejects(call('DELETE', {}), error => error.message === 'Clé de lecture requise.');
+  await assert.rejects(
+    call('DELETE', { reader: true }),
+    error => error.status === 405 && error.message === 'Méthode non autorisée.',
+  );
+  assert.deepEqual(router.routes, [
+    { method: 'GET', path: '/items' },
+    { method: 'POST', path: '/items' },
+  ]);
+  assert.throws(
+    () =>
+      createRouter([
+        { path: '/items', methods: { GET: () => {} } },
+        { path: '/items', methods: { GET: () => {} } },
+      ]),
+    /Route déclarée deux fois : GET \/items/,
+  );
+});
+
 test('notification recipients combine participants and followers without the actor, inactive or opted-out members', () => {
   const recipients = notificationRecipients({
     participants: ['creator', 'commenter', 'actor', undefined, 'left'],

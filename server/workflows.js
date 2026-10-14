@@ -828,7 +828,7 @@ export function createWorkflows(db, { transaction, audit, findCard, readProjects
             run.source = source(delivered);
             run.cardSnapshot = { ...run.cardSnapshot, attachments: delivered.attachments };
             // Ni révision ni date ici : save() les met à jour juste après avec le commentaire de résultat.
-            db.prepare('UPDATE workspace SET projects=? WHERE id=1').run(JSON.stringify(clean));
+            writeProjects(clean, undefined, { revision: false });
             audit(
               agent,
               'card.updated',

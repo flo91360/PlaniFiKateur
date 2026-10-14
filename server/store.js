@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { isDeepStrictEqual } from 'node:util';
 import { mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { withInfos } from '../src/lib/infos.js';
 import { seed } from '../src/data/demo.js';
@@ -12,8 +12,11 @@ import { createWorkflows } from './workflows.js';
 import { validateDriveRelease } from '../src/lib/drive-release.js';
 import { fail } from './http.js';
 import { notificationRecipients } from './recipients.js';
+import { migrateWorkspace, readWorkspace, writeWorkspace } from './workspace-tables.js';
+import { applyChanges, ChangeError } from '../src/lib/workspace-changes.js';
 
-export function createStore(filename) {
+// `backupDirectory` reçoit la copie faite avant la migration du tableau en tables.
+export function createStore(filename, { backupDirectory } = {}) {
   if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true, mode: 0o700 });
   const db = new DatabaseSync(filename);
   db.exec(`PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;
@@ -29,10 +32,20 @@ export function createStore(filename) {
     CREATE TABLE IF NOT EXISTS github_versions (repository TEXT PRIMARY KEY, data TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS drive_archives (repository TEXT NOT NULL, tag TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(repository,tag));
     CREATE TABLE IF NOT EXISTS drive_repositories (repository TEXT PRIMARY KEY, data TEXT NOT NULL);`);
-  db.prepare('INSERT OR IGNORE INTO workspace VALUES (1, 1, ?, ?)').run(
-    JSON.stringify(validateWorkspace(seed)),
-    new Date().toISOString(),
-  );
+  const created =
+    db
+      .prepare('INSERT OR IGNORE INTO workspace VALUES (1, 1, ?, ?)')
+      .run(JSON.stringify(validateWorkspace(seed)), new Date().toISOString()).changes === 1;
+  // Une base existante est copiée avant d’être convertie : la copie permet de revenir en arrière.
+  migrateWorkspace(db, {
+    backup() {
+      if (filename === ':memory:' || created) return;
+      const directory = resolve(backupDirectory || join(dirname(filename), 'backups'));
+      mkdirSync(directory, { recursive: true, mode: 0o700 });
+      const name = `planifikateur-avant-tables-${new Date().toISOString().replace(/[:.]/g, '-')}.sqlite`;
+      db.prepare('VACUUM INTO ?').run(join(directory, name));
+    },
+  });
   const transaction = fn => {
     db.exec('BEGIN IMMEDIATE');
     try {
@@ -44,12 +57,13 @@ export function createStore(filename) {
       throw error;
     }
   };
-  const readProjects = () => JSON.parse(db.prepare('SELECT projects FROM workspace WHERE id = 1').get().projects);
-  // Toute écriture du contenu augmente la révision : les navigateurs rechargent ou détectent le conflit.
-  const writeProjects = (projects, date = new Date().toISOString()) =>
-    db
-      .prepare('UPDATE workspace SET projects = ?, revision = revision + 1, updated_at = ? WHERE id = 1')
-      .run(JSON.stringify(projects), date);
+  const readProjects = () => readWorkspace(db);
+  // Toute écriture du contenu augmente la révision (sauf `revision: false`, quand une écriture
+  // suivante de la même transaction s’en charge) : les navigateurs actualisent leur tableau.
+  const writeProjects = (projects, date = new Date().toISOString(), { revision = true } = {}) => {
+    writeWorkspace(db, projects);
+    if (revision) db.prepare('UPDATE workspace SET revision = revision + 1, updated_at = ? WHERE id = 1').run(date);
+  };
   const synchronizeInfos = () => {
     const previous = readProjects();
     const projects = previous.map(project => withInfos(project, versionFor(project.id)));
@@ -119,6 +133,31 @@ export function createStore(filename) {
     return { ...version, repository, changelog, ...(downloads ? { downloads: JSON.parse(downloads.data) } : {}) };
   };
   transaction(synchronizeInfos);
+  // Enregistre un nouvel état validé : exécutions IA, auteurs et dates, historique, abonnements.
+  const commit = (before, clean, actor, { restore = false } = {}) => {
+    const date = new Date().toISOString();
+    workflows.reconcile(before.projects, clean, actor, restore);
+    const events = restore
+      ? [{ action: 'workspace.restored' }]
+      : attributeChanges(validateWorkspace(before.projects), clean, actor, date);
+    writeProjects(clean, date);
+    const activeIds = activeUserIds();
+    for (const event of events) {
+      // Les participants calculés par attributeChanges sont complétés par les abonnés de la carte.
+      if (event.cardId)
+        event.recipientIds = notificationRecipients({
+          participants: event.recipientIds,
+          preferences: preferences(event.cardId),
+          activeIds,
+          actorId: actor?.id,
+        });
+      audit(actor, event.action, event, before.revision + 1);
+    }
+    const survivingCards = new Set(clean.flatMap(p => p.cards.map(c => c.id)));
+    for (const { card_id } of db.prepare('SELECT DISTINCT card_id FROM card_subscriptions').all()) {
+      if (!survivingCards.has(card_id)) db.prepare('DELETE FROM card_subscriptions WHERE card_id = ?').run(card_id);
+    }
+  };
   return {
     workflows,
     recordDriveRelease(repository, data) {
@@ -302,37 +341,52 @@ export function createStore(filename) {
       db.prepare('VACUUM INTO ?').run(target);
     },
     read() {
-      const row = db.prepare('SELECT * FROM workspace WHERE id = 1').get();
-      return { projects: JSON.parse(row.projects), revision: row.revision, updatedAt: row.updated_at };
+      const row = db.prepare('SELECT revision, updated_at FROM workspace WHERE id = 1').get();
+      return { projects: readProjects(), revision: row.revision, updatedAt: row.updated_at };
     },
+    // Remplace tout le tableau, à condition que la session ait lu la révision courante.
     write(projects, revision, actor = null, { restore = false } = {}) {
       return transaction(() => {
         const before = this.read();
         if (before.revision !== revision) return null;
-        const clean = validateWorkspace(projects),
-          date = new Date().toISOString();
-        workflows.reconcile(before.projects, clean, actor, restore);
-        const events = restore
-          ? [{ action: 'workspace.restored' }]
-          : attributeChanges(validateWorkspace(before.projects), clean, actor, date);
-        writeProjects(clean, date);
-        const activeIds = activeUserIds();
-        for (const event of events) {
-          // Les participants calculés par attributeChanges sont complétés par les abonnés de la carte.
-          if (event.cardId)
-            event.recipientIds = notificationRecipients({
-              participants: event.recipientIds,
-              preferences: preferences(event.cardId),
-              activeIds,
-              actorId: actor?.id,
-            });
-          audit(actor, event.action, event, revision + 1);
-        }
-        const survivingCards = new Set(clean.flatMap(p => p.cards.map(c => c.id)));
-        for (const { card_id } of db.prepare('SELECT DISTINCT card_id FROM card_subscriptions').all()) {
-          if (!survivingCards.has(card_id)) db.prepare('DELETE FROM card_subscriptions WHERE card_id = ?').run(card_id);
-        }
+        commit(before, validateWorkspace(projects), actor, { restore });
         return this.read();
+      });
+    },
+    // Applique des modifications fines (voir src/lib/workspace-changes.js) sur l’état courant,
+    // sans exiger de révision. Les modifications dont la cible a disparu sont ignorées et
+    // renvoyées dans `skipped` ; avec `strict`, elles annulent tout.
+    change(changes, actor, { strict = false } = {}) {
+      return transaction(() => {
+        const before = this.read();
+        let result;
+        try {
+          result = applyChanges(before.projects, changes);
+        } catch (error) {
+          if (error instanceof ChangeError) fail(400, 'invalid_change', error.message);
+          throw error;
+        }
+        const refused = strict && result.skipped[0];
+        if (refused)
+          fail(
+            refused.reason === 'missing' ? 404 : 409,
+            `change_${refused.reason}`,
+            refused.reason === 'missing'
+              ? 'Élément inexistant : il a peut-être été supprimé.'
+              : refused.reason === 'exists'
+                ? 'Cet identifiant est déjà utilisé.'
+                : 'Déplacez ou supprimez d’abord les cartes de cette liste.',
+          );
+        let clean;
+        try {
+          clean = validateWorkspace(result.projects);
+        } catch (error) {
+          fail(400, 'invalid_workspace', error.message);
+        }
+        // Rien à enregistrer (modifications ignorées ou déjà appliquées) : la révision ne bouge pas.
+        if (JSON.stringify(clean) === JSON.stringify(before.projects)) return { ...before, skipped: result.skipped };
+        commit(before, clean, actor);
+        return { ...this.read(), skipped: result.skipped };
       });
     },
     hasUsers() {

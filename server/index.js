@@ -74,7 +74,7 @@ export function createAppServer({ store, config = {}, dist = resolve('dist') }) 
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const config = readConfig();
-  const store = createStore(config.database);
+  const store = createStore(config.database, { backupDirectory: config.backupDirectory });
   config.versions = createVersionSync(store, { token: process.env.PLANIFIKATEUR_GITHUB_TOKEN || '' });
   config.repositoryContext = createRepositoryContext({ token: process.env.PLANIFIKATEUR_GITHUB_TOKEN || '' });
   config.driveArchive = createDriveArchive(store, {

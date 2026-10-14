@@ -3,6 +3,7 @@ import { mkdirSync, readdirSync, statSync, renameSync, rmSync, chmodSync, exists
 import { resolve, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { validateWorkspace } from '../src/lib/workspace.js';
+import { readWorkspace, TABLES_VERSION } from './workspace-tables.js';
 
 const backupName = /^planifikateur-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[a-f0-9-]+\.sqlite$/;
 
@@ -14,10 +15,12 @@ export function inspectBackup(filename) {
       throw new Error('Sauvegarde SQLite endommagée.');
     const row = db.prepare('SELECT revision, projects FROM workspace WHERE id = 1').get();
     if (!row || !Number.isSafeInteger(row.revision) || row.revision < 1) throw new Error('Sauvegarde incompatible.');
+    // Copies antérieures à la 0.1.25 : tableau JSON ; ensuite : tables.
+    const tables = db.prepare('PRAGMA user_version').get().user_version >= TABLES_VERSION;
     const hasActivity = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'activity'").get();
     const activityId = hasActivity ? db.prepare('SELECT COALESCE(MAX(id),0) AS id FROM activity').get().id : 0;
     return {
-      projects: validateWorkspace(JSON.parse(row.projects)),
+      projects: validateWorkspace(tables ? readWorkspace(db) : JSON.parse(row.projects)),
       revision: row.revision,
       version: `${row.revision}:${activityId}`,
     };

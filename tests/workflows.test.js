@@ -10,6 +10,7 @@ import { seedAccount, loginRequest } from './helpers/accounts.mjs';
 import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
 import { restoreBackup } from '../server/backups.js';
+import { writeWorkspace } from '../server/workspace-tables.js';
 
 async function fixture(t, { legacyManual = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'planifikateur-work-')),
@@ -439,7 +440,7 @@ test('upgrading backfills existing agent questions once and a comment can resume
   snapshot.projects[0].cards[0].comments.forEach(comment => {
     delete comment.authorKind;
   });
-  db.prepare('UPDATE workspace SET projects=? WHERE id=1').run(JSON.stringify(snapshot.projects));
+  writeWorkspace(db, snapshot.projects);
   db.close();
   const upgraded = createStore(f.file);
   t.after(() => upgraded.close());

@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { seedAccount, testEmail, testPassword } from '../helpers/accounts.mjs';
 import { createRefiner } from '../../server/refine.js';
+import { readWorkspace } from '../../server/workspace-tables.js';
 
 const ownerToken = 'owner-browser-test-key';
 const readToken = 'agent-browser-test-key';
@@ -125,7 +126,7 @@ test('a UI-created card is readable by an agent and another browser', async ({ p
   await context.close();
 });
 
-test('a stale browser cannot overwrite another browser; reload is explicit', async ({
+test('two browsers editing the same board merge their changes without a conflict', async ({
   page,
   browser,
   request,
@@ -135,33 +136,69 @@ test('a stale browser cannot overwrite another browser; reload is explicit', asy
   const context = await browser.newContext();
   const other = await context.newPage();
   await login(other, appServer);
+  // Le second navigateur ne s’actualise plus : ses modifications partent d’un tableau périmé.
   await other.route('**/api/v1/workspace', route =>
     route.request().method() === 'GET' ? route.abort() : route.continue(),
   );
+  const card = seed[0].cards[0];
+  await page.getByRole('heading', { name: card.title, exact: true }).click();
+  await page.getByLabel('Titre de la carte', { exact: true }).fill('Titre choisi par le premier');
+  await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+  await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
   await newProject(page, 'Premier éditeur');
   await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
-  await newProject(other, 'Second éditeur');
-  await expect(other.getByRole('alert')).toContainText('Le tableau a changé');
-  await expect(other.getByRole('heading', { name: 'Second éditeur', exact: true })).toBeVisible();
-  const response = await request.get(`${appServer}/api/v1/projects`, {
-    headers: { Authorization: `Bearer ${readToken}` },
-  });
-  const { data } = await response.json();
-  expect(data.some(p => p.name === 'Premier éditeur')).toBe(true);
-  expect(data.some(p => p.name === 'Second éditeur')).toBe(false);
-  await other.getByRole('button', { name: 'Recharger le tableau', exact: true }).click();
-  await expect(other.getByRole('dialog')).toContainText('seront abandonnées');
-  await other.unroute('**/api/v1/workspace');
-  await other.getByRole('button', { name: 'Recharger depuis le serveur', exact: true }).click();
-  await expect(other.getByRole('heading', { name: 'PlaniFiKateur', exact: true })).toBeVisible();
+  // Même carte, autre champ, depuis un tableau qui ignore encore le nouveau titre.
+  await other.getByRole('heading', { name: card.title, exact: true }).click();
+  await other.getByLabel('Priorité', { exact: true }).selectOption('low');
+  await other.getByRole('button', { name: 'Terminé', exact: true }).click();
+  await expect(other.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
   await expect(other.getByRole('alert')).toHaveCount(0);
+  // La réponse du serveur apporte aussi les changements de l’autre session.
+  await expect(other.getByRole('heading', { name: 'Titre choisi par le premier', exact: true })).toBeVisible();
+  await newProject(other, 'Second éditeur');
+  await expect(other.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+  const headers = { Authorization: `Bearer ${readToken}` };
+  const { data } = await (await request.get(`${appServer}/api/v1/projects`, { headers })).json();
+  expect(data.some(p => p.name === 'Premier éditeur')).toBe(true);
+  expect(data.some(p => p.name === 'Second éditeur')).toBe(true);
+  const saved = await (
+    await request.get(`${appServer}/api/v1/projects/${seed[0].id}/cards/${card.id}`, { headers })
+  ).json();
+  expect(saved.data).toMatchObject({ title: 'Titre choisi par le premier', priority: 'low' });
   await context.close();
+});
+
+test('a refused save keeps local edits and reloading is explicit', async ({ page, appServer }) => {
+  await login(page, appServer);
+  await page.route('**/api/v1/workspace', route =>
+    route.request().method() === 'PATCH'
+      ? route.fulfill({
+          status: 409,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            error: { code: 'managed_status', message: 'Le statut de cette carte est piloté par son exécution IA.' },
+          }),
+        })
+      : route.continue(),
+  );
+  await newProject(page, 'Projet refusé');
+  await expect(page.getByRole('alert')).toContainText('piloté par son exécution IA');
+  await expect(page.getByRole('heading', { name: 'Projet refusé', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Recharger le tableau', exact: true }).click();
+  await expect(page.getByRole('dialog')).toContainText('seront abandonnées');
+  await page.unroute('**/api/v1/workspace');
+  await page.getByRole('button', { name: 'Recharger depuis le serveur', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'PlaniFiKateur', exact: true })).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(
+    page.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /Projet refusé/ }),
+  ).toHaveCount(0);
 });
 
 test('a failed save preserves edits and can be retried', async ({ page, request, appServer }) => {
   await login(page, appServer);
   await page.route('**/api/v1/workspace', async route => {
-    if (route.request().method() === 'PUT') await route.abort();
+    if (route.request().method() === 'PATCH') await route.abort();
     else await route.continue();
   });
   await newProject(page, 'Projet conservé');
@@ -263,7 +300,7 @@ test('another browser receives changes automatically and unchanged polls do not 
   await login(other, appServer);
   let writes = 0;
   page.on('request', req => {
-    if (req.url().endsWith('/api/v1/workspace') && req.method() === 'PUT') writes++;
+    if (req.url().endsWith('/api/v1/workspace') && req.method() !== 'GET') writes++;
   });
   await newProject(other, 'Projet partagé en direct');
   await expect(other.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
@@ -304,8 +341,12 @@ test('automatic refresh pauses while editing and preserves a draft during a conc
   ).toHaveCount(0);
   await page.getByRole('button', { name: 'Terminé', exact: true }).click();
   await page.clock.runFor(500);
-  await expect(page.getByRole('alert')).toContainText('Le tableau a changé');
-  await page.clock.runFor(5100);
+  // La description est enregistrée par-dessus le changement de l’autre session, sans conflit.
+  await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(
+    page.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /Changement pendant la saisie/ }),
+  ).toHaveCount(1);
   await page.getByRole('heading', { name: seed[0].cards[0].title, exact: true }).click();
   await expect(page.getByLabel('Description', { exact: true })).toHaveValue('Mon texte en cours de rédaction');
   await context.close();
@@ -349,7 +390,7 @@ test('owner can create and download a SQLite backup from the interface', async (
   expect(download.suggestedFilename()).toMatch(/^planifikateur-.*\.sqlite$/);
   const { DatabaseSync } = process.getBuiltinModule('node:sqlite');
   const db = new DatabaseSync(await download.path(), { readOnly: true });
-  const projects = JSON.parse(db.prepare('SELECT projects FROM workspace WHERE id = 1').get().projects);
+  const projects = readWorkspace(db);
   db.close();
   expect(projects.some(p => p.name === 'Projet dans ma sauvegarde')).toBe(true);
 });
@@ -401,7 +442,7 @@ test('closing an unchanged card does not save stale data and resumes refresh', a
   await login(other, appServer);
   let writes = 0;
   page.on('request', req => {
-    if (req.url().endsWith('/api/v1/workspace') && req.method() === 'PUT') writes++;
+    if (req.url().endsWith('/api/v1/workspace') && req.method() !== 'GET') writes++;
   });
   await page.getByRole('heading', { name: seed[0].cards[0].title, exact: true }).click();
   await newProject(other, 'Pendant la consultation');
