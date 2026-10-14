@@ -1,6 +1,7 @@
 import { mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { httpError } from './http.js';
 
 // Reformulation d’une demande de carte par Claude Code, avec l’abonnement Claude
 // du propriétaire (jeton CLAUDE_CODE_OAUTH_TOKEN créé par `claude setup-token`).
@@ -21,7 +22,6 @@ const INHERITED = [
   'SSL_CERT_FILE',
 ];
 
-const refineError = (status, code, message) => Object.assign(new Error(message), { status, code });
 export const notConfigured =
   'La reformulation IA n’est pas configurée : ajoutez CLAUDE_CODE_OAUTH_TOKEN (créé avec « claude setup-token ») aux variables du serveur du site.';
 const unavailable =
@@ -94,26 +94,26 @@ Règles :
 
 export function validateRefinement(data) {
   if (!data || typeof data !== 'object' || Array.isArray(data))
-    throw refineError(400, 'invalid_refinement', 'Corps de requête invalide.');
+    throw httpError(400, 'invalid_refinement', 'Corps de requête invalide.');
   const text = (value, max, label) => {
     if (value == null) return '';
     if (typeof value !== 'string' || value.length > max)
-      throw refineError(400, 'invalid_refinement', `${label} : texte invalide (maximum ${max} caractères).`);
+      throw httpError(400, 'invalid_refinement', `${label} : texte invalide (maximum ${max} caractères).`);
     return value.trim();
   };
   const description = text(data.description, LIMITS.description, 'description');
   if (!description)
-    throw refineError(400, 'invalid_refinement', 'Rédigez ou dictez une description avant de la reformuler.');
+    throw httpError(400, 'invalid_refinement', 'Rédigez ou dictez une description avant de la reformuler.');
   const exchanges = data.exchanges ?? [];
   if (!Array.isArray(exchanges) || exchanges.length > LIMITS.exchanges)
-    throw refineError(400, 'invalid_refinement', `exchanges : liste invalide (maximum ${LIMITS.exchanges} éléments).`);
+    throw httpError(400, 'invalid_refinement', `exchanges : liste invalide (maximum ${LIMITS.exchanges} éléments).`);
   return {
     title: text(data.title, LIMITS.title, 'title'),
     description,
     listId: typeof data.listId === 'string' ? data.listId : '',
     exchanges: exchanges
       .map(item => {
-        if (!item || typeof item !== 'object') throw refineError(400, 'invalid_refinement', 'Échange invalide.');
+        if (!item || typeof item !== 'object') throw httpError(400, 'invalid_refinement', 'Échange invalide.');
         return {
           question: text(item.question, LIMITS.question, 'question'),
           answer: text(item.answer, LIMITS.answer, 'answer'),
@@ -145,12 +145,12 @@ export function parseRefinement(output) {
     try {
       result = JSON.parse(output);
     } catch {
-      throw refineError(502, 'refinement_invalid', 'La réponse du modèle est inexploitable. Réessayez.');
+      throw httpError(502, 'refinement_invalid', 'La réponse du modèle est inexploitable. Réessayez.');
     }
   }
   const prompt = typeof result?.prompt === 'string' ? result.prompt.trim() : '';
   if (!prompt || prompt.length > LIMITS.description || !Array.isArray(result.questions))
-    throw refineError(502, 'refinement_invalid', 'La réponse du modèle est inexploitable. Réessayez.');
+    throw httpError(502, 'refinement_invalid', 'La réponse du modèle est inexploitable. Réessayez.');
   const questions = result.questions
     .filter(question => typeof question === 'string' && question.trim())
     .map(question => question.trim().slice(0, LIMITS.question))
@@ -170,7 +170,7 @@ export function createRefiner({
     enabled: !!token,
     model,
     async refine(request) {
-      if (!token) throw refineError(503, 'ai_not_configured', notConfigured);
+      if (!token) throw httpError(503, 'ai_not_configured', notConfigured);
       const sdk = query ? { query } : await import('@anthropic-ai/claude-agent-sdk');
       await mkdir(join(directory, 'config'), { recursive: true, mode: 0o700 });
       const controller = new AbortController();
@@ -210,19 +210,19 @@ export function createRefiner({
       } catch (error) {
         if (!result) {
           if (controller.signal.aborted)
-            throw refineError(504, 'ai_timeout', 'Claude n’a pas répondu à temps. Réessayez.');
-          if (accountErrors[failure]) throw refineError(...accountErrors[failure]);
-          throw refineError(502, 'ai_unavailable', unavailable);
+            throw httpError(504, 'ai_timeout', 'Claude n’a pas répondu à temps. Réessayez.');
+          if (accountErrors[failure]) throw httpError(...accountErrors[failure]);
+          throw httpError(502, 'ai_unavailable', unavailable);
         }
       } finally {
         clearTimeout(timer);
       }
       if (accountErrors[failure] && (!result || result.is_error || result.subtype !== 'success'))
-        throw refineError(...accountErrors[failure]);
-      if (!result) throw refineError(502, 'ai_unavailable', unavailable);
+        throw httpError(...accountErrors[failure]);
+      if (!result) throw httpError(502, 'ai_unavailable', unavailable);
       if (result.subtype === 'error_max_structured_output_retries')
-        throw refineError(502, 'refinement_invalid', 'La réponse du modèle est inexploitable. Réessayez.');
-      if (result.subtype !== 'success' || result.is_error) throw refineError(502, 'ai_unavailable', unavailable);
+        throw httpError(502, 'refinement_invalid', 'La réponse du modèle est inexploitable. Réessayez.');
+      if (result.subtype !== 'success' || result.is_error) throw httpError(502, 'ai_unavailable', unavailable);
       return { ...parseRefinement(result.structured_output ?? result.result), model: served || model };
     },
   };

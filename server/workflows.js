@@ -1,13 +1,11 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { pullRequestLink } from './github.js';
+import { fail } from './http.js';
 import { tokenHash } from './accounts.js';
 import { validateWorkspace } from '../src/lib/workspace.js';
 import { validateAi, efforts } from '../worker/ai-settings.mjs';
 import { defaultExecutionProfile, validateExecutionProfile } from '../worker/execution-profile.mjs';
 
-const fail = (status, code, message) => {
-  throw Object.assign(new Error(message), { status, code });
-};
 const text = (value, name, max = 20000) => {
   if (typeof value !== 'string' || !value.trim() || value.length > max)
     fail(400, 'invalid_work', `${name} est requis (maximum ${max} caractères).`);
@@ -35,7 +33,7 @@ const source = card =>
   ]);
 export const LEASE_MS = 5 * 60000;
 
-export function createWorkflows(db, { transaction, audit, findCard }) {
+export function createWorkflows(db, { transaction, audit, findCard, readProjects, writeProjects, recipients }) {
   db.exec(`CREATE TABLE IF NOT EXISTS project_worker_status (project_id TEXT NOT NULL, agent_id TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(project_id,agent_id));
     CREATE TABLE IF NOT EXISTS project_execution (project_id TEXT PRIMARY KEY, data TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS project_ai (project_id TEXT PRIMARY KEY, data TEXT NOT NULL);
@@ -60,24 +58,6 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
     version: row.version,
     leaseExpiresAt: row.lease_expires ? new Date(row.lease_expires).toISOString() : null,
   });
-  const recipients = (card, actor, extra = []) => {
-    const prefs = db.prepare('SELECT * FROM card_subscriptions WHERE card_id = ?').all(card.id);
-    const out = new Set(prefs.filter(p => !p.following).map(p => p.user_id));
-    const active = new Set(
-      db
-        .prepare('SELECT id FROM users WHERE active = 1 AND password_hash IS NOT NULL')
-        .all()
-        .map(u => u.id),
-    );
-    return [
-      ...new Set([
-        card.createdBy?.id,
-        ...card.comments.map(c => c.authorId),
-        ...prefs.filter(p => p.following).map(p => p.user_id),
-        ...extra,
-      ]),
-    ].filter(id => id && id !== actor?.id && active.has(id) && !out.has(id));
-  };
   const addComment = (card, run, actor, id, message, date = new Date().toISOString(), strict = true) => {
     if (card.comments.some(comment => comment.id === id)) return false;
     if (card.comments.length >= 1000) {
@@ -151,8 +131,7 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
       if (error.status !== 404) throw error;
     }
     if (context && syncCard) {
-      const row = db.prepare('SELECT projects FROM workspace WHERE id=1').get();
-      const projects = JSON.parse(row.projects);
+      const projects = readProjects();
       const card = projects.find(p => p.id === run.projectId).cards.find(c => c.id === run.cardId);
       card.status = cardStatus[run.state];
       card.updatedAt = run.updatedAt;
@@ -169,10 +148,7 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
         message = `La PR a été fusionnée. La tâche est terminée.\n${run.submissions.at(-1).pullRequest.url}`;
       if (action === 'checks' && run.state === 'ready') message = run.updates.at(-1)?.text;
       if (message) addComment(card, run, actor, `work-${run.id}-${action}-${run.version}`, message);
-      db.prepare('UPDATE workspace SET projects=?,revision=revision+1,updated_at=? WHERE id=1').run(
-        JSON.stringify(projects),
-        run.updatedAt,
-      );
+      writeProjects(projects, run.updatedAt);
     }
     audit(actor, `work.${action}`, {
       projectId: run.projectId,
@@ -268,7 +244,7 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
   };
   // Bring existing questions into the card discussion when upgrading the site.
   transaction(() => {
-    const projects = JSON.parse(db.prepare('SELECT projects FROM workspace WHERE id=1').get().projects);
+    const projects = readProjects();
     let changed = false;
     const agentIds = new Set(
       db
@@ -288,11 +264,7 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
         card = projects.find(p => p.id === run.projectId)?.cards.find(c => c.id === run.cardId);
       if (card) changed = questionComments(card, run, false) || changed;
     }
-    if (changed)
-      db.prepare('UPDATE workspace SET projects=?,revision=revision+1,updated_at=? WHERE id=1').run(
-        JSON.stringify(projects),
-        new Date().toISOString(),
-      );
+    if (changed) writeProjects(projects);
   });
   return {
     workerStatus(projectId) {
@@ -355,11 +327,7 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
     executionProfile,
     configureExecution(projectId, data, actor) {
       return transaction(() => {
-        if (
-          !JSON.parse(db.prepare('SELECT projects FROM workspace WHERE id=1').get().projects).some(
-            project => project.id === projectId,
-          )
-        )
+        if (!readProjects().some(project => project.id === projectId))
           fail(404, 'project_not_found', 'Projet inexistant.');
         let profile;
         try {
@@ -378,7 +346,7 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
       const row = db.prepare('SELECT * FROM agents WHERE id=? AND active=1').get(agent.id);
       if (!row) fail(401, 'agent_unauthorized', 'Agent révoqué.');
       const ids = JSON.parse(row.projects);
-      return JSON.parse(db.prepare('SELECT projects FROM workspace WHERE id=1').get().projects)
+      return readProjects()
         .filter(project => ids.includes(project.id))
         .map(project => ({
           id: project.id,
@@ -391,11 +359,7 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
     projectAi,
     configureAi(projectId, data, actor) {
       return transaction(() => {
-        if (
-          !JSON.parse(db.prepare('SELECT projects FROM workspace WHERE id=1').get().projects).some(
-            project => project.id === projectId,
-          )
-        )
+        if (!readProjects().some(project => project.id === projectId))
           fail(404, 'project_not_found', 'Projet inexistant.');
         let ai;
         try {
@@ -414,7 +378,7 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
     githubProject,
     configureGithub(projectId, repository, actor) {
       return transaction(() => {
-        const projects = JSON.parse(db.prepare('SELECT projects FROM workspace WHERE id=1').get().projects);
+        const projects = readProjects();
         if (!projects.some(p => p.id === projectId)) fail(404, 'project_not_found', 'Projet inexistant.');
         if (
           typeof repository !== 'string' ||
@@ -564,7 +528,7 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
           data.projectIds.some(p => typeof p !== 'string')
         )
           fail(400, 'invalid_work', 'Sélectionnez au moins un projet.');
-        const projects = JSON.parse(db.prepare('SELECT projects FROM workspace WHERE id=1').get().projects);
+        const projects = readProjects();
         if (data.projectIds.some(id => !projects.some(p => p.id === id)))
           fail(400, 'invalid_work', 'Projet inexistant.');
         if (id) {
@@ -632,7 +596,7 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
       return transaction(() => {
         checkAgent(agent, projectId);
         expire();
-        const projects = JSON.parse(db.prepare('SELECT projects FROM workspace WHERE id=1').get().projects);
+        const projects = readProjects();
         const project = projects.find(p => p.id === projectId);
         if (autoPrepare && githubProject(projectId)) {
           const activeCards = new Set(
@@ -848,8 +812,7 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
             );
           }
           if (files.length) {
-            const row = db.prepare('SELECT projects FROM workspace WHERE id=1').get(),
-              projects = JSON.parse(row.projects);
+            const projects = readProjects();
             const card = projects.find(project => project.id === projectId).cards.find(card => card.id === cardId);
             card.attachments = [
               ...(card.attachments || []).filter(file => !files.some(next => next.id === file.id)),
@@ -866,6 +829,7 @@ export function createWorkflows(db, { transaction, audit, findCard }) {
             // run that produced them. Subsequent human changes remain protected.
             run.source = source(delivered);
             run.cardSnapshot = { ...run.cardSnapshot, attachments: delivered.attachments };
+            // Ni révision ni date ici : save() les met à jour juste après avec le commentaire de résultat.
             db.prepare('UPDATE workspace SET projects=? WHERE id=1').run(JSON.stringify(clean));
             audit(
               agent,
