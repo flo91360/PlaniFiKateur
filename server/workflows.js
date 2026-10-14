@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { pullRequestLink } from './github.js';
 import { fail } from './http.js';
+import { CARD_STATUS, canTransition, isTerminal, legacyPublicationQuestion, transition } from './execution-states.js';
 import { tokenHash } from './accounts.js';
 import { validateWorkspace } from '../src/lib/workspace.js';
 import { validateAi, efforts } from '../worker/ai-settings.mjs';
@@ -10,17 +11,6 @@ const text = (value, name, max = 20000) => {
   if (typeof value !== 'string' || !value.trim() || value.length > max)
     fail(400, 'invalid_work', `${name} est requis (maximum ${max} caractères).`);
   return value.trim();
-};
-const terminal = new Set(['done', 'cancelled']);
-const cardStatus = {
-  ready: 'ready',
-  running: 'progress',
-  waiting: 'clarify',
-  review: 'review',
-  merging: 'review',
-  interrupted: 'ready',
-  done: 'done',
-  cancelled: 'draft',
 };
 const source = card =>
   JSON.stringify([
@@ -133,7 +123,7 @@ export function createWorkflows(db, { transaction, audit, findCard, readProjects
     if (context && syncCard) {
       const projects = readProjects();
       const card = projects.find(p => p.id === run.projectId).cards.find(c => c.id === run.cardId);
-      card.status = cardStatus[run.state];
+      card.status = CARD_STATUS[run.state];
       card.updatedAt = run.updatedAt;
       card.updatedBy = actor ? { id: actor.id, name: actor.name } : null;
       if (['question', 'answer'].includes(action)) questionComments(card, run);
@@ -164,8 +154,7 @@ export function createWorkflows(db, { transaction, audit, findCard, readProjects
   const expire = () => {
     for (const row of rows())
       if (row.state === 'running' && row.lease_expires <= Date.now()) {
-        const run = unpack(row);
-        run.state = 'interrupted';
+        const run = transition(unpack(row), 'expire');
         run.interruption = 'L’agent ne répond plus. La réservation a expiré.';
         save(run, null, 'interrupted');
       }
@@ -457,7 +446,7 @@ export function createWorkflows(db, { transaction, audit, findCard, readProjects
               date: new Date().toISOString(),
             });
           } else if (check.conclusion !== 'success') {
-            run.state = 'ready';
+            transition(run, 'checksFailed');
             run.updates.push({
               text: 'Les contrôles GitHub ont échoué. Le worker reprend la tâche pour corriger puis soumettre à nouveau la PR.',
               date: new Date().toISOString(),
@@ -499,7 +488,7 @@ export function createWorkflows(db, { transaction, audit, findCard, readProjects
         )
           return { updated: false };
         checkSource(run);
-        run.state = 'done';
+        transition(run, 'merged');
         submission.pullRequest.mergeSha = pr.merge_commit_sha;
         submission.decision = {
           accepted: true,
@@ -541,12 +530,11 @@ export function createWorkflows(db, { transaction, audit, findCard, readProjects
           );
           for (const row of rows())
             if (
-              !terminal.has(row.state) &&
+              !isTerminal(row.state) &&
               JSON.parse(row.data).agent?.id === id &&
               !data.projectIds.includes(row.project_id)
             ) {
-              const run = unpack(row);
-              run.state = 'interrupted';
+              const run = transition(unpack(row), 'unassign');
               run.interruption = 'L’accès de l’agent au projet a été retiré.';
               save(run, actor, 'interrupted');
             }
@@ -572,9 +560,8 @@ export function createWorkflows(db, { transaction, audit, findCard, readProjects
           fail(404, 'agent_not_found', 'Agent actif inexistant.');
         db.prepare('UPDATE agents SET active=0 WHERE id=?').run(id);
         for (const row of rows())
-          if (['running', 'waiting'].includes(row.state) && JSON.parse(row.data).agent?.id === id) {
-            const run = unpack(row);
-            run.state = 'interrupted';
+          if (canTransition(row.state, 'revoke') && JSON.parse(row.data).agent?.id === id) {
+            const run = transition(unpack(row), 'revoke');
             run.interruption = 'La clé de l’agent a été révoquée.';
             save(run, actor, 'interrupted');
           }
@@ -601,7 +588,7 @@ export function createWorkflows(db, { transaction, audit, findCard, readProjects
         if (autoPrepare && githubProject(projectId)) {
           const activeCards = new Set(
             rows()
-              .filter(row => !terminal.has(row.state))
+              .filter(row => !isTerminal(row.state))
               .map(row => row.card_id),
           );
           for (const card of project?.cards || []) {
@@ -629,35 +616,27 @@ export function createWorkflows(db, { transaction, audit, findCard, readProjects
       return transaction(() => {
         const run = unpack(scoped(projectId, cardId, id));
         checkVersion(run, data?.version);
-        if (terminal.has(run.state)) fail(409, 'invalid_transition', 'Cette exécution est terminée.');
-        if (action === 'cancel') {
-          run.state = 'cancelled';
-          run.cancellation = text(data?.message, 'Motif', 10000);
-        } else if (action === 'answer' && run.state === 'waiting') {
+        if (isTerminal(run.state)) fail(409, 'invalid_transition', 'Cette exécution est terminée.');
+        if (!canTransition(run.state, action))
+          fail(409, 'invalid_transition', 'Cette action n’est pas disponible à cette étape.');
+        const decidedBy = { id: actor.id, name: actor.name };
+        if (action === 'cancel') run.cancellation = text(data?.message, 'Motif', 10000);
+        if (action === 'answer') {
           const answer = text(data?.message, 'Réponse', 10000);
-          run.exchanges.at(-1).answer = {
-            text: answer,
-            actor: { id: actor.id, name: actor.name },
-            date: new Date().toISOString(),
-          };
-          run.state = 'ready';
-        } else if (action === 'accept' && run.state === 'review') {
+          run.exchanges.at(-1).answer = { text: answer, actor: decidedBy, date: new Date().toISOString() };
+        }
+        if (action === 'accept') {
           checkSource(run);
-          run.state = 'done';
-          run.submissions.at(-1).decision = {
-            accepted: true,
-            actor: { id: actor.id, name: actor.name },
-            date: new Date().toISOString(),
-          };
-        } else if (action === 'reject' && ['review', 'merging'].includes(run.state)) {
+          run.submissions.at(-1).decision = { accepted: true, actor: decidedBy, date: new Date().toISOString() };
+        }
+        if (action === 'reject')
           run.submissions.at(-1).decision = {
             accepted: false,
             message: text(data?.message, 'Corrections demandées', 10000),
-            actor: { id: actor.id, name: actor.name },
+            actor: decidedBy,
             date: new Date().toISOString(),
           };
-          run.state = 'ready';
-        } else fail(409, 'invalid_transition', 'Cette action n’est pas disponible à cette étape.');
+        transition(run, action);
         return save(run, actor, action);
       });
     },
@@ -669,20 +648,12 @@ export function createWorkflows(db, { transaction, audit, findCard, readProjects
         const row = scoped(projectId, cardId, id),
           run = unpack(row);
         if (action === 'claim' || action === 'revise') {
-          // Compatibility recovery for the old worker's technical publication question.
-          // Real requests for clarification still require a human answer.
-          const publicationRecovery =
-            run.delivery === 'github' &&
-            run.state === 'waiting' &&
-            run.submissions.at(-1)?.pullRequest &&
-            run.exchanges.at(-1)?.question === 'La PR ne pointe pas sur le commit testé.' &&
-            !run.exchanges.at(-1)?.answer;
-          if (
-            action === 'revise'
-              ? (!publicationRecovery && run.state !== 'merging') || run.agent?.id !== agent.id
-              : !['ready', 'interrupted'].includes(run.state)
-          )
-            fail(409, 'already_claimed', 'Cette exécution n’est pas disponible.');
+          // Une correction (revise) reprend la PR en cours du même agent ; claim prend une tâche libre.
+          const available =
+            action === 'claim'
+              ? canTransition(run.state, 'claim')
+              : (run.state === 'merging' || legacyPublicationQuestion(run)) && run.agent?.id === agent.id;
+          if (!available) fail(409, 'already_claimed', 'Cette exécution n’est pas disponible.');
           checkVersion(run, data?.version);
           checkSource(run);
           if (!run.ai) {
@@ -720,7 +691,7 @@ export function createWorkflows(db, { transaction, audit, findCard, readProjects
           )
             fail(503, 'worker_update_required', 'Mettez à jour le worker pour utiliser ce profil d’exécution.');
           const leaseToken = randomBytes(32).toString('hex');
-          run.state = 'running';
+          transition(run, action);
           run.agent = { id: agent.id, name: agent.name };
           run.interruption = null;
           save(run, agent, 'claimed', { leaseHash: tokenHash(leaseToken), expires: Date.now() + LEASE_MS });
@@ -764,7 +735,7 @@ export function createWorkflows(db, { transaction, audit, findCard, readProjects
             date: new Date().toISOString(),
             answer: null,
           });
-          run.state = 'waiting';
+          transition(run, 'question');
         } else if (action === 'submit') {
           if (run.submissions.length >= 50) fail(400, 'submission_limit', 'Limite de soumissions atteinte.');
           if (
@@ -854,9 +825,10 @@ export function createWorkflows(db, { transaction, audit, findCard, readProjects
             date: new Date().toISOString(),
             decision: null,
           });
-          run.state = artifactOnly ? 'done' : pullRequest ? 'merging' : 'review';
+          // Fichier seul : livré dans la carte. PR : fusion après les tests GitHub. Sinon : validation humaine.
+          transition(run, 'submit', artifactOnly ? 'done' : pullRequest ? 'merging' : 'review');
         } else if (action === 'interrupt') {
-          run.state = 'interrupted';
+          transition(run, 'interrupt');
           run.interruption = text(data?.message, 'Motif', 10000);
         } else fail(400, 'invalid_action', 'Action agent inconnue.');
         return save(run, agent, action);
@@ -864,21 +836,21 @@ export function createWorkflows(db, { transaction, audit, findCard, readProjects
     },
     reconcile(before, after, actor, restore) {
       for (const row of rows())
-        if (!terminal.has(row.state)) {
+        if (!isTerminal(row.state)) {
           const run = unpack(row),
             card = after.find(p => p.id === run.projectId)?.cards.find(c => c.id === run.cardId);
           if (restore || !card || source(card) !== run.source) {
-            run.state = 'cancelled';
+            transition(run, 'cancel');
             run.cancellation = restore
               ? 'Restauration du contenu : préparez une nouvelle demande.'
               : 'Carte supprimée, déplacée ou demande modifiée : préparez une nouvelle exécution.';
             save(run, actor, 'cancel', { syncCard: false });
-            if (card) card.status = 'draft';
+            if (card) card.status = CARD_STATUS[run.state];
           } else if (run.state === 'ready' && card.status !== 'ready') {
-            run.state = 'cancelled';
+            transition(run, 'cancel');
             run.cancellation = 'La carte a été retirée de la file par son changement de statut.';
             save(run, actor, 'cancel', { syncCard: false });
-          } else if (card.status !== cardStatus[run.state])
+          } else if (card.status !== CARD_STATUS[run.state])
             fail(409, 'managed_status', 'Le statut de cette carte est piloté par son exécution IA.');
           if (run.state === 'waiting' && card && actor && !restore) {
             const previous = before.find(p => p.id === run.projectId)?.cards.find(c => c.id === run.cardId);
@@ -891,9 +863,9 @@ export function createWorkflows(db, { transaction, audit, findCard, readProjects
                 date: new Date().toISOString(),
                 commentId: reply.id,
               };
-              run.state = 'ready';
+              transition(run, 'answer');
               save(run, actor, 'answer', { syncCard: false });
-              card.status = 'ready';
+              card.status = CARD_STATUS[run.state];
             }
           }
         }
