@@ -1,4 +1,4 @@
-import { defaultExecutionProfile, validateExecutionProfile } from './execution-profile.mjs';
+import { defaultExecutionProfile, installedProfile } from './execution-profile.mjs';
 // Trusted worker code shared with the GitHub Actions merger.
 export const requiredJobs = ['Tests serveur', 'Tests navigateur'];
 
@@ -10,7 +10,7 @@ export async function mergeAgentPullRequest({
   log = () => {},
   executionProfile = defaultExecutionProfile(),
 }) {
-  const profile = validateExecutionProfile(executionProfile);
+  const profile = installedProfile(executionProfile);
   const requiredJobs = profile.workflow.jobs;
   const root = `/repos/${repository}`;
   const sameRepository = value => typeof value === 'string' && value.toLowerCase() === repository.toLowerCase();

@@ -9,7 +9,7 @@ import { createCodexRunner } from './codex.mjs';
 import { checkGeneratedFile, collectOutputs } from './outputs.mjs';
 import { createClaudeRunner } from './claude.mjs';
 import { validateAi, efforts, effortLabels } from './ai-settings.mjs';
-import { defaultExecutionProfile, validateExecutionProfile, resolveWorkerCommand } from './execution-profile.mjs';
+import { defaultExecutionProfile, installedProfile, resolveWorkerCommand } from './execution-profile.mjs';
 import { runtimeEnvironment, checkRuntime, projectDiagnostic } from './runtime.mjs';
 import { prepareDelivery } from './delivery.mjs';
 import { WorkerTimeoutError, createReservation } from './reservation.mjs';
@@ -37,6 +37,8 @@ export function createWorker(config, dependencies = {}) {
   const claude = dependencies.claude || createClaudeRunner(config);
   const execute = dependencies.execute || runCommand;
   const log = dependencies.log || console.log;
+  // Les tests remplacent les presets installés par les leurs ; en production, ceux du worker.
+  const profileOf = dependencies.installedProfile || installedProfile;
   const clean = text =>
     [config.token, config.githubToken, config.apiKey, config.claudeApiKey, config.claudeOauthToken]
       .filter(Boolean)
@@ -55,13 +57,13 @@ export function createWorker(config, dependencies = {}) {
       ? projects.has(run.projectId)
       : config.repositories.includes(run.repository.toLowerCase()) && config.projectIds.includes(run.projectId));
 
-  // done is terminal and its code is on main: the checkout and its dependencies would only fill the disk.
+  // done and cancelled are terminal: the checkout and its dependencies would only fill the disk.
   async function releaseCheckout(job) {
-    if (job.phase !== 'done' || job.checkoutReleased) return;
+    if (!['done', 'cancelled'].includes(job.phase) || job.checkoutReleased) return;
     await rm(join(config.stateRoot, 'jobs', job.id), { recursive: true, force: true });
     job.checkoutReleased = true;
     await state.put(job);
-    log(`Exécution ${job.id} : checkout local supprimé, tâche terminée.`);
+    log(`Exécution ${job.id} : checkout local supprimé, tâche ${job.phase === 'done' ? 'terminée' : 'annulée'}.`);
   }
 
   async function waitForAnswer(task, message, { resetAttempts = false } = {}) {
@@ -100,10 +102,15 @@ export function createWorker(config, dependencies = {}) {
     }
     if (!efforts[job.ai.engine]?.includes(job.ai.effort) || (run.ai && job.ai.engine !== run.ai.engine))
       throw new Error('Réglages IA incompatibles avec la conversation existante.');
-    if (!job.executionProfile)
-      job.executionProfile = validateExecutionProfile(run.executionProfile || defaultExecutionProfile());
-    if (run.executionProfile && JSON.stringify(job.executionProfile) !== JSON.stringify(run.executionProfile))
+    // Preset et branche figés à la première prise en charge ; commandes toujours relues dans les
+    // presets installés, pour qu’une mise à jour du worker s’applique aussi aux tâches en cours.
+    const profile = profileOf(job.executionProfile || run.executionProfile || defaultExecutionProfile());
+    if (
+      run.executionProfile &&
+      (run.executionProfile.preset !== profile.preset || run.executionProfile.branch !== profile.branch)
+    )
       throw new Error('Le profil ne correspond plus à cette exécution.');
+    job.executionProfile = profile;
     // Une nouvelle réponse humaine, une reprise de publication ou une correction de PR
     // redonnent toutes leurs tentatives au modèle.
     const answers = run.exchanges.filter(e => e.answer).length;
@@ -269,7 +276,7 @@ export function createWorker(config, dependencies = {}) {
 
   // Le modèle réalise la demande ; ses livrables et les tests sont vérifiés jusqu’à trois fois,
   // chaque échec lui étant renvoyé pour correction. Renvoie le résultat validé ou sa question.
-  async function produce(task, checkout, previous) {
+  async function produce(task, checkout, previous, ciFeedback = '') {
     const { job, reservation } = task;
     const runner = job.ai.engine === 'claude-code' ? claude : model;
     const onRuntime = async runtime => {
@@ -284,7 +291,7 @@ export function createWorker(config, dependencies = {}) {
         message: `IA utilisée : ${engineName(safe.engine)} · ${safe.model} · effort ${effortLabels[safe.effort]}.`,
       });
     };
-    let feedback = checkout.conflicts;
+    let feedback = [checkout.conflicts, ciFeedback].filter(Boolean).join('\n\n');
     let cached = job.checkpoint;
     if (cached) {
       try {
@@ -324,7 +331,8 @@ export function createWorker(config, dependencies = {}) {
         }
         result = await reservation.phase('travail IA', config.modelTimeoutMs, () =>
           runner.run({
-            run: { ...reservation.run, leaseToken: undefined },
+            // Le profil montré au modèle est celui que le worker exécute réellement.
+            run: { ...reservation.run, leaseToken: undefined, executionProfile: job.executionProfile },
             job,
             cwd: checkout.cwd,
             signal: reservation.signal,
@@ -464,6 +472,27 @@ export function createWorker(config, dependencies = {}) {
     return { status: 'merging', number: pr.number, sha };
   }
 
+  // Après un échec des contrôles GitHub, le modèle reçoit les jobs et étapes en échec avec la fin
+  // de leurs journaux, plutôt qu’un simple « les contrôles ont échoué ».
+  async function failedChecksFeedback({ job, reservation }) {
+    const checks = reservation.run.githubChecks;
+    if (checks?.conclusion !== 'failure' || !Number.isSafeInteger(checks.runId) || !github.failedChecks) return '';
+    const intro = `Les contrôles GitHub de la PR ont échoué${checks.url ? ` (${checks.url})` : ''}.`;
+    try {
+      const failed = await github.failedChecks(job.repository, checks.runId, reservation.signal);
+      if (!failed.length) return `${intro} Reproduis l’échec localement et corrige sa cause.`;
+      return `${intro} Corrige la cause de ces échecs :\n\n${failed
+        .map(
+          check =>
+            `Job « ${check.name} »${check.steps.length ? ` — étapes en échec : ${check.steps.join(', ')}` : ''}${check.log ? `\nFin du journal :\n${clean(check.log)}` : ''}`,
+        )
+        .join('\n\n')}`;
+    } catch (error) {
+      if (reservation.signal.aborted) throw error;
+      return `${intro} Leurs journaux sont indisponibles (${clean(error.message)}) : reproduis l’échec localement et corrige sa cause.`;
+    }
+  }
+
   // Une tentative complète : checkout, réalisation et vérifications, publication.
   async function attempt(task) {
     const { candidate, job, reservation } = task;
@@ -477,13 +506,14 @@ export function createWorker(config, dependencies = {}) {
         await github.unlabel(job.repository, pr.number, reservation.signal);
     }
     log(`Prise en charge ${reservation.run.id}.`);
+    const ciFeedback = await failedChecksFeedback(task);
     await reservation.action('progress', {
       message: `Le worker prépare le dépôt et lance ${engineName(job.ai.engine)}.`,
     });
     const checkout = await reservation.phase('préparation du dépôt', config.setupTimeoutMs, () =>
       prepareCheckout(task),
     );
-    const produced = await produce(task, checkout, previous);
+    const produced = await produce(task, checkout, previous, ciFeedback);
     if (produced.status === 'question') return waitForAnswer(task, produced.question);
     return reservation.phase('publication', config.publicationTimeoutMs, () => publish(task, checkout, produced));
   }
@@ -554,112 +584,165 @@ export function createWorker(config, dependencies = {}) {
     }
   }
 
+  // Un projet en erreur (dépôt inaccessible, clé retirée…) n’empêche pas de servir les autres :
+  // l’erreur est journalisée une fois, puis le projet est réessayé au tour suivant.
+  const projectErrors = new Map();
+  async function isolated(projectId, signal, callback) {
+    try {
+      const result = await callback();
+      if (projectErrors.delete(projectId)) log(`Projet ${projectId} : traitement rétabli.`);
+      return result;
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      const message = clean(error.message);
+      if (projectErrors.get(projectId) !== message)
+        log(`Projet ${projectId} : traitement impossible (${message}). Les autres projets continuent.`);
+      projectErrors.set(projectId, message);
+      return null;
+    }
+  }
+
+  // Message de suivi journalisé une seule fois tant que la situation ne change pas.
+  async function note(job, reason, message) {
+    if (job.mergeReason === reason) return;
+    job.mergeReason = reason;
+    await state.put(job);
+    log(message);
+  }
+
+  // Suivi d’une tâche connue : état sur le site, PR et fusion. Renvoie la tâche à reprendre, ou null.
+  async function reconcileJob(job, signal) {
+    if (['done', 'cancelled'].includes(job.phase)) {
+      await releaseCheckout(job);
+      return null;
+    }
+    if (auto && !projects.has(job.projectId)) {
+      if (job.phase !== 'unauthorized') {
+        job.phase = 'unauthorized';
+        await state.put(job);
+        log(`Exécution ${job.id} suspendue localement : projet non autorisé ou supprimé.`);
+      }
+      return null;
+    }
+    let history;
+    try {
+      history = await site.history(job, signal);
+    } catch (error) {
+      // Site injoignable ou clé refusée : toutes les tâches sont concernées, le tour s’arrête.
+      if (!(error instanceof ApiError) || error.status !== 404 || error.code !== 'card_not_found')
+        throw Object.assign(error, { siteError: true });
+      job.phase = 'cancelled';
+      await state.put(job);
+      log(`Exécution ${job.id} archivée localement : carte absente de son projet.`);
+      return null;
+    }
+    const run = history.find(r => r.id === job.id);
+    if (!run) {
+      job.phase = 'cancelled';
+      await state.put(job);
+      log(`Exécution ${job.id} archivée localement : exécution absente de la carte.`);
+      return null;
+    }
+    if (allowed(run) && legacyPublicationQuestion(run)) {
+      const pr = await github.pull(run.repository, run.submissions.at(-1).pullRequest.number, signal);
+      if (
+        pr.state === 'open' &&
+        pr.head.ref === job.branch &&
+        pr.head.repo?.full_name?.toLowerCase() === run.repository.toLowerCase() &&
+        pr.base?.ref === (run.executionProfile?.branch || 'main')
+      ) {
+        log(`Exécution ${run.id} : reprise automatique de la publication interrompue.`);
+        return { ...run, publicationRecovery: true };
+      }
+    }
+    if (['done', 'cancelled', 'waiting', 'review'].includes(run.state)) {
+      if (job.phase !== run.state) {
+        job.phase = run.state;
+        await state.put(job);
+        log(`Exécution ${job.id} : ${run.state}.`);
+      }
+      await releaseCheckout(job);
+      return null;
+    }
+    if (run.state !== 'merging' || !allowed(run)) return null;
+    const submission = run.submissions.at(-1)?.pullRequest;
+    const profile = profileOf(job.executionProfile || run.executionProfile || defaultExecutionProfile());
+    if (!submission) return null;
+    const pr = await github.pull(run.repository, submission.number, signal);
+    if (pr.state !== 'open') {
+      if (!pr.merged)
+        return {
+          ...run,
+          workerQuestion: 'La PR a été fermée sans fusion. Souhaitez-vous reprendre cette tâche ou l’annuler ?',
+        };
+      // A merged PR is only completed by the signed GitHub webhook or the site's own GitHub check.
+      await note(job, 'merged', `Exécution ${run.id} : PR fusionnée, confirmation du site attendue.`);
+      return null;
+    }
+    if (pr.head.sha !== submission.headSha || pr.head.repo?.full_name?.toLowerCase() !== run.repository.toLowerCase()) {
+      await note(
+        job,
+        'head_changed',
+        `Exécution ${run.id} : le commit de la PR a changé hors du worker ; elle ne sera pas fusionnée automatiquement.`,
+      );
+      return null;
+    }
+    if (await github.behindMain(run.repository, pr.head.sha, signal, profile.branch)) return run;
+    if (!pr.labels.some(l => l.name === 'planifikateur-agent')) await github.label(run.repository, pr.number, signal);
+    let merged;
+    try {
+      merged = await github.mergeWhenReady(
+        run.repository,
+        pr,
+        data => site.mergeEligible(data, signal),
+        signal,
+        profile,
+      );
+    } catch (error) {
+      const message = clean(error.message);
+      if (job.mergeReason !== message) {
+        job.mergeReason = message;
+        await state.put(job);
+        log(`Exécution ${run.id} : fusion automatique bloquée : ${message}. Le worker réessaiera sans relancer Codex.`);
+      }
+      return null;
+    }
+    if (merged.merged) {
+      log(
+        `Exécution ${run.id} : PR #${pr.number} fusionnée après réussite des tests GitHub, notification du site attendue.`,
+      );
+    } else if (job.mergeReason !== merged.reason) {
+      job.mergeReason = merged.reason;
+      await state.put(job);
+      log(`Exécution ${run.id} : fusion en attente (${merged.reason}).`);
+    }
+    return null;
+  }
+
+  // Une erreur sur une tâche (dépôt renommé, PR inaccessible…) ne bloque pas les autres : la tâche
+  // est réessayée plus tard, avec un délai croissant, et l’erreur n’est journalisée qu’une fois.
   async function reconcile(signal) {
     for (const job of await state.all()) {
-      if (['done', 'cancelled'].includes(job.phase)) {
-        await releaseCheckout(job);
-        continue;
-      }
-      if (auto && !projects.has(job.projectId)) {
-        if (job.phase !== 'unauthorized') {
-          job.phase = 'unauthorized';
-          await state.put(job);
-          log(`Exécution ${job.id} suspendue localement : projet non autorisé ou supprimé.`);
-        }
-        continue;
-      }
-      let history;
+      if (job.followUp?.retryAfter > Date.now()) continue;
       try {
-        history = await site.history(job, signal);
-      } catch (error) {
-        if (!(error instanceof ApiError) || error.status !== 404 || error.code !== 'card_not_found') throw error;
-        job.phase = 'cancelled';
-        await state.put(job);
-        log(`Exécution ${job.id} archivée localement : carte absente de son projet.`);
-        continue;
-      }
-      const run = history.find(r => r.id === job.id);
-      if (!run) {
-        job.phase = 'cancelled';
-        await state.put(job);
-        log(`Exécution ${job.id} archivée localement : exécution absente de la carte.`);
-        continue;
-      }
-      if (allowed(run) && legacyPublicationQuestion(run)) {
-        const pr = await github.pull(run.repository, run.submissions.at(-1).pullRequest.number, signal);
-        if (
-          pr.state === 'open' &&
-          pr.head.ref === job.branch &&
-          pr.head.repo?.full_name?.toLowerCase() === run.repository.toLowerCase() &&
-          pr.base?.ref === (run.executionProfile?.branch || 'main')
-        ) {
-          log(`Exécution ${run.id} : reprise automatique de la publication interrompue.`);
-          return { ...run, publicationRecovery: true };
-        }
-      }
-      if (['done', 'cancelled', 'waiting', 'review'].includes(run.state)) {
-        if (job.phase !== run.state) {
-          job.phase = run.state;
+        const candidate = await reconcileJob(job, signal);
+        if (job.followUp) {
+          delete job.followUp;
           await state.put(job);
-          log(`Exécution ${job.id} : ${run.state}.`);
+          log(`Exécution ${job.id} : suivi rétabli.`);
         }
-        await releaseCheckout(job);
-        continue;
-      }
-      if (run.state !== 'merging' || !allowed(run)) continue;
-      const submission = run.submissions.at(-1)?.pullRequest;
-      const profile = validateExecutionProfile(
-        job.executionProfile || run.executionProfile || defaultExecutionProfile(),
-      );
-      if (!submission) continue;
-      const pr = await github.pull(run.repository, submission.number, signal);
-      if (pr.state !== 'open') {
-        if (!pr.merged)
-          return {
-            ...run,
-            workerQuestion: 'La PR a été fermée sans fusion. Souhaitez-vous reprendre cette tâche ou l’annuler ?',
-          };
-        // A merged PR is only completed by the signed GitHub webhook, never here.
-        log(`Exécution ${run.id} : PR fermée, notification du site attendue.`);
-        continue;
-      }
-      if (
-        pr.head.sha !== submission.headSha ||
-        pr.head.repo?.full_name?.toLowerCase() !== run.repository.toLowerCase()
-      ) {
-        log(`Exécution ${run.id} : le commit de la PR a changé.`);
-        continue;
-      }
-      if (await github.behindMain(run.repository, pr.head.sha, signal, profile.branch)) return run;
-      if (!pr.labels.some(l => l.name === 'planifikateur-agent')) await github.label(run.repository, pr.number, signal);
-      let merged;
-      try {
-        merged = await github.mergeWhenReady(
-          run.repository,
-          pr,
-          data => site.mergeEligible(data, signal),
-          signal,
-          profile,
-        );
+        if (candidate) return candidate;
       } catch (error) {
+        if (signal?.aborted || error.siteError) throw error;
         const message = clean(error.message);
-        if (job.mergeReason !== message) {
-          job.mergeReason = message;
-          await state.put(job);
+        const failures = (job.followUp?.failures || 0) + 1;
+        const minutes = Math.min(30, 2 ** (failures - 1));
+        if (job.followUp?.error !== message)
           log(
-            `Exécution ${run.id} : fusion automatique bloquée : ${message}. Le worker réessaiera sans relancer Codex.`,
+            `Exécution ${job.id} : suivi impossible (${message}). Nouvelle tentative dans ${minutes} min ; les autres tâches continuent.`,
           );
-        }
-        continue;
-      }
-      if (merged.merged) {
-        log(
-          `Exécution ${run.id} : PR #${pr.number} fusionnée après réussite des tests GitHub, notification du site attendue.`,
-        );
-      } else if (job.mergeReason !== merged.reason) {
-        job.mergeReason = merged.reason;
+        job.followUp = { error: message, failures, retryAfter: Date.now() + minutes * 60000 };
         await state.put(job);
-        log(`Exécution ${run.id} : fusion en attente (${merged.reason}).`);
       }
     }
     return null;
@@ -680,48 +763,54 @@ export function createWorker(config, dependencies = {}) {
           const key = JSON.stringify(project),
             previous = diagnostics.get(project.id);
           if (previous?.key === key && previous.expires > Date.now()) continue;
-          const report = await projectDiagnostic(project, config, github, execute, signal);
-          report.checks.forEach(check => {
-            check.message = clean(check.message);
+          await isolated(project.id, signal, async () => {
+            const report = await projectDiagnostic(project, config, github, execute, signal);
+            report.checks.forEach(check => {
+              check.message = clean(check.message);
+            });
+            await site.diagnostic(project.id, report, signal);
+            diagnostics.set(project.id, { key, expires: Date.now() + 60000, report });
+            log(
+              `Projet ${project.name} : ${report.state === 'ready' ? 'configuration contrôlée' : 'configuration à compléter (voir les paramètres du projet)'}.`,
+            );
           });
-          await site.diagnostic(project.id, report, signal);
-          diagnostics.set(project.id, { key, expires: Date.now() + 60000, report });
-          log(
-            `Projet ${project.name} : ${report.state === 'ready' ? 'configuration contrôlée' : 'configuration à compléter (voir les paramètres du projet)'}.`,
-          );
         }
       }
       const revise = await reconcile(signal);
       if (revise) return processTask(revise, signal);
       for (const projectId of auto ? projects.keys() : config.projectIds) {
-        for (const candidate of await site.queue(projectId, signal)) {
-          if (!allowed(candidate)) continue;
-          const job = await state.get(candidate.id);
-          if (job?.retryAfter > Date.now()) continue;
-          if (auto) {
-            const project = projects.get(projectId);
-            const execution = {
-              ...project,
-              repository: candidate.repository,
-              executionProfile: candidate.executionProfile || project.executionProfile,
-              ai: validateAi(job?.ai || candidate.aiRuntime || candidate.ai || project.ai),
-            };
-            const key = JSON.stringify(execution),
-              cacheKey = `${projectId}:execution:${key}`;
-            let report = diagnostics.get(cacheKey);
-            if (!report || report.expires <= Date.now()) {
-              report = {
-                report: await projectDiagnostic(execution, config, github, execute, signal),
-                expires: Date.now() + 60000,
+        const handled = await isolated(projectId, signal, async () => {
+          for (const candidate of await site.queue(projectId, signal)) {
+            if (!allowed(candidate)) continue;
+            const job = await state.get(candidate.id);
+            if (job?.retryAfter > Date.now()) continue;
+            if (auto) {
+              const project = projects.get(projectId);
+              const execution = {
+                ...project,
+                repository: candidate.repository,
+                executionProfile: profileOf(candidate.executionProfile || project.executionProfile),
+                ai: validateAi(job?.ai || candidate.aiRuntime || candidate.ai || project.ai),
               };
-              diagnostics.set(cacheKey, report);
-              if (diagnostics.size > 1000)
-                for (const [key, value] of diagnostics) if (value.expires <= Date.now()) diagnostics.delete(key);
+              const key = JSON.stringify(execution),
+                cacheKey = `${projectId}:execution:${key}`;
+              let report = diagnostics.get(cacheKey);
+              if (!report || report.expires <= Date.now()) {
+                report = {
+                  report: await projectDiagnostic(execution, config, github, execute, signal),
+                  expires: Date.now() + 60000,
+                };
+                diagnostics.set(cacheKey, report);
+                if (diagnostics.size > 1000)
+                  for (const [key, value] of diagnostics) if (value.expires <= Date.now()) diagnostics.delete(key);
+              }
+              if (report.report.state !== 'ready') continue;
             }
-            if (report.report.state !== 'ready') continue;
+            return { result: await processTask(candidate, signal) };
           }
-          return processTask(candidate, signal);
-        }
+          return null;
+        });
+        if (handled) return handled.result;
       }
       return { status: 'idle' };
     },

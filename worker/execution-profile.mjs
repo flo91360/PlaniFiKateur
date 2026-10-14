@@ -59,6 +59,13 @@ export function defaultExecutionProfile(repository = '') {
     preset: ['defilordi', 'funkart', 'trameergo'].includes(name) ? name : 'planifikateur',
   });
 }
+// Profil réellement exécuté par le worker : seuls le preset et la branche viennent du site ; les
+// commandes et les contrôles GitHub sont ceux des presets installés avec ce worker. Un site
+// compromis ou un profil enregistré par une version précédente ne peut donc pas imposer de commande.
+export function installedProfile(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Profil d’exécution invalide.');
+  return validateExecutionProfile({ preset: data.preset, branch: data.branch });
+}
 // "@worker/…" désigne un contrôle installé avec le worker, jamais un fichier du dépôt modifié.
 export function resolveWorkerCommand(command, workerDirectory) {
   return command.map(arg =>

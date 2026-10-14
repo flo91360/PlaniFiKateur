@@ -506,3 +506,140 @@ test('a project that requires approval merges only the PR commit a manager appro
   [listed] = f.store.workflows.list(f.project.id, f.card.id);
   assert.equal(listed.approvalRequired, false);
 });
+
+test('three consecutive CI failures ask a person, and checks without a verdict never go back to the model', async t => {
+  const f = await fixture(t);
+  f.submit(f.prepare());
+  let run;
+  const failing = id => ({ ...f.check('failure'), workflow_run: { ...f.check('failure').workflow_run, id } });
+  // Délai dépassé : rien à corriger dans le code, la tâche attend une relance des contrôles.
+  await f.webhook('workflow_run', {
+    ...f.check('timed_out'),
+    workflow_run: { ...f.check('timed_out').workflow_run, id: 40 },
+  });
+  run = f.store.workflows.list(f.project.id, f.card.id)[0];
+  assert.equal(run.state, 'merging');
+  assert.match(run.updates.at(-1).text, /sans verdict \(timed_out\)/);
+  for (let cycle = 1; cycle <= 3; cycle++) {
+    await f.webhook('workflow_run', failing(100 + cycle));
+    run = f.store.workflows.list(f.project.id, f.card.id)[0];
+    if (cycle < 3) {
+      assert.equal(run.state, 'ready');
+      run = f.store.workflows.agentAction(f.project.id, f.card.id, run.id, 'claim', { version: run.version }, f.agent);
+      run = f.submit(run);
+    }
+  }
+  assert.equal(run.state, 'waiting');
+  assert.match(run.exchanges.at(-1).question, /échoué 3 fois de suite/);
+  const card = f.store.read().projects[0].cards.find(item => item.id === f.card.id);
+  assert.equal(card.status, 'clarify');
+  assert.ok(card.comments.some(comment => /échoué 3 fois de suite/.test(comment.text)));
+  // La réponse d’une personne relance une correction avec un nouveau compteur.
+  run = f.store.workflows.human(
+    f.project.id,
+    f.card.id,
+    run.id,
+    'answer',
+    { version: run.version, message: 'Le test e2e dépend du fuseau horaire.' },
+    f.user,
+  );
+  assert.equal(run.state, 'ready');
+  assert.equal(run.ciFailures, 0);
+});
+
+test('the server catches up on lost webhooks by reading the pull request and its checks on GitHub', async t => {
+  const { createGithubSync } = await import('../server/github-sync.js');
+  const f = await fixture(t);
+  f.submit(f.prepare());
+  const requests = [];
+  let pull = {
+    number: 7,
+    state: 'open',
+    merged: false,
+    head: { sha, repo: { full_name: repository } },
+    base: { ref: 'main' },
+  };
+  let runs = [];
+  const transport = async url => {
+    const path = new URL(url).pathname;
+    requests.push(path);
+    if (path.endsWith('/pulls/7')) return Response.json(pull);
+    if (path.endsWith('/ci.yml/runs')) return Response.json({ workflow_runs: runs });
+    return new Response('', { status: 404 });
+  };
+  const errors = [];
+  const sync = createGithubSync(f.store, { transport, quietMs: 0, start: false, onError: e => errors.push(e) });
+  const state = () => f.store.workflows.list(f.project.id, f.card.id)[0].state;
+  // Tests encore en cours : rien ne change.
+  runs = [{ ...f.check('failure').workflow_run, status: 'in_progress', conclusion: null }];
+  assert.equal((await sync.refresh()).checked, 1);
+  assert.equal(state(), 'merging');
+  // Webhook de réussite perdu, puis fusion perdue : le serveur les retrouve lui-même.
+  runs = [{ ...f.check('success').workflow_run, path: '.github/workflows/ci.yml' }];
+  await sync.refresh();
+  assert.equal(f.store.workflows.list(f.project.id, f.card.id)[0].githubChecks.conclusion, 'success');
+  pull = { ...f.merged().pull_request, state: 'closed' };
+  await sync.refresh();
+  assert.equal(state(), 'done');
+  assert.ok(requests.every(path => path.startsWith(`/repos/${repository.toLowerCase()}/`)));
+  // Plus rien en attente : aucune requête.
+  requests.length = 0;
+  assert.equal((await sync.refresh()).checked, 0);
+  assert.deepEqual(requests, []);
+  assert.deepEqual(errors, []);
+});
+
+test('an inaccessible pull request is reported once and does not stop the catch-up of the others', async t => {
+  const { createGithubSync } = await import('../server/github-sync.js');
+  const f = await fixture(t);
+  f.submit(f.prepare());
+  const errors = [];
+  const sync = createGithubSync(f.store, {
+    transport: async () => new Response('', { status: 404 }),
+    quietMs: 0,
+    start: false,
+    onError: message => errors.push(message),
+  });
+  await sync.refresh();
+  await sync.refresh();
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /#7 impossible \(GitHub a répondu 404\.\)/);
+  // Une exécution récente attend d’abord son webhook.
+  const patient = createGithubSync(f.store, { transport: async () => assert.fail('trop tôt'), start: false });
+  assert.equal((await patient.refresh()).checked, 0);
+});
+
+test('the worker reads failed job logs from the temporary link without sending its token there', async () => {
+  const calls = [];
+  const client = createGithubClient('worker-token', async (url, options = {}) => {
+    calls.push({ url, authorization: options.headers?.Authorization });
+    const { pathname, hostname } = new URL(url);
+    if (pathname.endsWith('/runs/42/jobs'))
+      return Response.json({
+        jobs: [
+          { id: 1, name: 'Tests serveur', conclusion: 'success', steps: [] },
+          {
+            id: 2,
+            name: 'Tests navigateur',
+            conclusion: 'failure',
+            steps: [
+              { name: 'Installer', conclusion: 'success' },
+              { name: 'Playwright', conclusion: 'failure' },
+            ],
+          },
+        ],
+      });
+    if (pathname.endsWith('/jobs/2/logs'))
+      return new Response(null, { status: 302, headers: { location: 'https://logs.example.test/job-2' } });
+    if (hostname === 'logs.example.test') return new Response(`${'x'.repeat(7000)}\nError: menu introuvable`);
+    return new Response('', { status: 404 });
+  });
+  const failed = await client.failedChecks(repository, 42);
+  assert.deepEqual(
+    failed.map(job => [job.name, job.steps]),
+    [['Tests navigateur', ['Playwright']]],
+  );
+  assert.equal(failed[0].log.length, 6000);
+  assert.match(failed[0].log, /menu introuvable$/);
+  assert.equal(calls.find(call => call.url.startsWith('https://logs.example.test')).authorization, undefined);
+});

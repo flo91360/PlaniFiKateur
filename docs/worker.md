@@ -1,4 +1,4 @@
-# Worker Codex — v0.1.14
+# Worker Codex et Claude Code
 
 Le worker est un service séparé du site. Il consulte les cartes prêtes en livraison
 GitHub et traite **une seule tâche à la fois**, sans délégation. La description
@@ -138,6 +138,19 @@ Les commandes configurées côté service utilisent des tableaux JSON, sans shel
 Ce sont les valeurs par défaut de `PLANIFIKATEUR_WORKER_TEST_COMMANDS`.
 `PLANIFIKATEUR_WORKER_INSTALL_COMMANDS` vaut `[["npm", "ci"]]` par défaut.
 Les commandes sont choisies par le propriétaire du service, jamais par une carte.
+Pour un projet, seuls le preset et la branche viennent du site : depuis la
+v0.1.32, le worker recalcule les commandes d’installation et de test et le
+workflow GitHub à partir des presets installés avec lui (`execution-profile.mjs`).
+Un profil enregistré par une version précédente, ou un site compromis, ne peut
+donc pas lui faire exécuter d’autre commande, et une mise à jour du worker
+s’applique aussi aux tâches en cours.
+
+Une erreur propre à une tâche (dépôt renommé, PR inaccessible) ou à un projet
+n’arrête plus le worker : elle est journalisée une fois, la tâche est réessayée
+avec un délai croissant (1 à 30 minutes) et les autres cartes continuent d’être
+servies. Les erreurs du site lui-même (clé refusée, réseau coupé) suspendent le
+tour, puisqu’elles touchent toutes les tâches. Les checkouts des exécutions
+annulées sont supprimés comme ceux des exécutions terminées.
 Les sorties en erreur sont limitées et les clés connues sont masquées avant
 publication sur la carte. Le worker vérifie la branche et l’origine avant le push.
 

@@ -7,6 +7,7 @@ import { createStore } from './store.js';
 import { readConfig } from './config.js';
 import { createBackups } from './backups.js';
 import { createRetention } from './retention.js';
+import { createGithubSync } from './github-sync.js';
 import { createVersionSync } from './project-versions.js';
 import { createDriveArchive, readDriveConfig } from './drive-archive.js';
 import { createRepositoryContext } from './repository-context.js';
@@ -95,6 +96,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     intervalMs: config.backupIntervalMs,
     keep: config.backupKeep,
   });
+  const githubSync = createGithubSync(store, { token: process.env.PLANIFIKATEUR_GITHUB_TOKEN || '' });
   const retention = createRetention(store, {
     activityDays: config.activityRetentionDays,
     executionDays: config.executionRetentionDays,
@@ -109,6 +111,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       config.driveArchive.close();
       config.backups.close();
       retention.close();
+      githubSync.close();
       store.close();
       process.exit(0);
     });

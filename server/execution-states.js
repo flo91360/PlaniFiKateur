@@ -3,7 +3,8 @@
 // Parcours nominal : ready —claim→ running —submit→ merging —merged (webhook GitHub)→ done.
 // - running —question→ waiting —answer→ ready : l’agent attend une réponse dans la discussion.
 // - running —submit sans PR→ review —accept→ done, ou —reject→ ready ; un fichier seul va à done.
-// - merging —checksFailed ou reject→ ready ; —revise→ running quand l’agent corrige sa PR.
+// - merging —checksFailed ou reject→ ready ; —revise→ running quand l’agent corrige sa PR ;
+//   —checksStalled→ waiting après trois échecs consécutifs des contrôles GitHub.
 // - merging —approve→ merging : un responsable approuve la PR quand le projet l’exige avant fusion.
 // - running —interrupt, expire, revoke ou unassign→ interrupted —claim→ running.
 // - Toute exécution non terminée peut être annulée (cancel) : par une personne, ou par le site
@@ -45,6 +46,8 @@ export const TRANSITIONS = {
   revoke: { from: ['running', 'waiting'], to: 'interrupted' },
   unassign: { from: OPEN, to: 'interrupted' },
   checksFailed: { from: ['merging'], to: 'ready' },
+  // Trop d’échecs consécutifs des contrôles GitHub : une personne décide de la suite.
+  checksStalled: { from: ['merging'], to: 'waiting' },
   merged: { from: ['merging'], to: 'done' },
 };
 
