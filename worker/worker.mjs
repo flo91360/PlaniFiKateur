@@ -12,7 +12,9 @@ import { validateAi, efforts, effortLabels } from './ai-settings.mjs';
 import { defaultExecutionProfile, validateExecutionProfile, resolveWorkerCommand } from './execution-profile.mjs';
 import { runtimeEnvironment, checkRuntime, projectDiagnostic } from './runtime.mjs';
 import { prepareDelivery } from './delivery.mjs';
-import { createReservation } from './reservation.mjs';
+import { WorkerTimeoutError, createReservation } from './reservation.mjs';
+
+import { checkoutFingerprint, requestFingerprint } from './checkpoint.mjs';
 
 const workerDirectory = dirname(fileURLToPath(import.meta.url));
 const MAX_ROUNDS = 3;
@@ -142,7 +144,12 @@ export function createWorker(config, dependencies = {}) {
       PLANIFIKATEUR_GIT_TOKEN: config.githubToken,
     };
     const command = async (args, extra = {}) => {
-      const result = await execute(args, { cwd, env: args[0] === 'git' ? gitEnv : env, signal, ...extra });
+      const result = await execute(args, {
+        cwd,
+        env: args[0] === 'git' ? gitEnv : env,
+        signal: reservation.signal,
+        ...extra,
+      });
       if (result.code !== 0) throw new Error(`Échec de ${args.slice(0, 3).join(' ')} : ${clean(result.output)}`);
       return result.output.trim();
     };
@@ -229,6 +236,7 @@ export function createWorker(config, dependencies = {}) {
         runId: run.id,
         title: run.cardSnapshot.title,
         summary: result.summary,
+        date: new Date(task.job.checkpoint?.deliveryDate || Date.now()),
       });
       checks.push(`Livraison ${version} : version et CHANGELOG.md vérifiés avant les tests`);
     }
@@ -238,6 +246,12 @@ export function createWorker(config, dependencies = {}) {
   // Tests obligatoires du profil ; renvoie l’échec à transmettre au modèle, ou null.
   async function runTests(task, checkout, checks) {
     for (const test of checkout.testCommands) {
+      const key = JSON.stringify(test);
+      const checkpoint = task.job.checkpoint;
+      if (checkpoint.completedTests.includes(key)) {
+        checks.push(`${test.join(' ')} : réussi (repris)`);
+        continue;
+      }
       await task.reservation.action('progress', { message: `Vérification locale : ${test.join(' ')}.` });
       const outcome = await execute(resolveWorkerCommand(test, workerDirectory), {
         cwd: checkout.cwd,
@@ -245,6 +259,9 @@ export function createWorker(config, dependencies = {}) {
         signal: task.reservation.signal,
       });
       if (outcome.code !== 0) return `${test.join(' ')} a échoué : ${clean(outcome.output)}`;
+      task.reservation.signal.throwIfAborted();
+      checkpoint.completedTests.push(key);
+      await state.put(task.job);
       checks.push(`${test.join(' ')} : réussi`);
     }
     return null;
@@ -268,29 +285,95 @@ export function createWorker(config, dependencies = {}) {
       });
     };
     let feedback = checkout.conflicts;
-    for (let round = 0; round < MAX_ROUNDS; round++) {
-      const result = await runner.run({
-        run: { ...reservation.run, leaseToken: undefined },
-        job,
-        cwd: checkout.cwd,
-        signal: reservation.signal,
-        feedback,
-        environment: checkout.env,
-        onRuntime,
-        onThread: async id => {
-          job.threadId = id;
-          await state.put(job);
-        },
-      });
-      if (result.status === 'question') return { status: 'question', question: result.question };
-      let deliverables, failure;
+    let cached = job.checkpoint;
+    if (cached) {
       try {
-        deliverables = await checkDeliverables(task, checkout, result, previous);
+        if (
+          cached.format !== 1 ||
+          checkout.conflicts ||
+          cached.context !== requestFingerprint(reservation.run, job) ||
+          cached.fingerprint !== (await checkoutFingerprint(checkout, cached.result, job.id))
+        )
+          cached = undefined;
       } catch (error) {
-        failure = `Corrige les fichiers à livrer : ${clean(error.message)}`;
+        if (reservation.signal.aborted) throw error;
+        cached = undefined;
       }
-      if (!failure && !deliverables.artifactOnly) failure = await runTests(task, checkout, deliverables.checks);
+      if (!cached) {
+        delete job.checkpoint;
+        await state.put(job);
+      }
+    }
+    for (let round = 0; round < MAX_ROUNDS; round++) {
+      let result = cached?.result;
+      if (result) {
+        await reservation.action('progress', {
+          message: 'Résultat IA sauvegardé : reprise des vérifications sans nouvel appel au modèle.',
+        });
+      } else {
+        if (!task.attemptStarted) {
+          if (job.attempts >= config.maxAttempts)
+            return {
+              status: 'question',
+              question:
+                'Les tentatives automatiques du modèle n’ont pas abouti. Pouvez-vous préciser la demande ou corriger sa configuration ?',
+            };
+          job.attempts++;
+          task.attemptStarted = true;
+          await state.put(job);
+        }
+        result = await reservation.phase('travail IA', config.modelTimeoutMs, () =>
+          runner.run({
+            run: { ...reservation.run, leaseToken: undefined },
+            job,
+            cwd: checkout.cwd,
+            signal: reservation.signal,
+            feedback,
+            environment: checkout.env,
+            onRuntime,
+            onThread: async id => {
+              job.threadId = id;
+              await state.put(job);
+            },
+          }),
+        );
+        if (result.status === 'question') return { status: 'question', question: result.question };
+        // Only persist the structured result, never runner credentials or output payloads.
+        result = { status: 'result', summary: clean(result.summary), question: '', files: result.files || [] };
+        job.checkpoint = {
+          format: 1,
+          result,
+          context: requestFingerprint(reservation.run, job),
+          deliveryDate: new Date().toISOString(),
+          completedTests: [],
+        };
+      }
+      let deliverables, failure;
+      await reservation.phase('vérifications locales', config.testsTimeoutMs, async () => {
+        try {
+          if (!cached) {
+            job.checkpoint.fingerprint = await checkoutFingerprint(checkout, result, job.id);
+            await state.put(job);
+          }
+          deliverables = await checkDeliverables(task, checkout, result, previous);
+        } catch (error) {
+          if (reservation.signal.aborted) throw error;
+          failure = `Corrige les fichiers à livrer : ${clean(error.message)}`;
+        }
+        if (!failure) {
+          const fingerprint = await checkoutFingerprint(checkout, result, job.id);
+          if (job.checkpoint.fingerprint !== fingerprint) job.checkpoint.completedTests = [];
+          job.checkpoint.fingerprint = fingerprint;
+          await state.put(job);
+          if (!deliverables.artifactOnly) failure = await runTests(task, checkout, deliverables.checks);
+          if (!failure && fingerprint !== (await checkoutFingerprint(checkout, result, job.id)))
+            failure = 'Le contenu du dépôt a changé pendant les tests ; les vérifications doivent être refaites.';
+        }
+      });
       if (!failure) return { result, ...deliverables };
+      delete job.checkpoint;
+      await state.put(job);
+      cached = undefined;
       if (round === MAX_ROUNDS - 1) throw new Error(failure);
       feedback = `Corrige l’échec puis propose à nouveau le résultat : ${failure}`;
     }
@@ -385,15 +468,6 @@ export function createWorker(config, dependencies = {}) {
   async function attempt(task) {
     const { candidate, job, reservation } = task;
     if (candidate.workerQuestion) return waitForAnswer(task, candidate.workerQuestion);
-    if (job.attempts >= config.maxAttempts) {
-      await reservation.action('question', {
-        message:
-          'Les tentatives automatiques n’ont pas abouti. Pouvez-vous préciser la demande ou faire corriger la configuration du worker avant une nouvelle reprise ?',
-      });
-      return { status: 'waiting' };
-    }
-    job.attempts++;
-    task.attemptStarted = true;
     job.phase = 'running';
     await state.put(job);
     const previous = reservation.run.submissions.at(-1)?.pullRequest || job.pullRequest;
@@ -406,10 +480,12 @@ export function createWorker(config, dependencies = {}) {
     await reservation.action('progress', {
       message: `Le worker prépare le dépôt et lance ${engineName(job.ai.engine)}.`,
     });
-    const checkout = await prepareCheckout(task);
+    const checkout = await reservation.phase('préparation du dépôt', config.setupTimeoutMs, () =>
+      prepareCheckout(task),
+    );
     const produced = await produce(task, checkout, previous);
     if (produced.status === 'question') return waitForAnswer(task, produced.question);
-    return publish(task, checkout, produced);
+    return reservation.phase('publication', config.publicationTimeoutMs, () => publish(task, checkout, produced));
   }
 
   // Échec ou arrêt : l’exécution est interrompue sur le site (ou passe en question après
@@ -425,12 +501,20 @@ export function createWorker(config, dependencies = {}) {
     const history = await site.history(reservation.run).catch(() => []);
     let current = history.find(item => item.id === reservation.run.id);
     if (current?.state === 'running') {
-      const exhausted = !signal.aborted && !publicationPending && job?.attempts >= config.maxAttempts;
+      const exhausted =
+        !(error instanceof WorkerTimeoutError) &&
+        !signal.aborted &&
+        !publicationPending &&
+        job?.attempts >= config.maxAttempts;
       const message = reservation.failed
         ? reservation.failure
-        : signal.aborted
+        : parentSignal?.aborted
           ? 'Le worker a été arrêté. Une reprise est possible.'
-          : error.message;
+          : error instanceof WorkerTimeoutError
+            ? error.message
+            : signal.aborted
+              ? clean(signal.reason?.message || 'Exécution interrompue.')
+              : error.message;
       current = await site
         .action({ ...current, leaseToken: reservation.token }, exhausted ? 'question' : 'interrupt', {
           message: clean(message).slice(0, 10000),

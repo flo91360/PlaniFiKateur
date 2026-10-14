@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.29 — 2026-10-14
+<!-- planifikateur:livraison-delais-reprise-20261014 -->
+
+- **Reprise du worker après interruption des vérifications** : Délais distincts pour la préparation, le modèle, les tests et la publication ; diagnostic précis dans la carte et reprise des tests sauvegardés sans nouvel appel IA lorsque le contenu est inchangé.
+
 ## 0.1.28 — 2026-10-14
 <!-- planifikateur:audit-etape-5b-20261014 -->
 
