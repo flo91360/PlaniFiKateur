@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.26 — 2026-10-14
+<!-- planifikateur:audit-etape-4b-20261014 -->
+
+- **Mises à jour en direct et rétention des données** : Le site reçoit les changements en direct : une carte modifiée par une autre personne, une étape de l’agent ou une question apparaissent aussitôt, sans attendre la prochaine actualisation. Si le flux en direct est indisponible, le site revient à une vérification toutes les 5 secondes. L’historique et les exécutions IA terminées de plus de 365 jours sont supprimés chaque jour (durées réglables, ou désactivables), et une exécution terminée ne conserve plus le contenu des pièces jointes déjà présentes dans la carte. Les lectures des exécutions sont indexées.
+
 ## 0.1.25 — 2026-10-14
 <!-- planifikateur:audit-etape-4a-20261014 -->
 
