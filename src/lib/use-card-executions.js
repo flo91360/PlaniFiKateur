@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiData } from './api-client.js';
+import { useServerConnected, useServerEvent } from './use-server-events.js';
 
 export const unfinished = run => !!run && !['done', 'cancelled'].includes(run.state);
 
-// Exécutions IA d’une carte (la plus récente d’abord), relues toutes les 5 secondes.
+// Exécutions IA d’une carte (la plus récente d’abord), relues à chaque événement qui la concerne,
+// sinon toutes les 5 secondes.
 // `current` est l’exécution en cours, ou la dernière terminée. `managed` verrouille le statut
 // et l’effort tant qu’une exécution est prise en charge ; `ai` décrit l’IA réellement utilisée.
 // `onRefresh` est appelé après chaque lecture réussie pour actualiser le tableau.
@@ -25,15 +27,19 @@ export function useCardExecutions({ projectId, cardId, offline, onRefresh }) {
       /* The workspace reports connectivity errors; keep the last known lock. */
     }
   }, [projectId, cardId]);
+  const live = useServerConnected();
+  useServerEvent((type, data) => {
+    if (!offline && (type === 'ready' || (type === 'work' && data.cardId === cardId))) void load();
+  });
   useEffect(() => {
     if (offline) return;
     void load();
-    const timer = setInterval(() => void load(), 5000);
+    const timer = setInterval(() => void load(), live ? 30000 : 5000);
     return () => {
       loading.current?.abort();
       clearInterval(timer);
     };
-  }, [offline, load]);
+  }, [offline, load, live]);
   const current = runs ? runs.find(unfinished) || runs[0] || null : null;
   return {
     runs: runs || [],

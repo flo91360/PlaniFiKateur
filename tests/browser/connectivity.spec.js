@@ -62,6 +62,8 @@ const login = async (page, url) => {
   await page.getByRole('button', { name: 'Se connecter', exact: true }).click();
   await expect(page.locator('.project-heading h1')).toHaveText('PlaniFiKateur');
 };
+// Sans flux d’événements, l’interface revient à l’actualisation périodique (filet de sécurité).
+const blockServerEvents = page => page.route('**/api/v1/events', route => route.abort());
 const newProject = async (page, name) => {
   const menu = page.getByRole('button', { name: 'Ouvrir les projets', exact: true });
   if (await menu.isVisible()) await menu.click();
@@ -358,6 +360,7 @@ test('refresh recovers after a network error without losing the current board', 
   appServer,
 }) => {
   await page.clock.install();
+  await blockServerEvents(page);
   await login(page, appServer);
   await page.route('**/api/v1/workspace', route =>
     route.request().method() === 'GET' ? route.abort() : route.continue(),
@@ -401,6 +404,7 @@ test('a delayed refresh cannot replace a form opened while the read was in fligh
   appServer,
 }) => {
   await page.clock.install();
+  await blockServerEvents(page);
   await login(page, appServer);
   const context = await browser.newContext();
   const other = await context.newPage();
@@ -1125,6 +1129,44 @@ test.describe('project task execution', () => {
     await expect(page.getByRole('button', { name: 'À traiter', exact: true })).toBeVisible({ timeout: 10000 });
     await page.getByRole('button', { name: 'À traiter', exact: true }).click();
     await expect(page.getByText('Rien à traiter', { exact: false })).toBeVisible();
+  });
+
+  test('the event stream delivers board and agent changes without waiting for a refresh', async ({
+    page,
+    browser,
+    request,
+    appServer,
+  }) => {
+    // Horloge figée : aucune actualisation périodique ne se déclenche, seul le flux peut prévenir la page.
+    await page.clock.install();
+    await login(page, appServer);
+    const project = seed[0],
+      card = project.cards[0];
+    const headers = await agentFor(page, appServer, project, 'Agent en direct');
+    const context = await browser.newContext();
+    const other = await context.newPage();
+    await login(other, appServer);
+    await newProject(other, 'Projet annoncé en direct');
+    await expect(other.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+    await expect(
+      page.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /Projet annoncé en direct/ }),
+    ).toHaveCount(1);
+    await context.close();
+    await page.getByRole('heading', { name: card.title, exact: true }).click();
+    const panel = page.getByRole('region', { name: 'Exécution IA', exact: true });
+    await expect(panel).toContainText('Aucune exécution pour cette carte.');
+    const base = `${appServer}/api/v1/projects/${project.id}/cards/${card.id}/work`;
+    let run = (await (await page.request.post(base, { data: {} })).json()).data;
+    await expect(panel).toContainText('En attente du worker');
+    run = (await (await request.post(`${base}/${run.id}/claim`, { headers, data: { version: run.version } })).json())
+      .data;
+    await expect(panel).toContainText('Agent en direct réalise la demande.');
+    await request.post(`${base}/${run.id}/question`, {
+      headers,
+      data: { version: run.version, leaseToken: run.leaseToken, message: 'Une question en direct ?' },
+    });
+    await expect(panel).toContainText('Une question en direct ?');
+    await expect(page.getByRole('button', { name: 'À traiter (1)', exact: true })).toBeVisible();
   });
 });
 

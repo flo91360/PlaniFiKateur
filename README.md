@@ -18,7 +18,8 @@ Un tableau de projets inspiré de Trello, conçu pour préparer des demandes con
 - Créateur des cartes et auteur des commentaires attribués par le serveur ; historique des actions pour préparer les notifications.
 - Accès agent en lecture seule avec une clé dédiée.
 - Consultation des cartes avec projet obligatoire, pour éviter de mélanger des titres identiques entre projets.
-- Actualisation automatique toutes les 5 secondes et au retour sur l’onglet, suspendue pendant l’édition et les sauvegardes.
+- Mise à jour en direct par un flux d’événements (tableau, exécutions IA, suivis), avec une vérification toutes les 5 secondes en secours ; suspendue pendant l’édition et les sauvegardes.
+- Rétention configurable de l’historique et des exécutions terminées (365 jours par défaut).
 - Fusion des modifications concurrentes par le serveur et messages de sauvegarde fiables.
 - Sauvegardes SQLite automatiques, copies avant suppression, téléchargement administrateur et restauration avec copie de sécurité.
 - Import/export JSON pour transférer des projets locaux sans remplacer les projets existants.

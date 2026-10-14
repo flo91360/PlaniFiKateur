@@ -6,6 +6,7 @@ import { accountRoutes } from './routes/accounts.js';
 import { cardRoutes } from './routes/cards.js';
 import { consultationFallback, consultationRoutes } from './routes/consultation.js';
 import { contentRoutes } from './routes/content.js';
+import { eventRoutes } from './routes/events.js';
 import { githubRoutes } from './routes/github.js';
 import { projectRoutes } from './routes/projects.js';
 import { workRoutes } from './routes/work.js';
@@ -14,7 +15,7 @@ import { workspaceRoutes } from './routes/workspace.js';
 // Table des routes de l’API. Chaque module décrit un domaine ; les chemins sont exacts. Quand
 // deux modules partagent un chemin, le garde du premier s’applique aux méthodes inconnues : la
 // consultation précède donc les modifications. tests/openapi.test.js vérifie la documentation.
-export function apiRoutes(store, config = {}, auth = createAuth(store, config)) {
+export function apiRoutes(store, config = {}, auth = createAuth(store, config), streams = new Set()) {
   const guards = {
     account: ctx => (ctx.user = auth.requireAccount(ctx.req)),
     admin: ctx => (ctx.user = auth.requireAdmin(ctx.req)),
@@ -25,7 +26,7 @@ export function apiRoutes(store, config = {}, auth = createAuth(store, config)) 
     },
   };
   const refiner = config.refiner || createRefiner({ token: config.claudeOauthToken, model: config.refineModel });
-  const app = { store, config, auth, guards, refiner };
+  const app = { store, config, auth, guards, refiner, streams };
   return [
     ...githubRoutes(app),
     ...accountRoutes(app),
@@ -35,15 +36,18 @@ export function apiRoutes(store, config = {}, auth = createAuth(store, config)) 
     ...workspaceRoutes(app),
     ...consultationRoutes(app),
     ...contentRoutes(app),
+    ...eventRoutes(app),
   ];
 }
 
 export function createApi(store, config = {}) {
   const { logError = console.error } = config;
   const auth = createAuth(store, config);
-  const router = createRouter(apiRoutes(store, config, auth));
+  // Flux d’événements ouverts : fermés à l’arrêt du serveur, sinon il attendrait leur fin.
+  const streams = new Set();
+  const router = createRouter(apiRoutes(store, config, auth, streams));
   const fallback = consultationFallback(auth);
-  return async (req, res, next) => {
+  const api = async (req, res, next) => {
     if (!req.url.startsWith('/api/') && req.url !== '/api') {
       next?.();
       return false;
@@ -69,4 +73,8 @@ export function createApi(store, config = {}) {
     }
     return true;
   };
+  api.close = () => {
+    for (const stream of [...streams]) stream.close();
+  };
+  return api;
 }

@@ -1,8 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { apiData } from './api-client.js';
+import { useServerConnected, useServerEvent } from './use-server-events.js';
 
 export function useCardFollowers({ project, enabled, saveStatus, selectedId, modal }) {
   const [snapshot, setSnapshot] = useState(null);
+  const live = useServerConnected();
+  const reload = useRef(() => {});
+  useServerEvent((type, data) => {
+    if (type === 'ready' || (type === 'subscriptions' && data.projectId === project?.id)) reload.current();
+  });
   useEffect(() => {
     if (!enabled || !project?.id) return;
     const controller = new AbortController();
@@ -19,16 +25,18 @@ export function useCardFollowers({ project, enabled, saveStatus, selectedId, mod
         loading = false;
       }
     };
+    reload.current = () => void refresh();
     void refresh();
-    const timer = setInterval(refresh, 5000);
+    const timer = setInterval(refresh, live ? 60000 : 5000);
     window.addEventListener('focus', refresh);
     document.addEventListener('visibilitychange', refresh);
     return () => {
+      reload.current = () => {};
       controller.abort();
       clearInterval(timer);
       window.removeEventListener('focus', refresh);
       document.removeEventListener('visibilitychange', refresh);
     };
-  }, [project, enabled, saveStatus, selectedId, modal]);
+  }, [project, enabled, saveStatus, selectedId, modal, live]);
   return enabled && project?.id && snapshot?.projectId === project.id ? snapshot.followers : {};
 }

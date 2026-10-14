@@ -42,7 +42,7 @@ l’exécution automatiquement. Une carte en attente peut être retirée de la f
 Après la prise en charge, le changement manuel de statut est bloqué, y compris via l’API du tableau. Préparer une nouvelle
 exécution après une fusion conserve l’historique de la précédente.
 
-L’interface actualise le travail toutes les cinq secondes. Elle conserve les
+L’interface actualise le travail dès qu’une étape est enregistrée, grâce au flux d’événements (`GET /api/v1/events`), et toutes les cinq secondes si ce flux est indisponible. Elle conserve les
 brouillons des champs de la carte ; enregistrer ces champs avant toute action.
 Modifier la demande d’une exécution en cours (titre, description, étiquettes,
 pièces jointes ou effort) l’annulerait : le détail garde la saisie en brouillon et

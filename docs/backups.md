@@ -26,6 +26,15 @@ Paramètres facultatifs dans les variables du service :
 | `PLANIFIKATEUR_BACKUP_INTERVAL_HOURS` | `6` | 1 à 168 heures |
 | `PLANIFIKATEUR_BACKUP_KEEP` | `28` | 1 à 100 fichiers |
 
+La base elle-même est limitée par une **rétention** appliquée au démarrage puis chaque jour :
+
+| Variable | Défaut | Effet |
+| --- | --- | --- |
+| `PLANIFIKATEUR_ACTIVITY_RETENTION_DAYS` | `365` | Supprime les entrées d’historique plus anciennes ; `0` conserve tout |
+| `PLANIFIKATEUR_EXECUTION_RETENTION_DAYS` | `365` | Supprime les exécutions IA terminées ou annulées sans activité depuis ce délai ; `0` conserve tout |
+
+Les cartes, leurs commentaires et leurs pièces jointes ne sont jamais purgés, ni les exécutions en cours. Une exécution terminée ne garde que le nom, le type et la taille des pièces jointes de sa copie de carte ; le contenu reste dans la carte. Les sauvegardes déjà faites conservent l’historique complet de leur date.
+
 Le volume doit pouvoir contenir la base et ses copies. Vous pouvez réduire le nombre de copies si l’espace est limité. Utiliser une seule instance du serveur.
 
 ## Conserver une copie en dehors de Railway

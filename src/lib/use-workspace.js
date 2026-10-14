@@ -4,6 +4,7 @@ import { seed } from '../data/demo.js';
 import { validateWorkspace } from './workspace.js';
 import { apiData, apiFetch } from './api-client.js';
 import { applyChanges, diffWorkspace } from './workspace-changes.js';
+import { useServerConnected, useServerEvent } from './use-server-events.js';
 
 const STORAGE = 'planifikateur.workspace.v1';
 export const offlineMode = globalThis.__PLANIFIKATEUR_OFFLINE__ === true || globalThis.location?.protocol === 'file:';
@@ -109,11 +110,17 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
   useEffect(() => {
     if (!offlineMode) void load();
   }, [load]);
+  // Le flux d’événements annonce chaque nouvelle révision ; la lecture périodique ne sert plus
+  // que de filet de sécurité, sauf si le flux est coupé ou si la dernière lecture a échoué.
+  const live = useServerConnected();
+  useServerEvent((type, data) => {
+    if (type === 'ready' || (type === 'workspace' && data.revision > revision.current)) void refresh();
+  });
   useEffect(() => {
     if (offlineMode || !ready || pauseRefresh) return;
     const update = () => void refresh();
     update();
-    const timer = setInterval(update, 5000);
+    const timer = setInterval(update, live && !syncError ? 60000 : 5000);
     window.addEventListener('focus', update);
     document.addEventListener('visibilitychange', update);
     return () => {
@@ -121,7 +128,7 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
       window.removeEventListener('focus', update);
       document.removeEventListener('visibilitychange', update);
     };
-  }, [ready, pauseRefresh, refresh]);
+  }, [ready, pauseRefresh, refresh, live, syncError]);
   const setProjects = useCallback(update => {
     const next = typeof update === 'function' ? update(current.current) : update;
     if (next === current.current) return;
