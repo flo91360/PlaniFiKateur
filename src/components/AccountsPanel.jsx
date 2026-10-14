@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiData } from '../lib/api-client.js';
+import { ACCENTS, DEFAULT_ACCENT } from '../lib/accents.js';
 
 const request = (path, options) => apiData(path, { fallback: 'Action impossible.', ...options });
-export default function AccountsPanel({ user, onLogout }) {
+export default function AccountsPanel({ user, accent = DEFAULT_ACCENT, onAccent = () => {}, onLogout }) {
   const [users, setUsers] = useState([]),
     [name, setName] = useState(''),
     [email, setEmail] = useState('');
@@ -32,6 +33,20 @@ export default function AccountsPanel({ user, onLogout }) {
       setBusy(false);
     }
   };
+  // La couleur s’applique aussitôt ; elle est rétablie si le serveur refuse de l’enregistrer.
+  const chooseAccent = id =>
+    action(async () => {
+      const previous = accent;
+      onAccent(id);
+      try {
+        const saved = await request('accounts/preferences', { method: 'PUT', data: { accent: id } });
+        onAccent(saved.accent);
+      } catch (cause) {
+        onAccent(previous);
+        throw cause;
+      }
+      setMessage(id === DEFAULT_ACCENT ? 'Couleur par défaut rétablie.' : 'Couleur enregistrée sur votre compte.');
+    });
   const invite = async id => {
     const result = await request(id ? `users/${id}/invitation` : 'users', { method: 'POST', data: { name, email } });
     setLink(`${location.origin}/#invitation=${result.token}`);
@@ -83,6 +98,33 @@ export default function AccountsPanel({ user, onLogout }) {
           }
         >
           Modifier mon mot de passe
+        </button>
+      </div>
+      <div className="account-form appearance-settings">
+        <h3>Apparence</h3>
+        <p>Couleur dominante du site, enregistrée avec votre compte. Elle ne change que votre affichage.</p>
+        <div className="accent-palette" role="group" aria-label="Couleur dominante">
+          {ACCENTS.map(option => (
+            <button
+              key={option.id}
+              type="button"
+              className="accent-option"
+              aria-pressed={accent === option.id}
+              disabled={busy}
+              onClick={() => void chooseAccent(option.id)}
+            >
+              <span className="accent-swatch" style={{ background: option.primary }} aria-hidden="true" />
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          className="secondary-button"
+          disabled={busy || accent === DEFAULT_ACCENT}
+          onClick={() => void chooseAccent(DEFAULT_ACCENT)}
+        >
+          Rétablir la couleur par défaut
         </button>
       </div>
       {user.role === 'admin' && (

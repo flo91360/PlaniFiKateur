@@ -4057,6 +4057,135 @@
         }
       }
     },
+    "/api/v1/accounts/preferences": {
+      "get": {
+        "summary": "Lire ses préférences d’affichage",
+        "description": "Couleur dominante choisie par le compte connecté. Jamais renvoyée aux autres comptes.",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Préférences du compte.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Preferences"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session requise.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origine de la requête non autorisée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Choisir la couleur dominante du site",
+        "description": "Enregistre la couleur dans le compte, sur le serveur : elle suit l’utilisateur sur tous ses appareils et ne concerne que lui. accent null ou foret rétablit la couleur par défaut.",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "accent"
+                ],
+                "properties": {
+                  "accent": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/Accent"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Préférences enregistrées.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Preferences"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Couleur absente de la palette (invalid_preferences).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session requise.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origine de la requête non autorisée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/users": {
       "get": {
         "summary": "Administrateur : lister les comptes",
@@ -7656,6 +7785,34 @@
           "needsSetup": {
             "type": "boolean",
             "description": "Le premier compte administrateur reste à créer."
+          },
+          "preferences": {
+            "$ref": "#/components/schemas/Preferences",
+            "description": "Présent seulement pour un compte connecté : ses propres préférences d’affichage."
+          }
+        }
+      },
+      "Accent": {
+        "type": "string",
+        "description": "Couleur dominante de la palette prédéfinie (src/lib/accents.js). foret est la couleur par défaut du site.",
+        "enum": [
+          "foret",
+          "ocean",
+          "prune",
+          "framboise",
+          "cuivre",
+          "ardoise"
+        ]
+      },
+      "Preferences": {
+        "type": "object",
+        "description": "Préférences d’affichage du compte connecté.",
+        "required": [
+          "accent"
+        ],
+        "properties": {
+          "accent": {
+            "$ref": "#/components/schemas/Accent"
           }
         }
       },

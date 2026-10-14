@@ -2,10 +2,15 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
-## 0.1.30 — 2026-10-14
+## 0.1.31 — 2026-10-14
 <!-- planifikateur:etape-6-securite-serveur -->
 
 - **Sécurité des droits, des suppressions et des sauvegardes** : Un projet supprimé perd son dépôt, ses réglages et l’accès de l’agent, et son identifiant ne peut plus être recréé ; une restauration le ramène avec ses réglages. Les copies avant suppression ne sont faites qu’après le contrôle des droits et ont leur propre rotation. Seul un responsable modifie la demande d’une carte prête, seul l’auteur modifie son commentaire, les liens des cartes Infos ne viennent que du serveur, et la limite de connexion distingue les clients derrière Railway.
+
+## 0.1.30 — 2026-10-14
+<!-- planifikateur:3496bcf5-4199-4584-9e12-598d74604a6a -->
+
+- **Apparence** : Ajout d'une section « Apparence » dans « Mon compte » : chaque utilisateur choisit la couleur dominante du site dans une palette fixe, et ce choix est enregistré avec son compte sur le serveur. Rien n'a pu être exécuté dans cet environnement : toutes les commandes shell échouent (bwrap: Can't mount proc). Je n'ai lancé ni `npm run format`, ni `npm test`, ni `npm run test:browser`. Le code est mis en forme à la main et les contrastes ont été calculés à la main. Correction de ce tour : `npm test` signalait un problème de mise en forme Prettier dans `tests/accents.test.js`, sans indiquer la ligne. J'ai réécrit le fichier sans changer ce qu'il vérifie : boucles avec accolades, fonctions nommées au lieu de fonctions fléchées, lignes courtes. Je n'ai pas pu confirmer que Prettier l'accepte maintenant. Fonctionnement : - **Palette** (`src/lib/accents.js`, partagé entre le site et le serveur) : six couleurs, sans sélecteur libre. Forêt est la couleur actuelle du site et reste la couleur par défaut ; s'y ajoutent Océan, Prune, Framboise, Cuivre et Ardoise. - **Interface** : la couleur s'applique tout de suite, et revient à la précédente si l'enregistrement échoue. Le bouton « Rétablir la couleur par défaut » remet Forêt. À la déconnexion, le site revient à la couleur par défaut. - **Éléments concernés** (`src/style.css`) : boutons principaux, liens, contours de focus, cases à cocher, navigation latérale, message de confirmation, onglet du tableau, zones de dépôt, survol des icônes et pastille de l'en-tête. - **Serveur** : nouvelle table `user_preferences`, effacée quand le compte est supprimé. La couleur n'apparaît ni dans les données du compte ni dans la liste des membres. Points que vous pourriez remarquer : - Avec la couleur par défaut, quelques détails changent légèrement. Le contour de focus utilise la couleur principale, car l'ancien vert clair n'atteignait pas le contraste 3:1. La pastille de l'en-tête passe du beige au vert clair. Les liens prennent la couleur princi
 
 ## 0.1.29 — 2026-10-14
 <!-- planifikateur:livraison-delais-reprise-20261014 -->

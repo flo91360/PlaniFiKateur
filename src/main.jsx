@@ -11,6 +11,7 @@ import './style.css';
 import { withInfos } from './lib/infos.js';
 import { createId as uid } from './lib/id.js';
 import { apiData } from './lib/api-client.js';
+import { applyAccent } from './lib/accents.js';
 import { useWorkspace, offlineMode, exportWorkspace } from './lib/use-workspace.js';
 import { useCardFollowers } from './lib/use-card-followers.js';
 import { useAttention } from './lib/use-attention.js';
@@ -134,6 +135,7 @@ function App() {
   const attention = useAttention({ enabled: !offlineMode && ready && !needsLogin, projects });
   useServerEvents(!offlineMode && ready && !needsLogin);
   const notifications = useNotifications(!offlineMode && ready && !needsLogin);
+  useEffect(() => applyAccent(workspace.accent), [workspace.accent]);
 
   const updateProject = transform =>
     setProjects(ps => {
@@ -256,6 +258,8 @@ function App() {
         return (
           <AccountsPanel
             user={workspace.user}
+            accent={workspace.accent}
+            onAccent={workspace.setAccent}
             onLogout={async () => {
               await workspace.logout();
               close();
