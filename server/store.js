@@ -11,7 +11,9 @@ import { attributeChanges } from './activity.js';
 import { createWorkflows } from './workflows.js';
 import { validateDriveRelease } from '../src/lib/drive-release.js';
 
-const fail = (status, code, message) => { throw Object.assign(new Error(message), { status, code }); };
+const fail = (status, code, message) => {
+  throw Object.assign(new Error(message), { status, code });
+};
 export function createStore(filename) {
   if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true, mode: 0o700 });
   const db = new DatabaseSync(filename);
@@ -28,17 +30,48 @@ export function createStore(filename) {
     CREATE TABLE IF NOT EXISTS github_versions (repository TEXT PRIMARY KEY, data TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS drive_archives (repository TEXT NOT NULL, tag TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(repository,tag));
     CREATE TABLE IF NOT EXISTS drive_repositories (repository TEXT PRIMARY KEY, data TEXT NOT NULL);`);
-  db.prepare('INSERT OR IGNORE INTO workspace VALUES (1, 1, ?, ?)').run(JSON.stringify(validateWorkspace(seed)), new Date().toISOString());
-  const transaction = fn => { db.exec('BEGIN IMMEDIATE'); try { const result = fn(); db.exec('COMMIT'); return result; } catch (error) { db.exec('ROLLBACK'); throw error; } };
+  db.prepare('INSERT OR IGNORE INTO workspace VALUES (1, 1, ?, ?)').run(
+    JSON.stringify(validateWorkspace(seed)),
+    new Date().toISOString(),
+  );
+  const transaction = fn => {
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const result = fn();
+      db.exec('COMMIT');
+      return result;
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+  };
   const synchronizeInfos = () => {
     const row = db.prepare('SELECT projects FROM workspace WHERE id = 1').get();
     const previous = JSON.parse(row.projects);
     const projects = previous.map(project => withInfos(project, versionFor(project.id)));
     // Comment migrations may reorder properties without changing their values.
     // Only an actual Infos change should increment the workspace revision.
-    if (!isDeepStrictEqual(projects, previous)) db.prepare('UPDATE workspace SET projects = ?, revision = revision + 1, updated_at = ? WHERE id = 1').run(JSON.stringify(validateWorkspace(projects)), new Date().toISOString());
+    if (!isDeepStrictEqual(projects, previous))
+      db.prepare('UPDATE workspace SET projects = ?, revision = revision + 1, updated_at = ? WHERE id = 1').run(
+        JSON.stringify(validateWorkspace(projects)),
+        new Date().toISOString(),
+      );
   };
-  const audit = (actor, action, payload = {}, revision = null) => db.prepare('INSERT INTO activity(date,actor_id,actor_name,action,project_id,card_id,revision,payload) VALUES(?,?,?,?,?,?,?,?)').run(new Date().toISOString(), actor?.id || null, actor?.name || 'Administration', action, payload.projectId || null, payload.cardId || null, revision, JSON.stringify(payload));
+  const audit = (actor, action, payload = {}, revision = null) =>
+    db
+      .prepare(
+        'INSERT INTO activity(date,actor_id,actor_name,action,project_id,card_id,revision,payload) VALUES(?,?,?,?,?,?,?,?)',
+      )
+      .run(
+        new Date().toISOString(),
+        actor?.id || null,
+        actor?.name || 'Administration',
+        action,
+        payload.projectId || null,
+        payload.cardId || null,
+        revision,
+        JSON.stringify(payload),
+      );
   const userById = id => db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   const findCard = (projectId, cardId) => {
     const row = db.prepare('SELECT projects FROM workspace WHERE id = 1').get();
@@ -47,9 +80,11 @@ export function createStore(filename) {
     if (!card) fail(404, 'card_not_found', 'Carte inexistante dans ce projet.');
     return { project, card };
   };
-  const preferences = cardId => db.prepare('SELECT user_id,following FROM card_subscriptions WHERE card_id = ?').all(cardId);
+  const preferences = cardId =>
+    db.prepare('SELECT user_id,following FROM card_subscriptions WHERE card_id = ?').all(cardId);
   const participants = card => [card.createdBy?.id, ...card.comments.map(c => c.authorId)].filter(Boolean);
-  const activeMembers = () => db.prepare('SELECT id,name FROM users WHERE active = 1 AND password_hash IS NOT NULL ORDER BY name,id').all();
+  const activeMembers = () =>
+    db.prepare('SELECT id,name FROM users WHERE active = 1 AND password_hash IS NOT NULL ORDER BY name,id').all();
   const following = (card, userId, prefs = preferences(card.id)) => {
     const preference = prefs.find(row => row.user_id === userId);
     return preference ? !!preference.following : participants(card).includes(userId);
@@ -60,8 +95,14 @@ export function createStore(filename) {
     if (!repository) return { tag: 'Aucun tag disponible', date: '' };
     const row = db.prepare('SELECT data FROM github_versions WHERE repository=?').get(repository.toLowerCase());
     const version = row ? JSON.parse(row.data) : { tag: 'Version en cours de récupération', date: '' };
-    const downloads = db.prepare('SELECT data FROM github_downloads WHERE repository=? AND tag=?').get(repository.toLowerCase(), version.tag);
-    const changelog = db.prepare('SELECT data FROM github_changelog WHERE repository=?').all(repository.toLowerCase()).map(row => JSON.parse(row.data)).sort((a, b) => Date.parse(b.date) - Date.parse(a.date) || b.tag.localeCompare(a.tag));
+    const downloads = db
+      .prepare('SELECT data FROM github_downloads WHERE repository=? AND tag=?')
+      .get(repository.toLowerCase(), version.tag);
+    const changelog = db
+      .prepare('SELECT data FROM github_changelog WHERE repository=?')
+      .all(repository.toLowerCase())
+      .map(row => JSON.parse(row.data))
+      .sort((a, b) => Date.parse(b.date) - Date.parse(a.date) || b.tag.localeCompare(a.tag));
     return { ...version, repository, changelog, ...(downloads ? { downloads: JSON.parse(downloads.data) } : {}) };
   };
   transaction(synchronizeInfos);
@@ -70,51 +111,126 @@ export function createStore(filename) {
     recordDriveRelease(repository, data) {
       return transaction(() => {
         repository = repository.toLowerCase();
-        if (!this.read().projects.some(project => workflows.githubProject(project.id)?.toLowerCase() === repository)) return { updated: false };
-        let release; try { release = validateDriveRelease(data, repository, data.version); } catch { return { updated: false }; }
-        const row = db.prepare('SELECT data FROM github_downloads WHERE repository=? AND tag=?').get(repository, release.version);
-        if (row && (JSON.parse(row.data).commit !== release.commit || isDeepStrictEqual(JSON.parse(row.data), release))) return { updated: false };
-        db.prepare('INSERT INTO github_downloads VALUES(?,?,?) ON CONFLICT(repository,tag) DO UPDATE SET data=excluded.data').run(repository, release.version, JSON.stringify(release));
-        synchronizeInfos(); return { updated: true };
+        if (!this.read().projects.some(project => workflows.githubProject(project.id)?.toLowerCase() === repository))
+          return { updated: false };
+        let release;
+        try {
+          release = validateDriveRelease(data, repository, data.version);
+        } catch {
+          return { updated: false };
+        }
+        const row = db
+          .prepare('SELECT data FROM github_downloads WHERE repository=? AND tag=?')
+          .get(repository, release.version);
+        if (row && (JSON.parse(row.data).commit !== release.commit || isDeepStrictEqual(JSON.parse(row.data), release)))
+          return { updated: false };
+        db.prepare(
+          'INSERT INTO github_downloads VALUES(?,?,?) ON CONFLICT(repository,tag) DO UPDATE SET data=excluded.data',
+        ).run(repository, release.version, JSON.stringify(release));
+        synchronizeInfos();
+        return { updated: true };
       });
     },
-    driveArchive(repository, tag) { const row = db.prepare('SELECT data FROM drive_archives WHERE repository=? AND tag=?').get(repository.toLowerCase(), tag); return row ? JSON.parse(row.data) : null; },
-    recordDriveArchive(repository, tag, data) { db.prepare('INSERT INTO drive_archives VALUES(?,?,?) ON CONFLICT(repository,tag) DO UPDATE SET data=excluded.data').run(repository.toLowerCase(), tag, JSON.stringify(data)); },
-    recordDriveRepository(repository, data) { db.prepare('INSERT INTO drive_repositories VALUES(?,?) ON CONFLICT(repository) DO UPDATE SET data=excluded.data').run(repository.toLowerCase(), JSON.stringify(data)); },
+    driveArchive(repository, tag) {
+      const row = db
+        .prepare('SELECT data FROM drive_archives WHERE repository=? AND tag=?')
+        .get(repository.toLowerCase(), tag);
+      return row ? JSON.parse(row.data) : null;
+    },
+    recordDriveArchive(repository, tag, data) {
+      db.prepare(
+        'INSERT INTO drive_archives VALUES(?,?,?) ON CONFLICT(repository,tag) DO UPDATE SET data=excluded.data',
+      ).run(repository.toLowerCase(), tag, JSON.stringify(data));
+    },
+    recordDriveRepository(repository, data) {
+      db.prepare(
+        'INSERT INTO drive_repositories VALUES(?,?) ON CONFLICT(repository) DO UPDATE SET data=excluded.data',
+      ).run(repository.toLowerCase(), JSON.stringify(data));
+    },
     driveStatus(repository) {
       repository = repository.toLowerCase();
       const checked = db.prepare('SELECT data FROM drive_repositories WHERE repository=?').get(repository);
       const { error = '', checkedAt = '' } = checked ? JSON.parse(checked.data) : {};
-      const releases = db.prepare('SELECT tag,data FROM drive_archives WHERE repository=?').all(repository).map(row => {
-        const { state, message, folderId, files, date } = JSON.parse(row.data);
-        return { tag: row.tag, state, message, date, files: files || [], ...(folderId ? { folderUrl: `https://drive.google.com/drive/folders/${folderId}` } : {}) };
-      }).sort((a, b) => Date.parse(b.date) - Date.parse(a.date)).slice(0, 10);
+      const releases = db
+        .prepare('SELECT tag,data FROM drive_archives WHERE repository=?')
+        .all(repository)
+        .map(row => {
+          const { state, message, folderId, files, date } = JSON.parse(row.data);
+          return {
+            tag: row.tag,
+            state,
+            message,
+            date,
+            files: files || [],
+            ...(folderId ? { folderUrl: `https://drive.google.com/drive/folders/${folderId}` } : {}),
+          };
+        })
+        .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
+        .slice(0, 10);
       return { checkedAt, repositoryError: error, releases };
     },
     recordGithubChangelog(repository, releases) {
       return transaction(() => {
         repository = repository.toLowerCase();
-        if (!this.read().projects.some(project => workflows.githubProject(project.id)?.toLowerCase() === repository)) return;
+        if (!this.read().projects.some(project => workflows.githubProject(project.id)?.toLowerCase() === repository))
+          return;
         for (const release of releases) {
-          if (!release || release.draft || typeof release.tag_name !== 'string' || !release.tag_name.trim() || release.tag_name.length > 140 || !release.published_at || !Number.isFinite(Date.parse(release.published_at))) continue;
-          const entry = { tag: release.tag_name, date: new Date(release.published_at).toISOString(), body: typeof release.body === 'string' ? release.body.replace(/<!-- planifikateur-drive\n[\s\S]*?\n-->/g, '').trim().slice(0, 20000) : '' };
-          db.prepare('INSERT INTO github_changelog VALUES(?,?,?) ON CONFLICT(repository,tag) DO UPDATE SET data=excluded.data').run(repository, entry.tag, JSON.stringify(entry));
+          if (
+            !release ||
+            release.draft ||
+            typeof release.tag_name !== 'string' ||
+            !release.tag_name.trim() ||
+            release.tag_name.length > 140 ||
+            !release.published_at ||
+            !Number.isFinite(Date.parse(release.published_at))
+          )
+            continue;
+          const entry = {
+            tag: release.tag_name,
+            date: new Date(release.published_at).toISOString(),
+            body:
+              typeof release.body === 'string'
+                ? release.body
+                    .replace(/<!-- planifikateur-drive\n[\s\S]*?\n-->/g, '')
+                    .trim()
+                    .slice(0, 20000)
+                : '',
+          };
+          db.prepare(
+            'INSERT INTO github_changelog VALUES(?,?,?) ON CONFLICT(repository,tag) DO UPDATE SET data=excluded.data',
+          ).run(repository, entry.tag, JSON.stringify(entry));
         }
         synchronizeInfos();
       });
     },
-    githubVersion(repository) { const row = db.prepare('SELECT data FROM github_versions WHERE repository=?').get(repository.toLowerCase()); return row ? JSON.parse(row.data) : null; },
-    refreshInfos() { return transaction(synchronizeInfos); },
+    githubVersion(repository) {
+      const row = db.prepare('SELECT data FROM github_versions WHERE repository=?').get(repository.toLowerCase());
+      return row ? JSON.parse(row.data) : null;
+    },
+    refreshInfos() {
+      return transaction(synchronizeInfos);
+    },
     recordGithubVersion(repository, version) {
       return transaction(() => {
         repository = repository.toLowerCase();
-        if (!this.read().projects.some(project => workflows.githubProject(project.id)?.toLowerCase() === repository)) return { updated: false };
-        if (typeof version.tag !== 'string' || !version.tag.trim() || version.tag.length > 140 || /[\u0000-\u001f]/.test(version.tag) || version.date && !Number.isFinite(Date.parse(version.date))) return { updated: false };
+        if (!this.read().projects.some(project => workflows.githubProject(project.id)?.toLowerCase() === repository))
+          return { updated: false };
+        if (
+          typeof version.tag !== 'string' ||
+          !version.tag.trim() ||
+          version.tag.length > 140 ||
+          /[\u0000-\u001f]/.test(version.tag) ||
+          (version.date && !Number.isFinite(Date.parse(version.date)))
+        )
+          return { updated: false };
         const previous = this.githubVersion(repository);
         // Do not replace a newer signed push with a stale API response.
-        if (previous?.date && (!version.date || Date.parse(previous.date) > Date.parse(version.date))) return { updated: false };
+        if (previous?.date && (!version.date || Date.parse(previous.date) > Date.parse(version.date)))
+          return { updated: false };
         if (isDeepStrictEqual(previous, version)) return { updated: false };
-        db.prepare('INSERT INTO github_versions VALUES(?,?) ON CONFLICT(repository) DO UPDATE SET data=excluded.data').run(repository, JSON.stringify(version));
+        db.prepare(
+          'INSERT INTO github_versions VALUES(?,?) ON CONFLICT(repository) DO UPDATE SET data=excluded.data',
+        ).run(repository, JSON.stringify(version));
         synchronizeInfos();
         return { updated: true };
       });
@@ -132,42 +248,77 @@ export function createStore(filename) {
       const project = this.read().projects.find(project => project.id === projectId);
       if (!project) fail(404, 'project_not_found', 'Projet inexistant.');
       const members = activeMembers();
-      return Object.fromEntries(project.cards.map(card => {
-        const prefs = preferences(card.id);
-        return [card.id, members.filter(member => following(card, member.id, prefs))];
-      }));
+      return Object.fromEntries(
+        project.cards.map(card => {
+          const prefs = preferences(card.id);
+          return [card.id, members.filter(member => following(card, member.id, prefs))];
+        }),
+      );
     },
     setSubscription(projectId, cardId, actor, enabled, userId = actor.id) {
       return transaction(() => {
         const { project, card } = findCard(projectId, cardId);
         const target = userById(userId);
-        if (!target?.active || !target.password_hash) fail(400, 'invalid_subscriber', 'Choisissez un membre actif du projet.');
+        if (!target?.active || !target.password_hash)
+          fail(400, 'invalid_subscriber', 'Choisissez un membre actif du projet.');
         const previous = preferences(cardId).find(row => row.user_id === userId);
         if (!previous || !!previous.following !== enabled) {
-          db.prepare('INSERT INTO card_subscriptions VALUES(?,?,?) ON CONFLICT(card_id,user_id) DO UPDATE SET following = excluded.following').run(cardId, userId, enabled ? 1 : 0);
-          audit(actor, userId !== actor.id ? 'card.subscriber_added' : enabled ? 'card.followed' : 'card.unfollowed', { projectId, projectName: project.name, cardId, cardTitle: card.title, subscriberId: userId, subscriberName: target.name, recipientIds: [] });
+          db.prepare(
+            'INSERT INTO card_subscriptions VALUES(?,?,?) ON CONFLICT(card_id,user_id) DO UPDATE SET following = excluded.following',
+          ).run(cardId, userId, enabled ? 1 : 0);
+          audit(actor, userId !== actor.id ? 'card.subscriber_added' : enabled ? 'card.followed' : 'card.unfollowed', {
+            projectId,
+            projectName: project.name,
+            cardId,
+            cardTitle: card.title,
+            subscriberId: userId,
+            subscriberName: target.name,
+            recipientIds: [],
+          });
         }
         return { following: enabled };
       });
     },
-    backupVersion() { return `${this.getRevision()}:${db.prepare('SELECT COALESCE(MAX(id),0) AS id FROM activity').get().id}`; },
-    getRevision() { return db.prepare('SELECT revision FROM workspace WHERE id = 1').get().revision; },
-    snapshot(target) { db.prepare('VACUUM INTO ?').run(target); },
-    read() { const row = db.prepare('SELECT * FROM workspace WHERE id = 1').get(); return { projects: JSON.parse(row.projects), revision: row.revision, updatedAt: row.updated_at }; },
+    backupVersion() {
+      return `${this.getRevision()}:${db.prepare('SELECT COALESCE(MAX(id),0) AS id FROM activity').get().id}`;
+    },
+    getRevision() {
+      return db.prepare('SELECT revision FROM workspace WHERE id = 1').get().revision;
+    },
+    snapshot(target) {
+      db.prepare('VACUUM INTO ?').run(target);
+    },
+    read() {
+      const row = db.prepare('SELECT * FROM workspace WHERE id = 1').get();
+      return { projects: JSON.parse(row.projects), revision: row.revision, updatedAt: row.updated_at };
+    },
     write(projects, revision, actor = null, { restore = false } = {}) {
       return transaction(() => {
         const before = this.read();
         if (before.revision !== revision) return null;
-        const clean = validateWorkspace(projects), date = new Date().toISOString();
+        const clean = validateWorkspace(projects),
+          date = new Date().toISOString();
         workflows.reconcile(before.projects, clean, actor, restore);
-        const events = restore ? [{ action: 'workspace.restored' }] : attributeChanges(validateWorkspace(before.projects), clean, actor, date);
-        db.prepare('UPDATE workspace SET projects = ?, revision = revision + 1, updated_at = ? WHERE id = 1').run(JSON.stringify(clean), date);
-        const activeUsers = new Set(db.prepare('SELECT id FROM users WHERE active = 1 AND password_hash IS NOT NULL').all().map(user => user.id));
+        const events = restore
+          ? [{ action: 'workspace.restored' }]
+          : attributeChanges(validateWorkspace(before.projects), clean, actor, date);
+        db.prepare('UPDATE workspace SET projects = ?, revision = revision + 1, updated_at = ? WHERE id = 1').run(
+          JSON.stringify(clean),
+          date,
+        );
+        const activeUsers = new Set(
+          db
+            .prepare('SELECT id FROM users WHERE active = 1 AND password_hash IS NOT NULL')
+            .all()
+            .map(user => user.id),
+        );
         for (const event of events) {
           if (event.cardId) {
             const prefs = preferences(event.cardId);
             const optedOut = new Set(prefs.filter(p => !p.following).map(p => p.user_id));
-            event.recipientIds = [...new Set([...(event.recipientIds || []), ...prefs.filter(p => p.following).map(p => p.user_id)])].filter(id => id !== actor?.id && activeUsers.has(id) && !optedOut.has(id));
+            event.recipientIds = [
+              ...new Set([...(event.recipientIds || []), ...prefs.filter(p => p.following).map(p => p.user_id)]),
+            ].filter(id => id !== actor?.id && activeUsers.has(id) && !optedOut.has(id));
           }
           audit(actor, event.action, event, revision + 1);
         }
@@ -178,62 +329,95 @@ export function createStore(filename) {
         return this.read();
       });
     },
-    hasUsers() { return !!db.prepare('SELECT 1 FROM users LIMIT 1').get(); },
-    userByEmail(email) { return db.prepare('SELECT * FROM users WHERE email = ?').get(email); },
+    hasUsers() {
+      return !!db.prepare('SELECT 1 FROM users LIMIT 1').get();
+    },
+    userByEmail(email) {
+      return db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    },
     userById,
     bootstrapUser(fields, passwordHash) {
       return transaction(() => {
         if (this.hasUsers()) fail(409, 'already_initialized', 'Le compte administrateur a déjà été créé.');
         const id = randomUUID();
-        db.prepare("INSERT INTO users(id,email,name,password_hash,role,created_at) VALUES(?,?,?,?,'admin',?)").run(id, fields.email, fields.name, passwordHash, new Date().toISOString());
-        const user = publicUser(userById(id)); audit(user, 'account.created', { userId: id }); return user;
+        db.prepare("INSERT INTO users(id,email,name,password_hash,role,created_at) VALUES(?,?,?,?,'admin',?)").run(
+          id,
+          fields.email,
+          fields.name,
+          passwordHash,
+          new Date().toISOString(),
+        );
+        const user = publicUser(userById(id));
+        audit(user, 'account.created', { userId: id });
+        return user;
       });
     },
-    users() { return db.prepare('SELECT * FROM users ORDER BY created_at, id').all().map(publicUser); },
+    users() {
+      return db.prepare('SELECT * FROM users ORDER BY created_at, id').all().map(publicUser);
+    },
     inviteUser(fields, actor, existingId = null) {
       return transaction(() => {
-        const token = randomBytes(32).toString('hex'), expires = Date.now() + 7 * 86400000;
+        const token = randomBytes(32).toString('hex'),
+          expires = Date.now() + 7 * 86400000;
         let id = existingId;
         if (id) {
           const existing = userById(id);
           if (!existing || !existing.active) fail(404, 'user_not_found', 'Compte actif inexistant.');
-          if (existing.id === actor.id || existing.role === 'admin') fail(400, 'invalid_invitation', 'Ce compte ne peut pas être réinvité.');
-          db.prepare('UPDATE users SET invite_hash = ?, invite_expires = ? WHERE id = ?').run(tokenHash(token), expires, id);
+          if (existing.id === actor.id || existing.role === 'admin')
+            fail(400, 'invalid_invitation', 'Ce compte ne peut pas être réinvité.');
+          db.prepare('UPDATE users SET invite_hash = ?, invite_expires = ? WHERE id = ?').run(
+            tokenHash(token),
+            expires,
+            id,
+          );
         } else {
           if (this.userByEmail(fields.email)) fail(409, 'email_exists', 'Un compte utilise déjà cette adresse.');
           if (this.users().length >= 100) fail(400, 'user_limit', 'La limite de 100 comptes est atteinte.');
           id = randomUUID();
-          db.prepare("INSERT INTO users(id,email,name,role,invite_hash,invite_expires,created_at) VALUES(?,?,?,'member',?,?,?)").run(id, fields.email, fields.name, tokenHash(token), expires, new Date().toISOString());
+          db.prepare(
+            "INSERT INTO users(id,email,name,role,invite_hash,invite_expires,created_at) VALUES(?,?,?,'member',?,?,?)",
+          ).run(id, fields.email, fields.name, tokenHash(token), expires, new Date().toISOString());
         }
         audit(actor, 'account.invited', { userId: id });
         return { user: publicUser(userById(id)), token, expiresAt: new Date(expires).toISOString() };
       });
     },
-    invitation(token) { return db.prepare('SELECT * FROM users WHERE invite_hash = ? AND invite_expires > ? AND active = 1').get(tokenHash(token), Date.now()); },
+    invitation(token) {
+      return db
+        .prepare('SELECT * FROM users WHERE invite_hash = ? AND invite_expires > ? AND active = 1')
+        .get(tokenHash(token), Date.now());
+    },
     acceptInvitation(token, name, passwordHash) {
       return transaction(() => {
         const user = this.invitation(token);
         if (!user) fail(400, 'invalid_invitation', 'Invitation invalide, expirée ou déjà utilisée.');
-        db.prepare('UPDATE users SET name = ?, password_hash = ?, invite_hash = NULL, invite_expires = NULL WHERE id = ?').run(name, passwordHash, user.id);
+        db.prepare(
+          'UPDATE users SET name = ?, password_hash = ?, invite_hash = NULL, invite_expires = NULL WHERE id = ?',
+        ).run(name, passwordHash, user.id);
         db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id);
-        const result = publicUser(userById(user.id)); audit(result, 'account.activated', { userId: user.id }); return result;
+        const result = publicUser(userById(user.id));
+        audit(result, 'account.activated', { userId: user.id });
+        return result;
       });
     },
     setActive(id, active, actor) {
       return transaction(() => {
         const user = userById(id);
         if (!user) fail(404, 'user_not_found', 'Compte inexistant.');
-        if (id === actor.id || user.role === 'admin') fail(400, 'protected_admin', 'Le compte administrateur ne peut pas être désactivé.');
+        if (id === actor.id || user.role === 'admin')
+          fail(400, 'protected_admin', 'Le compte administrateur ne peut pas être désactivé.');
         db.prepare('UPDATE users SET active = ? WHERE id = ?').run(active ? 1 : 0, id);
         if (!active) db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
-        audit(actor, active ? 'account.enabled' : 'account.disabled', { userId: id }); return publicUser(userById(id));
+        audit(actor, active ? 'account.enabled' : 'account.disabled', { userId: id });
+        return publicUser(userById(id));
       });
     },
     deleteUser(id, actor) {
       return transaction(() => {
         const user = userById(id);
         if (!user) fail(404, 'user_not_found', 'Compte inexistant.');
-        if (id === actor.id || user.role === 'admin') fail(400, 'protected_admin', 'Le compte administrateur ne peut pas être supprimé.');
+        if (id === actor.id || user.role === 'admin')
+          fail(400, 'protected_admin', 'Le compte administrateur ne peut pas être supprimé.');
         db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
         db.prepare('DELETE FROM card_subscriptions WHERE user_id = ?').run(id);
         db.prepare('DELETE FROM users WHERE id = ?').run(id);
@@ -242,19 +426,51 @@ export function createStore(filename) {
       });
     },
     changePassword(id, passwordHash, actor) {
-      transaction(() => { db.prepare('UPDATE users SET password_hash = ?, invite_hash = NULL, invite_expires = NULL WHERE id = ?').run(passwordHash, id); db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id); audit(actor, 'account.password_changed', { userId: id }); });
+      transaction(() => {
+        db.prepare('UPDATE users SET password_hash = ?, invite_hash = NULL, invite_expires = NULL WHERE id = ?').run(
+          passwordHash,
+          id,
+        );
+        db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
+        audit(actor, 'account.password_changed', { userId: id });
+      });
     },
     createSession(userId) {
       const token = randomBytes(32).toString('hex');
       db.prepare('DELETE FROM sessions WHERE expires <= ?').run(Date.now());
-      db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(tokenHash(token), userId, Date.now() + 12 * 3600000); return token;
+      db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(tokenHash(token), userId, Date.now() + 12 * 3600000);
+      return token;
     },
-    session(token) { if (!token) return null; return publicUser(db.prepare('SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires > ? AND u.active = 1 AND u.password_hash IS NOT NULL').get(tokenHash(token), Date.now())); },
-    deleteSession(token) { if (token) db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(tokenHash(token)); },
+    session(token) {
+      if (!token) return null;
+      return publicUser(
+        db
+          .prepare(
+            'SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires > ? AND u.active = 1 AND u.password_hash IS NOT NULL',
+          )
+          .get(tokenHash(token), Date.now()),
+      );
+    },
+    deleteSession(token) {
+      if (token) db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(tokenHash(token));
+    },
     activity({ projectId, cardId, before = Number.MAX_SAFE_INTEGER, limit = 50 } = {}) {
-      const rows = db.prepare('SELECT * FROM activity WHERE id < ? AND (? IS NULL OR project_id = ?) AND (? IS NULL OR card_id = ?) ORDER BY id DESC LIMIT ?').all(before, projectId || null, projectId || null, cardId || null, cardId || null, limit);
-      return rows.map(row => ({ ...JSON.parse(row.payload), id: row.id, date: row.date, actor: row.actor_id ? { id: row.actor_id, name: row.actor_name } : null, action: row.action, revision: row.revision }));
+      const rows = db
+        .prepare(
+          'SELECT * FROM activity WHERE id < ? AND (? IS NULL OR project_id = ?) AND (? IS NULL OR card_id = ?) ORDER BY id DESC LIMIT ?',
+        )
+        .all(before, projectId || null, projectId || null, cardId || null, cardId || null, limit);
+      return rows.map(row => ({
+        ...JSON.parse(row.payload),
+        id: row.id,
+        date: row.date,
+        actor: row.actor_id ? { id: row.actor_id, name: row.actor_name } : null,
+        action: row.action,
+        revision: row.revision,
+      }));
     },
-    close() { db.close(); },
+    close() {
+      db.close();
+    },
   };
 }

@@ -10,20 +10,26 @@ export function useCardFollowers({ project, enabled, saveStatus, selectedId, mod
       if (loading || document.visibilityState === 'hidden') return;
       loading = true;
       try {
-        const response = await fetch(`/api/v1/projects/${project.id}/card-followers`, { credentials: 'same-origin', signal: controller.signal });
+        const response = await fetch(`/api/v1/projects/${project.id}/card-followers`, {
+          credentials: 'same-origin',
+          signal: controller.signal,
+        });
         if (!response.ok) return;
         const result = await response.json();
         if (!controller.signal.aborted) setSnapshot({ projectId: project.id, followers: result.data });
       } catch {
         // Keep the last known followers until the next successful refresh.
-      } finally { loading = false; }
+      } finally {
+        loading = false;
+      }
     };
     void refresh();
     const timer = setInterval(refresh, 5000);
     window.addEventListener('focus', refresh);
     document.addEventListener('visibilitychange', refresh);
     return () => {
-      controller.abort(); clearInterval(timer);
+      controller.abort();
+      clearInterval(timer);
       window.removeEventListener('focus', refresh);
       document.removeEventListener('visibilitychange', refresh);
     };

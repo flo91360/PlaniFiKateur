@@ -10,7 +10,10 @@ export default [
     rules: {
       'no-empty': ['error', { allowEmptyCatch: true }],
       // Le JSX compilé par Vite appelle React.createElement : l’import React reste nécessaire.
-      'no-unused-vars': ['error', { args: 'none', caughtErrors: 'none', ignoreRestSiblings: true, varsIgnorePattern: '^React$' }],
+      'no-unused-vars': [
+        'error',
+        { args: 'none', caughtErrors: 'none', ignoreRestSiblings: true, varsIgnorePattern: '^React$' },
+      ],
       // Les validations rejettent volontairement les caractères de contrôle (\x00-\x1f).
       'no-control-regex': 'off',
     },

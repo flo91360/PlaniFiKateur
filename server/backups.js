@@ -10,13 +10,20 @@ export function inspectBackup(filename) {
   if (!existsSync(filename)) throw new Error('Sauvegarde inexistante.');
   const db = new DatabaseSync(filename, { readOnly: true });
   try {
-    if (db.prepare('PRAGMA integrity_check').get().integrity_check !== 'ok') throw new Error('Sauvegarde SQLite endommagée.');
+    if (db.prepare('PRAGMA integrity_check').get().integrity_check !== 'ok')
+      throw new Error('Sauvegarde SQLite endommagée.');
     const row = db.prepare('SELECT revision, projects FROM workspace WHERE id = 1').get();
     if (!row || !Number.isSafeInteger(row.revision) || row.revision < 1) throw new Error('Sauvegarde incompatible.');
     const hasActivity = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'activity'").get();
     const activityId = hasActivity ? db.prepare('SELECT COALESCE(MAX(id),0) AS id FROM activity').get().id : 0;
-    return { projects: validateWorkspace(JSON.parse(row.projects)), revision: row.revision, version: `${row.revision}:${activityId}` };
-  } finally { db.close(); }
+    return {
+      projects: validateWorkspace(JSON.parse(row.projects)),
+      revision: row.revision,
+      version: `${row.revision}:${activityId}`,
+    };
+  } finally {
+    db.close();
+  }
 }
 
 export function restoreBackup(store, filename, createSafetyCopy) {
@@ -30,15 +37,26 @@ export function restoreBackup(store, filename, createSafetyCopy) {
   return restored;
 }
 
-export function createBackups(store, { directory, intervalMs = 6 * 60 * 60 * 1000, keep = 28, onError = console.error, start = true }) {
+export function createBackups(
+  store,
+  { directory, intervalMs = 6 * 60 * 60 * 1000, keep = 28, onError = console.error, start = true },
+) {
   const root = resolve(directory);
-  let error = '', lastRevision = null;
+  let error = '',
+    lastRevision = null;
   const list = () => {
     if (!existsSync(root)) return [];
-    return readdirSync(root).filter(name => backupName.test(name)).map(name => {
-      const file = statSync(join(root, name));
-      return { name, size: file.size, createdAt: name.slice(14, 38).replace(/T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z/, 'T$1:$2:$3.$4Z') };
-    }).sort((a, b) => b.name.localeCompare(a.name));
+    return readdirSync(root)
+      .filter(name => backupName.test(name))
+      .map(name => {
+        const file = statSync(join(root, name));
+        return {
+          name,
+          size: file.size,
+          createdAt: name.slice(14, 38).replace(/T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z/, 'T$1:$2:$3.$4Z'),
+        };
+      })
+      .sort((a, b) => b.name.localeCompare(a.name));
   };
   const create = () => {
     const name = `planifikateur-${new Date().toISOString().replace(/:/g, '-').replace('.', '-')}-${randomUUID()}.sqlite`;
@@ -50,26 +68,43 @@ export function createBackups(store, { directory, intervalMs = 6 * 60 * 60 * 100
       const snapshot = inspectBackup(temporary);
       renameSync(temporary, join(root, name));
       const files = list();
-      for (const old of [files.find(file => file.name === name), ...files.filter(file => file.name !== name)].slice(keep)) rmSync(join(root, old.name));
+      for (const old of [files.find(file => file.name === name), ...files.filter(file => file.name !== name)].slice(
+        keep,
+      ))
+        rmSync(join(root, old.name));
       lastRevision = snapshot.version;
       error = '';
       return list().find(file => file.name === name);
     } catch (cause) {
-      try { rmSync(temporary, { force: true }); } catch { /* Preserve the original error. */ }
+      try {
+        rmSync(temporary, { force: true });
+      } catch {
+        /* Preserve the original error. */
+      }
       error = 'La sauvegarde a échoué. Vérifiez le stockage et les logs du serveur.';
       onError(`PlaniFiKateur : sauvegarde impossible (${cause.code || cause.message}).`);
       throw cause;
     }
   };
   const automatic = () => {
-    try { if (store.backupVersion() !== lastRevision) create(); } catch { /* Keep serving; status reports the failure. */ }
+    try {
+      if (store.backupVersion() !== lastRevision) create();
+    } catch {
+      /* Keep serving; status reports the failure. */
+    }
   };
   if (start) automatic();
-  const timer = start ? setInterval(automatic, intervalMs) : null; timer?.unref();
+  const timer = start ? setInterval(automatic, intervalMs) : null;
+  timer?.unref();
   return {
-    create, list,
+    create,
+    list,
     status: () => ({ files: list(), error, intervalHours: intervalMs / 3600000, keep }),
-    file(name) { return backupName.test(name) && list().some(file => file.name === name) ? join(root, name) : null; },
-    close() { clearInterval(timer); },
+    file(name) {
+      return backupName.test(name) && list().some(file => file.name === name) ? join(root, name) : null;
+    },
+    close() {
+      clearInterval(timer);
+    },
   };
 }

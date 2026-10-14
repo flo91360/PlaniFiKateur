@@ -13,9 +13,13 @@ test('VPS updater preserves running work and rolls back failed deployments; CI a
 test('the Godot installer refuses an archive with a wrong checksum before writing a binary', t => {
   const directory = mkdtempSync(join(tmpdir(), 'planifikateur-godot-checksum-'));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
-  const archive = join(directory, 'download.zip'), destination = join(directory, 'godot');
+  const archive = join(directory, 'download.zip'),
+    destination = join(directory, 'godot');
   writeFileSync(archive, 'corrupted download');
-  const result = spawnSync('python3', ['worker/install-godot.py', '--archive', archive, '--destination', destination], { encoding: 'utf8' });
-  assert.notEqual(result.status, 0); assert.match(result.stderr, /checksum mismatch/);
+  const result = spawnSync('python3', ['worker/install-godot.py', '--archive', archive, '--destination', destination], {
+    encoding: 'utf8',
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /checksum mismatch/);
   assert.equal(existsSync(destination), false);
 });

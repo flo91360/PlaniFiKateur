@@ -12,22 +12,37 @@ const buildInfo = readBuildInfo();
 
 export default defineConfig({
   define: { __PLANIFIKATEUR_BUILD_INFO__: JSON.stringify(buildInfo) },
-  plugins: [{
-    name: 'planifikateur-api',
-    generateBundle() {
-      this.emitFile({ type: 'asset', fileName: 'build-info.json', source: JSON.stringify(buildInfo) });
+  plugins: [
+    {
+      name: 'planifikateur-api',
+      generateBundle() {
+        this.emitFile({ type: 'asset', fileName: 'build-info.json', source: JSON.stringify(buildInfo) });
+      },
+      configureServer(server) {
+        const config = readConfig();
+        if (
+          server.config.server.host === true ||
+          (typeof server.config.server.host === 'string' &&
+            !['localhost', '127.0.0.1', '::1'].includes(server.config.server.host))
+        ) {
+          if (!config.ownerToken || !config.readToken)
+            throw new Error('Une exposition réseau nécessite les clés propriétaire et lecture.');
+        }
+        const store = createStore(config.database);
+        config.versions = createVersionSync(store, { token: process.env.PLANIFIKATEUR_GITHUB_TOKEN || '' });
+        config.repositoryContext = createRepositoryContext({ token: process.env.PLANIFIKATEUR_GITHUB_TOKEN || '' });
+        config.backups = createBackups(store, {
+          directory: config.backupDirectory,
+          intervalMs: config.backupIntervalMs,
+          keep: config.backupKeep,
+        });
+        server.middlewares.use(createApi(store, config));
+        server.httpServer?.once('close', () => {
+          config.versions.close();
+          config.backups.close();
+          store.close();
+        });
+      },
     },
-    configureServer(server) {
-      const config = readConfig();
-      if (server.config.server.host === true || (typeof server.config.server.host === 'string' && !['localhost', '127.0.0.1', '::1'].includes(server.config.server.host))) {
-        if (!config.ownerToken || !config.readToken) throw new Error('Une exposition réseau nécessite les clés propriétaire et lecture.');
-      }
-      const store = createStore(config.database);
-      config.versions = createVersionSync(store, { token: process.env.PLANIFIKATEUR_GITHUB_TOKEN || '' });
-      config.repositoryContext = createRepositoryContext({ token: process.env.PLANIFIKATEUR_GITHUB_TOKEN || '' });
-      config.backups = createBackups(store, { directory: config.backupDirectory, intervalMs: config.backupIntervalMs, keep: config.backupKeep });
-      server.middlewares.use(createApi(store, config));
-      server.httpServer?.once('close', () => { config.versions.close(); config.backups.close(); store.close(); });
-    },
-  }],
+  ],
 });

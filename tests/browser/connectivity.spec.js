@@ -22,14 +22,36 @@ const test = base.extend({
   appServer: async ({ initialAccounts, githubEnabled, driveArchive, refiner, repositoryContext }, use) => {
     const store = createStore(':memory:');
     const user = initialAccounts ? seedAccount(store) : null;
-    if (githubEnabled) { const initial = store.read(); initial.projects.forEach(p => p.cards.forEach(c => { c.status = 'draft'; })); store.write(initial.projects, initial.revision, user); }
+    if (githubEnabled) {
+      const initial = store.read();
+      initial.projects.forEach(p =>
+        p.cards.forEach(c => {
+          c.status = 'draft';
+        }),
+      );
+      store.write(initial.projects, initial.revision, user);
+    }
     const dir = mkdtempSync(join(tmpdir(), 'planifikateur-browser-backups-'));
     const backups = createBackups(store, { directory: dir });
-    const server = createAppServer({ store, config: { ownerToken, readToken, backups, githubWebhookSecret: githubEnabled ? 'browser-github-secret' : '', ...(driveArchive ? { driveArchive } : {}), ...(refiner ? { refiner } : {}), ...(repositoryContext ? { repositoryContext } : {}) } });
+    const server = createAppServer({
+      store,
+      config: {
+        ownerToken,
+        readToken,
+        backups,
+        githubWebhookSecret: githubEnabled ? 'browser-github-secret' : '',
+        ...(driveArchive ? { driveArchive } : {}),
+        ...(refiner ? { refiner } : {}),
+        ...(repositoryContext ? { repositoryContext } : {}),
+      },
+    });
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     await use(`http://127.0.0.1:${server.address().port}`);
     server.closeAllConnections();
-    await new Promise(resolve => server.close(resolve)); backups.close(); store.close(); rmSync(dir, { recursive: true, force: true });
+    await new Promise(resolve => server.close(resolve));
+    backups.close();
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
   },
 });
 const login = async (page, url) => {
@@ -64,34 +86,66 @@ test('a UI-created card is readable by an agent and another browser', async ({ p
   await page.getByLabel('Votre commentaire').fill('Une précision');
   await page.getByRole('button', { name: 'Créer la carte', exact: true }).click();
   await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
-  const projectData = await (await request.get(`${appServer}/api/v1/projects`, { headers: { Authorization: `Bearer ${readToken}` } })).json();
+  const projectData = await (
+    await request.get(`${appServer}/api/v1/projects`, { headers: { Authorization: `Bearer ${readToken}` } })
+  ).json();
   const projectId = projectData.data.find(p => p.name === 'Projet connecté').id;
-  const response = await request.get(`${appServer}/api/v1/projects/${projectId}/cards?status=ready&q=Bug%20visible`, { headers: { Authorization: `Bearer ${readToken}` } });
+  const response = await request.get(`${appServer}/api/v1/projects/${projectId}/cards?status=ready&q=Bug%20visible`, {
+    headers: { Authorization: `Bearer ${readToken}` },
+  });
   expect(response.status()).toBe(200);
   const { data } = await response.json();
   expect(data).toHaveLength(1);
-  expect(data[0]).toMatchObject({ title: 'Bug visible par les agents', projectName: 'Projet connecté', listName: 'Bugs', description: 'Le contexte de la demande.', aiEffort: 'medium' });
+  expect(data[0]).toMatchObject({
+    title: 'Bug visible par les agents',
+    projectName: 'Projet connecté',
+    listName: 'Bugs',
+    description: 'Le contexte de la demande.',
+    aiEffort: 'medium',
+  });
   expect(data[0].comments[0].text).toBe('Une précision');
-  expect((await request.put(`${appServer}/api/v1/workspace`, { headers: { Authorization: `Bearer ${readToken}` }, data: {} })).status()).toBe(401);
+  expect(
+    (
+      await request.put(`${appServer}/api/v1/workspace`, {
+        headers: { Authorization: `Bearer ${readToken}` },
+        data: {},
+      })
+    ).status(),
+  ).toBe(401);
   const context = await browser.newContext();
-  const other = await context.newPage(); await login(other, appServer);
+  const other = await context.newPage();
+  await login(other, appServer);
   const menu = other.getByRole('button', { name: 'Ouvrir les projets', exact: true });
   if (await menu.isVisible()) await menu.click();
-  await other.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /Projet connecté/ }).click();
+  await other
+    .getByRole('navigation', { name: 'Projets' })
+    .getByRole('button', { name: /Projet connecté/ })
+    .click();
   await expect(other.getByRole('heading', { name: 'Bug visible par les agents', exact: true })).toBeVisible();
   await context.close();
 });
 
-test('a stale browser cannot overwrite another browser; reload is explicit', async ({ page, browser, request, appServer }) => {
+test('a stale browser cannot overwrite another browser; reload is explicit', async ({
+  page,
+  browser,
+  request,
+  appServer,
+}) => {
   await login(page, appServer);
-  const context = await browser.newContext(); const other = await context.newPage(); await login(other, appServer);
-  await other.route('**/api/v1/workspace', route => route.request().method() === 'GET' ? route.abort() : route.continue());
+  const context = await browser.newContext();
+  const other = await context.newPage();
+  await login(other, appServer);
+  await other.route('**/api/v1/workspace', route =>
+    route.request().method() === 'GET' ? route.abort() : route.continue(),
+  );
   await newProject(page, 'Premier éditeur');
   await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
   await newProject(other, 'Second éditeur');
   await expect(other.getByRole('alert')).toContainText('Le tableau a changé');
   await expect(other.getByRole('heading', { name: 'Second éditeur', exact: true })).toBeVisible();
-  const response = await request.get(`${appServer}/api/v1/projects`, { headers: { Authorization: `Bearer ${readToken}` } });
+  const response = await request.get(`${appServer}/api/v1/projects`, {
+    headers: { Authorization: `Bearer ${readToken}` },
+  });
   const { data } = await response.json();
   expect(data.some(p => p.name === 'Premier éditeur')).toBe(true);
   expect(data.some(p => p.name === 'Second éditeur')).toBe(false);
@@ -107,7 +161,8 @@ test('a stale browser cannot overwrite another browser; reload is explicit', asy
 test('a failed save preserves edits and can be retried', async ({ page, request, appServer }) => {
   await login(page, appServer);
   await page.route('**/api/v1/workspace', async route => {
-    if (route.request().method() === 'PUT') await route.abort(); else await route.continue();
+    if (route.request().method() === 'PUT') await route.abort();
+    else await route.continue();
   });
   await newProject(page, 'Projet conservé');
   await expect(page.getByRole('alert')).toContainText('Vos modifications restent');
@@ -115,25 +170,48 @@ test('a failed save preserves edits and can be retried', async ({ page, request,
   await page.unroute('**/api/v1/workspace');
   await page.getByRole('button', { name: 'Réessayer la sauvegarde', exact: true }).click();
   await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
-  const { data } = await (await request.get(`${appServer}/api/v1/projects`, { headers: { Authorization: `Bearer ${readToken}` } })).json();
+  const { data } = await (
+    await request.get(`${appServer}/api/v1/projects`, { headers: { Authorization: `Bearer ${readToken}` } })
+  ).json();
   expect(data.some(p => p.name === 'Projet conservé')).toBe(true);
 });
 
-test('JSON import adds local cards to the API without replacing existing projects', async ({ page, request, appServer }) => {
+test('JSON import adds local cards to the API without replacing existing projects', async ({
+  page,
+  request,
+  appServer,
+}) => {
   await login(page, appServer);
   await page.getByRole('button', { name: 'Informations sur le prototype', exact: true }).click();
-  const imported = structuredClone(seed[0]); imported.name = 'Projet importé'; imported.cards[0].title = 'Une idée importée';
-  await page.getByLabel('Importer des projets JSON').setInputFiles({ name: 'projects.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ projects: [imported] })) });
+  const imported = structuredClone(seed[0]);
+  imported.name = 'Projet importé';
+  imported.cards[0].title = 'Une idée importée';
+  await page.getByLabel('Importer des projets JSON').setInputFiles({
+    name: 'projects.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({ projects: [imported] })),
+  });
   await page.getByRole('button', { name: 'C’est compris', exact: true }).click();
   await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
-  const { data } = await (await request.get(`${appServer}/api/v1/projects`, { headers: { Authorization: `Bearer ${readToken}` } })).json();
+  const { data } = await (
+    await request.get(`${appServer}/api/v1/projects`, { headers: { Authorization: `Bearer ${readToken}` } })
+  ).json();
   expect(data).toHaveLength(3);
-  const cards = await (await request.get(`${appServer}/api/v1/projects/${data.find(p => p.name === 'Projet importé').id}/cards?q=importée`, { headers: { Authorization: `Bearer ${readToken}` } })).json();
+  const cards = await (
+    await request.get(
+      `${appServer}/api/v1/projects/${data.find(p => p.name === 'Projet importé').id}/cards?q=importée`,
+      { headers: { Authorization: `Bearer ${readToken}` } },
+    )
+  ).json();
   expect(cards.data).toHaveLength(1);
   expect(cards.data[0].projectName).toBe('Projet importé');
 });
 
-test('project deletion requires confirmation, removes cards and permits an empty workspace', async ({ page, request, appServer }) => {
+test('project deletion requires confirmation, removes cards and permits an empty workspace', async ({
+  page,
+  request,
+  appServer,
+}) => {
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(error.message));
   await login(page, appServer);
@@ -148,8 +226,14 @@ test('project deletion requires confirmation, removes cards and permits an empty
   await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
   await expect(page.getByRole('heading', { name: seed[1].name, exact: true })).toBeVisible();
   expect((await request.get(`${appServer}/api/v1/projects/${seed[0].id}`, { headers })).status()).toBe(404);
-  expect((await request.get(`${appServer}/api/v1/projects/${seed[0].id}/cards/${seed[0].cards[0].id}`, { headers })).status()).toBe(404);
-  expect((await (await request.get(`${appServer}/api/v1/projects/${seed[1].id}/cards`, { headers })).json()).data).toHaveLength(seed[1].cards.length);
+  expect(
+    (
+      await request.get(`${appServer}/api/v1/projects/${seed[0].id}/cards/${seed[0].cards[0].id}`, { headers })
+    ).status(),
+  ).toBe(404);
+  expect(
+    (await (await request.get(`${appServer}/api/v1/projects/${seed[1].id}/cards`, { headers })).json()).data,
+  ).toHaveLength(seed[1].cards.length);
   await page.getByRole('button', { name: 'Supprimer le projet', exact: true }).click();
   await page.getByRole('button', { name: 'Confirmer la suppression', exact: true }).click();
   await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
@@ -164,36 +248,57 @@ test('project deletion requires confirmation, removes cards and permits an empty
   expect(pageErrors).toEqual([]);
 });
 
-test('another browser receives changes automatically and unchanged polls do not save', async ({ page, browser, appServer }) => {
+test('another browser receives changes automatically and unchanged polls do not save', async ({
+  page,
+  browser,
+  appServer,
+}) => {
   await page.clock.install();
   await login(page, appServer);
-  const context = await browser.newContext(); const other = await context.newPage(); await login(other, appServer);
+  const context = await browser.newContext();
+  const other = await context.newPage();
+  await login(other, appServer);
   let writes = 0;
-  page.on('request', req => { if (req.url().endsWith('/api/v1/workspace') && req.method() === 'PUT') writes++; });
+  page.on('request', req => {
+    if (req.url().endsWith('/api/v1/workspace') && req.method() === 'PUT') writes++;
+  });
   await newProject(other, 'Projet partagé en direct');
   await expect(other.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
   await page.clock.runFor(5100);
-  await expect(page.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /Projet partagé en direct/ })).toHaveCount(1);
+  await expect(
+    page.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /Projet partagé en direct/ }),
+  ).toHaveCount(1);
   await other.getByRole('button', { name: 'Supprimer le projet', exact: true }).click();
   await other.getByRole('button', { name: 'Confirmer la suppression', exact: true }).click();
   await expect(other.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
   await page.clock.runFor(5100);
-  await expect(page.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /Projet partagé en direct/ })).toHaveCount(0);
+  await expect(
+    page.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /Projet partagé en direct/ }),
+  ).toHaveCount(0);
   await page.clock.runFor(5100);
   expect(writes).toBe(0);
   await context.close();
 });
 
-test('automatic refresh pauses while editing and preserves a draft during a concurrent change', async ({ page, browser, appServer }) => {
-  await page.clock.install(); await login(page, appServer);
-  const context = await browser.newContext(); const other = await context.newPage(); await login(other, appServer);
+test('automatic refresh pauses while editing and preserves a draft during a concurrent change', async ({
+  page,
+  browser,
+  appServer,
+}) => {
+  await page.clock.install();
+  await login(page, appServer);
+  const context = await browser.newContext();
+  const other = await context.newPage();
+  await login(other, appServer);
   await page.getByRole('heading', { name: seed[0].cards[0].title, exact: true }).click();
   await page.getByLabel('Description', { exact: true }).fill('Mon texte en cours de rédaction');
   await newProject(other, 'Changement pendant la saisie');
   await expect(other.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
   await page.clock.runFor(10100);
   await expect(page.getByLabel('Description', { exact: true })).toHaveValue('Mon texte en cours de rédaction');
-  await expect(page.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /Changement pendant la saisie/ })).toHaveCount(0);
+  await expect(
+    page.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /Changement pendant la saisie/ }),
+  ).toHaveCount(0);
   await page.getByRole('button', { name: 'Terminé', exact: true }).click();
   await page.clock.runFor(500);
   await expect(page.getByRole('alert')).toContainText('Le tableau a changé');
@@ -203,18 +308,29 @@ test('automatic refresh pauses while editing and preserves a draft during a conc
   await context.close();
 });
 
-test('refresh recovers after a network error without losing the current board', async ({ page, browser, appServer }) => {
-  await page.clock.install(); await login(page, appServer);
-  await page.route('**/api/v1/workspace', route => route.request().method() === 'GET' ? route.abort() : route.continue());
+test('refresh recovers after a network error without losing the current board', async ({
+  page,
+  browser,
+  appServer,
+}) => {
+  await page.clock.install();
+  await login(page, appServer);
+  await page.route('**/api/v1/workspace', route =>
+    route.request().method() === 'GET' ? route.abort() : route.continue(),
+  );
   await page.clock.runFor(5100);
   await expect(page.getByText('Actualisation indisponible.', { exact: false })).toBeVisible();
   await expect(page.getByRole('heading', { name: seed[0].name, exact: true })).toBeVisible();
-  const context = await browser.newContext(); const other = await context.newPage(); await login(other, appServer);
+  const context = await browser.newContext();
+  const other = await context.newPage();
+  await login(other, appServer);
   await newProject(other, 'Après reconnexion');
   await expect(other.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
   await page.unroute('**/api/v1/workspace');
   await page.clock.runFor(5100);
-  await expect(page.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /Après reconnexion/ })).toHaveCount(1);
+  await expect(
+    page.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /Après reconnexion/ }),
+  ).toHaveCount(1);
   await expect(page.getByText('Actualisation indisponible.', { exact: false })).toHaveCount(0);
   await context.close();
 });
@@ -235,45 +351,72 @@ test('owner can create and download a SQLite backup from the interface', async (
   expect(projects.some(p => p.name === 'Projet dans ma sauvegarde')).toBe(true);
 });
 
-test('a delayed refresh cannot replace a form opened while the read was in flight', async ({ page, browser, appServer }) => {
-  await page.clock.install(); await login(page, appServer);
-  const context = await browser.newContext(); const other = await context.newPage(); await login(other, appServer);
+test('a delayed refresh cannot replace a form opened while the read was in flight', async ({
+  page,
+  browser,
+  appServer,
+}) => {
+  await page.clock.install();
+  await login(page, appServer);
+  const context = await browser.newContext();
+  const other = await context.newPage();
+  await login(other, appServer);
   await newProject(other, 'Réponse retardée');
   await expect(other.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
   let held, captured;
-  const pending = new Promise(resolve => { captured = resolve; });
+  const pending = new Promise(resolve => {
+    captured = resolve;
+  });
   await page.route('**/api/v1/workspace', async route => {
     if (route.request().method() !== 'GET') return route.continue();
-    const response = await route.fetch(); held = () => route.fulfill({ response }); captured();
+    const response = await route.fetch();
+    held = () => route.fulfill({ response });
+    captured();
   });
-  await page.clock.runFor(5100); await pending;
+  await page.clock.runFor(5100);
+  await pending;
   await page.getByRole('button', { name: 'Ajouter une carte dans Bugs', exact: true }).click();
   await page.getByLabel('Titre de la carte', { exact: true }).fill('Mon brouillon intact');
   await held();
   await expect(page.getByLabel('Titre de la carte', { exact: true })).toHaveValue('Mon brouillon intact');
-  await expect(page.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /Réponse retardée/ })).toHaveCount(0);
+  await expect(
+    page.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /Réponse retardée/ }),
+  ).toHaveCount(0);
   await page.unroute('**/api/v1/workspace');
   await page.getByRole('button', { name: 'Annuler', exact: true }).click();
-  await expect(page.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /Réponse retardée/ })).toHaveCount(1);
+  await expect(
+    page.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /Réponse retardée/ }),
+  ).toHaveCount(1);
   await context.close();
 });
 
 test('closing an unchanged card does not save stale data and resumes refresh', async ({ page, browser, appServer }) => {
-  await page.clock.install(); await login(page, appServer);
-  const context = await browser.newContext(); const other = await context.newPage(); await login(other, appServer);
+  await page.clock.install();
+  await login(page, appServer);
+  const context = await browser.newContext();
+  const other = await context.newPage();
+  await login(other, appServer);
   let writes = 0;
-  page.on('request', req => { if (req.url().endsWith('/api/v1/workspace') && req.method() === 'PUT') writes++; });
+  page.on('request', req => {
+    if (req.url().endsWith('/api/v1/workspace') && req.method() === 'PUT') writes++;
+  });
   await page.getByRole('heading', { name: seed[0].cards[0].title, exact: true }).click();
   await newProject(other, 'Pendant la consultation');
   await expect(other.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
   await page.getByRole('button', { name: 'Terminé', exact: true }).click();
-  await expect(page.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /Pendant la consultation/ })).toHaveCount(1);
+  await expect(
+    page.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /Pendant la consultation/ }),
+  ).toHaveCount(1);
   expect(writes).toBe(0);
   await expect(page.getByRole('alert')).toHaveCount(0);
   await context.close();
 });
 
-test('administrator invites a member whose cards, comments and actions carry their own identity', async ({ page, browser, appServer }) => {
+test('administrator invites a member whose cards, comments and actions carry their own identity', async ({
+  page,
+  browser,
+  appServer,
+}) => {
   await login(page, appServer);
   await page.getByRole('button', { name: 'Mon compte', exact: true }).click();
   await page.getByLabel('Nom du membre', { exact: true }).fill('Bob');
@@ -281,7 +424,8 @@ test('administrator invites a member whose cards, comments and actions carry the
   await page.getByRole('button', { name: 'Créer une invitation', exact: true }).click();
   await expect(page.getByLabel('Lien d’invitation')).toHaveValue(/#invitation=[a-f0-9]{64}$/);
   const invitation = await page.getByLabel('Lien d’invitation').inputValue();
-  const context = await browser.newContext(); const member = await context.newPage();
+  const context = await browser.newContext();
+  const member = await context.newPage();
   await member.goto(invitation);
   await member.getByLabel('Votre nom', { exact: true }).fill('Bob');
   await member.getByLabel('Mot de passe', { exact: true }).fill('bob-browser-password-123');
@@ -293,7 +437,12 @@ test('administrator invites a member whose cards, comments and actions carry the
   await member.getByLabel('Votre commentaire').fill('Précision de Bob');
   await member.getByRole('button', { name: 'Créer la carte', exact: true }).click();
   await expect(member.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
-  await expect(member.locator('.card').filter({ has: member.getByRole('heading', { name: 'Carte créée par Bob', exact: true }) }).locator('.card-avatar')).toHaveText('B');
+  await expect(
+    member
+      .locator('.card')
+      .filter({ has: member.getByRole('heading', { name: 'Carte créée par Bob', exact: true }) })
+      .locator('.card-avatar'),
+  ).toHaveText('B');
   await expect(member.locator('.sidebar-footer .user-avatar')).toHaveText('B');
   await member.getByRole('heading', { name: 'Carte créée par Bob', exact: true }).click();
   await expect(member.locator('.card-authorship')).toContainText('Créée par Bob');
@@ -305,7 +454,9 @@ test('administrator invites a member whose cards, comments and actions carry the
   await expect(member.getByRole('heading', { name: 'Membres de l’espace', exact: true })).toHaveCount(0);
   await member.getByRole('button', { name: 'Fermer', exact: true }).click();
   await member.getByRole('button', { name: 'Informations sur le prototype', exact: true }).click();
-  await expect(member.getByRole('button', { name: 'Créer et télécharger une sauvegarde SQLite', exact: true })).toHaveCount(0);
+  await expect(
+    member.getByRole('button', { name: 'Créer et télécharger une sauvegarde SQLite', exact: true }),
+  ).toHaveCount(0);
   const memberRow = page.locator('.member-list li').filter({ hasText: 'bob@example.test' });
   await memberRow.getByRole('button', { name: 'Désactiver', exact: true }).click();
   await expect(memberRow).toContainText('Désactivé');
@@ -344,7 +495,10 @@ test.describe('first account setup', () => {
   });
 });
 
-test('follows an existing card without being its author and keeps the setting after reload', async ({ page, appServer }) => {
+test('follows an existing card without being its author and keeps the setting after reload', async ({
+  page,
+  appServer,
+}) => {
   await login(page, appServer);
   const card = seed[0].cards[0];
   const preview = page.locator('.card').filter({ has: page.getByRole('heading', { name: card.title, exact: true }) });
@@ -352,7 +506,10 @@ test('follows an existing card without being its author and keeps the setting af
   await page.getByRole('heading', { name: card.title, exact: true }).click();
   await expect(page.getByRole('button', { name: 'Suivre la carte', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Suivre la carte', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Ne plus suivre', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'Ne plus suivre', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
   await page.getByRole('button', { name: 'Terminé', exact: true }).click();
   await expect(preview.locator('.card-avatar')).toHaveAttribute('title', 'Alice');
   await page.reload();
@@ -361,7 +518,10 @@ test('follows an existing card without being its author and keeps the setting af
   await page.getByRole('heading', { name: card.title, exact: true }).click();
   await expect(page.getByRole('button', { name: 'Ne plus suivre', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Ne plus suivre', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Suivre la carte', exact: true })).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByRole('button', { name: 'Suivre la carte', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  );
   await page.getByRole('button', { name: 'Actualiser l’historique', exact: true }).click();
   await expect(page.locator('.activity-list')).toContainText('Alice ne suit plus la carte');
   await page.getByRole('button', { name: 'Terminé', exact: true }).click();
@@ -370,10 +530,16 @@ test('follows an existing card without being its author and keeps the setting af
 
 test.describe('project task execution', () => {
   test.use({ githubEnabled: true });
-  test('project execution profiles survive reload and worker diagnostics appear without configuration files', async ({ page, request, appServer }) => {
+  test('project execution profiles survive reload and worker diagnostics appear without configuration files', async ({
+    page,
+    request,
+    appServer,
+  }) => {
     await login(page, appServer);
     const project = seed[0];
-    await page.request.put(`${appServer}/api/v1/projects/${project.id}/github`, { data: { repository: 'flo91360/DefilOrdi' } });
+    await page.request.put(`${appServer}/api/v1/projects/${project.id}/github`, {
+      data: { repository: 'flo91360/DefilOrdi' },
+    });
     await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
     await page.getByText('Exécution et connexion du projet', { exact: true }).click();
     await expect(page.getByLabel('Profil d’exécution', { exact: true })).toHaveValue('defilordi');
@@ -384,19 +550,34 @@ test.describe('project task execution', () => {
     await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
     await page.getByText('Exécution et connexion du projet', { exact: true }).click();
     await expect(page.getByLabel('Profil d’exécution', { exact: true })).toHaveValue('funkart');
-    await expect(page.getByText('Fusion automatique après réussite des contrôles : export.', { exact: true })).toBeVisible();
-    const credentials = await page.request.post(`${appServer}/api/v1/agents`, { data: { name: 'Worker', projectIds: [project.id] } });
+    await expect(
+      page.getByText('Fusion automatique après réussite des contrôles : export.', { exact: true }),
+    ).toBeVisible();
+    const credentials = await page.request.post(`${appServer}/api/v1/agents`, {
+      data: { name: 'Worker', projectIds: [project.id] },
+    });
     const token = (await credentials.json()).data.token;
-    const report = await request.post(`${appServer}/api/v1/agent/projects/${project.id}/diagnostic`, { headers: { Authorization: `Bearer ${token}` }, data: { state: 'blocked', checks: [{ name: 'Godot', state: 'blocked', message: 'Godot 4.4.1 doit être installé sur le worker.' }] } });
+    const report = await request.post(`${appServer}/api/v1/agent/projects/${project.id}/diagnostic`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: {
+        state: 'blocked',
+        checks: [{ name: 'Godot', state: 'blocked', message: 'Godot 4.4.1 doit être installé sur le worker.' }],
+      },
+    });
     expect(report.status()).toBe(200);
     await page.reload();
     await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
     await page.getByText('Exécution et connexion du projet', { exact: true }).click();
     await expect(page.getByText('Godot 4.4.1 doit être installé sur le worker.', { exact: false })).toBeVisible();
   });
-  test('engine and model are project settings while effort persists on each card and is locked during a conversation', async ({ page, request, appServer }) => {
+  test('engine and model are project settings while effort persists on each card and is locked during a conversation', async ({
+    page,
+    request,
+    appServer,
+  }) => {
     await login(page, appServer);
-    const project = seed[0], card = project.cards[0];
+    const project = seed[0],
+      card = project.cards[0];
     await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
     await page.getByText('Moteur et modèle IA', { exact: true }).click();
     const models = page.getByLabel('Modèle IA', { exact: true });
@@ -419,7 +600,13 @@ test.describe('project task execution', () => {
     await expect(page.getByLabel('Effort IA', { exact: true }).locator('option[value=""]')).toHaveCount(0);
     await page.getByLabel('Effort IA', { exact: true }).selectOption('high');
     await page.getByRole('button', { name: 'Terminé', exact: true }).click();
-    await expect.poll(async () => (await (await page.request.get(`${appServer}/api/v1/projects/${project.id}/cards/${card.id}`)).json()).data.aiEffort).toBe('high');
+    await expect
+      .poll(
+        async () =>
+          (await (await page.request.get(`${appServer}/api/v1/projects/${project.id}/cards/${card.id}`)).json()).data
+            .aiEffort,
+      )
+      .toBe('high');
     await page.reload();
     await page.getByRole('heading', { name: card.title, exact: true }).click();
     await expect(page.getByLabel('Effort IA', { exact: true })).toHaveValue('high');
@@ -427,20 +614,36 @@ test.describe('project task execution', () => {
     const second = seed[1];
     const unchanged = await page.request.get(`${appServer}/api/v1/projects/${second.id}/ai`);
     expect((await unchanged.json()).data).toEqual({ engine: 'codex', model: '' });
-    await page.request.put(`${appServer}/api/v1/projects/${project.id}/github`, { data: { repository: 'owner/first' } });
-    const credentials = await page.request.post(`${appServer}/api/v1/agents`, { data: { name: 'Model agent', projectIds: [project.id] } });
-    const token = (await credentials.json()).data.token, headers = { Authorization: `Bearer ${token}` };
+    await page.request.put(`${appServer}/api/v1/projects/${project.id}/github`, {
+      data: { repository: 'owner/first' },
+    });
+    const credentials = await page.request.post(`${appServer}/api/v1/agents`, {
+      data: { name: 'Model agent', projectIds: [project.id] },
+    });
+    const token = (await credentials.json()).data.token,
+      headers = { Authorization: `Bearer ${token}` };
     const base = `${appServer}/api/v1/projects/${project.id}/cards/${card.id}/work`;
     let run = (await (await page.request.post(base, { data: {} })).json()).data;
-    const claimed = await request.post(`${base}/${run.id}/claim`, { headers, data: { version: run.version, aiSettingsSupported: true, engines: ['codex', 'claude-code'] } });
+    const claimed = await request.post(`${base}/${run.id}/claim`, {
+      headers,
+      data: { version: run.version, aiSettingsSupported: true, engines: ['codex', 'claude-code'] },
+    });
     run = (await claimed.json()).data;
     expect(run.ai).toEqual({ engine: 'claude-code', model: 'claude-sonnet-5-5', effort: 'high' });
-    await page.request.put(`${appServer}/api/v1/projects/${project.id}/ai`, { data: { engine: 'codex', model: 'another-model' } });
-    const question = await request.post(`${base}/${run.id}/question`, { headers, data: { version: run.version, leaseToken: run.leaseToken, message: 'Quelle fenêtre ?' } });
+    await page.request.put(`${appServer}/api/v1/projects/${project.id}/ai`, {
+      data: { engine: 'codex', model: 'another-model' },
+    });
+    const question = await request.post(`${base}/${run.id}/question`, {
+      headers,
+      data: { version: run.version, leaseToken: run.leaseToken, message: 'Quelle fenêtre ?' },
+    });
     expect(question.status()).toBe(200);
-    await page.reload(); await page.getByRole('heading', { name: card.title, exact: true }).click();
+    await page.reload();
+    await page.getByRole('heading', { name: card.title, exact: true }).click();
     await expect(page.getByLabel('Effort IA', { exact: true })).toBeDisabled();
-    await expect(page.getByText('Exécution : Claude Code · modèle claude-sonnet-5-5 · effort Élevé.', { exact: true })).toBeVisible();
+    await expect(
+      page.getByText('Exécution : Claude Code · modèle claude-sonnet-5-5 · effort Élevé.', { exact: true }),
+    ).toBeVisible();
     await page.getByRole('button', { name: 'Terminé', exact: true }).click();
     await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
     await page.getByText('Moteur et modèle IA', { exact: true }).click();
@@ -448,23 +651,47 @@ test.describe('project task execution', () => {
     await expect(models.locator('option[value="another-model"]')).toHaveText('another-model (modèle enregistré)');
     await page.getByRole('button', { name: 'Enregistrer les paramètres IA', exact: true }).click();
     await expect(page.getByRole('status')).toHaveText('Moteur et modèle enregistrés pour ce projet.');
-    expect((await (await page.request.get(`${appServer}/api/v1/projects/${project.id}/ai`)).json()).data).toEqual({ engine: 'codex', model: 'another-model' });
+    expect((await (await page.request.get(`${appServer}/api/v1/projects/${project.id}/ai`)).json()).data).toEqual({
+      engine: 'codex',
+      model: 'another-model',
+    });
     await models.selectOption('');
     await page.getByRole('button', { name: 'Enregistrer les paramètres IA', exact: true }).click();
-    await expect.poll(async () => (await (await page.request.get(`${appServer}/api/v1/projects/${project.id}/ai`)).json()).data.model).toBe('');
+    await expect
+      .poll(
+        async () => (await (await page.request.get(`${appServer}/api/v1/projects/${project.id}/ai`)).json()).data.model,
+      )
+      .toBe('');
   });
-  test('a question appears in the open card and its answer leads to a downloadable generated Qt file', async ({ page, request, appServer }) => {
+  test('a question appears in the open card and its answer leads to a downloadable generated Qt file', async ({
+    page,
+    request,
+    appServer,
+  }) => {
     await login(page, appServer);
-    const project = seed[0], card = project.cards[0];
-    expect((await page.request.put(`${appServer}/api/v1/projects/${project.id}/github`, { data: { repository: 'owner/forms' } })).status()).toBe(200);
-    const credentials = await page.request.post(`${appServer}/api/v1/agents`, { data: { name: 'Form agent', projectIds: [project.id] } });
+    const project = seed[0],
+      card = project.cards[0];
+    expect(
+      (
+        await page.request.put(`${appServer}/api/v1/projects/${project.id}/github`, {
+          data: { repository: 'owner/forms' },
+        })
+      ).status(),
+    ).toBe(200);
+    const credentials = await page.request.post(`${appServer}/api/v1/agents`, {
+      data: { name: 'Form agent', projectIds: [project.id] },
+    });
     const token = (await credentials.json()).data.token;
     const base = `${appServer}/api/v1/projects/${project.id}/cards/${card.id}/work`;
     const prepared = await page.request.post(base, { data: { delivery: 'github' } });
-    let run = (await prepared.json()).data, leaseToken;
+    let run = (await prepared.json()).data,
+      leaseToken;
     const headers = { Authorization: `Bearer ${token}` };
     const action = async (name, data = {}) => {
-      const response = await request.post(`${base}/${run.id}/${name}`, { headers, data: { version: run.version, leaseToken, ...data } });
+      const response = await request.post(`${base}/${run.id}/${name}`, {
+        headers,
+        data: { version: run.version, leaseToken, ...data },
+      });
       expect(response.status()).toBe(200);
       run = (await response.json()).data;
       if (run.leaseToken) leaseToken = run.leaseToken;
@@ -473,29 +700,54 @@ test.describe('project task execution', () => {
     await page.getByRole('heading', { name: card.title, exact: true }).click();
     await action('claim');
     await action('question', { message: 'Quels champs souhaitez-vous dans votre formulaire Qt ?' });
-    await expect(page.locator('.comments-section')).toContainText('Quels champs souhaitez-vous dans votre formulaire Qt ?', { timeout: 15000 });
+    await expect(page.locator('.comments-section')).toContainText(
+      'Quels champs souhaitez-vous dans votre formulaire Qt ?',
+      { timeout: 15000 },
+    );
     await page.getByLabel('Votre commentaire', { exact: true }).fill('Un champ Nom suffit.');
     await page.getByRole('button', { name: 'Publier', exact: true }).click();
-    await expect.poll(async () => {
-      const history = (await (await request.get(base, { headers })).json()).data;
-      run = history.find(item => item.id === run.id);
-      return run.state;
-    }).toBe('ready');
+    await expect
+      .poll(async () => {
+        const history = (await (await request.get(base, { headers })).json()).data;
+        run = history.find(item => item.id === run.id);
+        return run.state;
+      })
+      .toBe('ready');
     expect(run.exchanges.at(-1).answer.text).toBe('Un champ Nom suffit.');
     await action('claim');
     const xml = '<ui version="4.0"><class>PersonForm</class><widget class="QWidget" name="PersonForm"/></ui>';
-    await action('submit', { artifactOnly: true, summary: 'Votre formulaire Qt est prêt.', checks: 'Structure XML vérifiée.', links: [], files: [{ id: `generated-${run.id}-ui`, name: 'personne.ui', type: 'application/xml', size: Buffer.byteLength(xml), data: Buffer.from(xml).toString('base64') }] });
+    await action('submit', {
+      artifactOnly: true,
+      summary: 'Votre formulaire Qt est prêt.',
+      checks: 'Structure XML vérifiée.',
+      links: [],
+      files: [
+        {
+          id: `generated-${run.id}-ui`,
+          name: 'personne.ui',
+          type: 'application/xml',
+          size: Buffer.byteLength(xml),
+          data: Buffer.from(xml).toString('base64'),
+        },
+      ],
+    });
     const link = page.getByRole('link', { name: 'personne.ui', exact: true });
     await expect(link).toBeVisible({ timeout: 15000 });
     await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('done');
-    const downloading = page.waitForEvent('download'); await link.click();
+    const downloading = page.waitForEvent('download');
+    await link.click();
     const download = await downloading;
     expect(download.suggestedFilename()).toBe('personne.ui');
     expect(readFileSync(await download.path(), 'utf8')).toBe(xml);
   });
-  test('agent questions and human replies use the card discussion through automatic merge', async ({ page, request, appServer }) => {
+  test('agent questions and human replies use the card discussion through automatic merge', async ({
+    page,
+    request,
+    appServer,
+  }) => {
     await login(page, appServer);
-    const project = seed[0], card = project.cards[0];
+    const project = seed[0],
+      card = project.cards[0];
     await expect(page.getByRole('button', { name: 'Tâches du projet', exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
     await page.getByText('Dépôt GitHub et fusion automatique', { exact: true }).click();
@@ -514,55 +766,120 @@ test.describe('project task execution', () => {
     await page.getByLabel('Statut', { exact: true }).selectOption('ready');
     await page.getByRole('button', { name: 'Terminé', exact: true }).click();
     await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
-    const queue = async () => (await (await request.get(`${appServer}/api/v1/projects/${project.id}/work`, { headers: { Authorization: `Bearer ${token}` } })).json()).data[0];
-    let run = await queue(), leaseToken;
-    expect(run).toMatchObject({ objective: 'Améliorer le menu mobile', delivery: 'github', repository: 'flo91360/PlaniFiKateur' });
+    const queue = async () =>
+      (
+        await (
+          await request.get(`${appServer}/api/v1/projects/${project.id}/work`, {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+        ).json()
+      ).data[0];
+    let run = await queue(),
+      leaseToken;
+    expect(run).toMatchObject({
+      objective: 'Améliorer le menu mobile',
+      delivery: 'github',
+      repository: 'flo91360/PlaniFiKateur',
+    });
     const base = `${appServer}/api/v1/projects/${project.id}/cards/${card.id}/work`;
     const action = async (name, data = {}) => {
-      const response = await request.post(`${base}/${run.id}/${name}`, { headers: { Authorization: `Bearer ${token}` }, data: { version: run.version, leaseToken, ...data } });
-      expect(response.status()).toBe(200); run = (await response.json()).data; if (run.leaseToken) leaseToken = run.leaseToken;
+      const response = await request.post(`${base}/${run.id}/${name}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { version: run.version, leaseToken, ...data },
+      });
+      expect(response.status()).toBe(200);
+      run = (await response.json()).data;
+      if (run.leaseToken) leaseToken = run.leaseToken;
     };
-    await action('claim'); await action('question', { message: 'Dois-je conserver les raccourcis ?' });
+    await action('claim');
+    await action('question', { message: 'Dois-je conserver les raccourcis ?' });
     await page.getByRole('heading', { name: card.title, exact: true }).click();
     const discussion = page.locator('.comments-section');
     await expect(discussion).toContainText('Dois-je conserver les raccourcis ?');
     await expect(discussion).toContainText('Agent principal');
-    await expect(discussion.locator('.comment').filter({ hasText: 'Dois-je conserver les raccourcis ?' }).locator('.user-avatar')).toHaveText('IA');
+    await expect(
+      discussion.locator('.comment').filter({ hasText: 'Dois-je conserver les raccourcis ?' }).locator('.user-avatar'),
+    ).toHaveText('IA');
     await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('clarify');
     await page.getByLabel('Votre commentaire', { exact: true }).fill('Oui, conserver tous les raccourcis.');
     await page.getByRole('button', { name: 'Publier', exact: true }).click();
     await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
     await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('ready');
-    await expect(discussion.locator('.comment').filter({ hasText: 'Oui, conserver tous les raccourcis.' }).locator('.user-avatar')).toHaveText('A');
-    run = await queue(); expect(run.exchanges[0].answer.text).toBe('Oui, conserver tous les raccourcis.');
+    await expect(
+      discussion.locator('.comment').filter({ hasText: 'Oui, conserver tous les raccourcis.' }).locator('.user-avatar'),
+    ).toHaveText('A');
+    run = await queue();
+    expect(run.exchanges[0].answer.text).toBe('Oui, conserver tous les raccourcis.');
     await action('claim');
     const pullRequest = { url: 'https://github.com/flo91360/PlaniFiKateur/pull/7', headSha: 'a'.repeat(40) };
     await action('submit', { summary: 'Menu réalisé.', checks: 'Navigation mobile testée.', links: [], pullRequest });
     await expect(discussion).toContainText('Menu réalisé.', { timeout: 10000 });
     await expect(discussion.getByRole('link', { name: pullRequest.url, exact: true })).toBeVisible();
-    const event = { action: 'closed', repository: { full_name: 'flo91360/PlaniFiKateur' }, pull_request: { number: 7, merged: true, merged_at: new Date().toISOString(), merge_commit_sha: 'c'.repeat(40), head: { sha: pullRequest.headSha, repo: { full_name: 'flo91360/PlaniFiKateur' } }, base: { ref: 'main' } } };
+    const event = {
+      action: 'closed',
+      repository: { full_name: 'flo91360/PlaniFiKateur' },
+      pull_request: {
+        number: 7,
+        merged: true,
+        merged_at: new Date().toISOString(),
+        merge_commit_sha: 'c'.repeat(40),
+        head: { sha: pullRequest.headSha, repo: { full_name: 'flo91360/PlaniFiKateur' } },
+        base: { ref: 'main' },
+      },
+    };
     const raw = JSON.stringify(event);
-    const merged = await request.post(`${appServer}/api/v1/github/webhook`, { headers: { 'Content-Type': 'application/json', 'X-GitHub-Event': 'pull_request', 'X-Hub-Signature-256': 'sha256=' + createHmac('sha256', 'browser-github-secret').update(raw).digest('hex') }, data: raw });
+    const merged = await request.post(`${appServer}/api/v1/github/webhook`, {
+      headers: {
+        'Content-Type': 'application/json',
+        'X-GitHub-Event': 'pull_request',
+        'X-Hub-Signature-256': 'sha256=' + createHmac('sha256', 'browser-github-secret').update(raw).digest('hex'),
+      },
+      data: raw,
+    });
     expect(merged.status()).toBe(200);
     await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('done', { timeout: 10000 });
     await expect(discussion).toContainText('La PR a été fusionnée. La tâche est terminée.');
     await page.getByRole('button', { name: 'Terminé', exact: true }).click();
-    await page.reload(); await page.getByRole('heading', { name: card.title, exact: true }).click();
+    await page.reload();
+    await page.getByRole('heading', { name: card.title, exact: true }).click();
     await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('done');
     await expect(page.locator('.comment').filter({ hasText: 'Oui, conserver tous les raccourcis.' })).toHaveCount(1);
   });
 
-  test('a ready card is automatically queued and can be withdrawn from its status before claim', async ({ page, request, appServer }) => {
-    await login(page, appServer); const project = seed[0], card = project.cards[0];
-    expect((await page.request.put(`${appServer}/api/v1/projects/${project.id}/github`, { data: { repository: 'flo91360/PlaniFiKateur' } })).status()).toBe(200);
-    const credentials = await page.request.post(`${appServer}/api/v1/agents`, { data: { name: 'Status agent', projectIds: [project.id] } });
-    expect(credentials.status()).toBe(201); const token = (await credentials.json()).data.token;
-    const queue = async () => (await (await request.get(`${appServer}/api/v1/projects/${project.id}/work`, { headers: { Authorization: `Bearer ${token}` } })).json()).data;
+  test('a ready card is automatically queued and can be withdrawn from its status before claim', async ({
+    page,
+    request,
+    appServer,
+  }) => {
+    await login(page, appServer);
+    const project = seed[0],
+      card = project.cards[0];
+    expect(
+      (
+        await page.request.put(`${appServer}/api/v1/projects/${project.id}/github`, {
+          data: { repository: 'flo91360/PlaniFiKateur' },
+        })
+      ).status(),
+    ).toBe(200);
+    const credentials = await page.request.post(`${appServer}/api/v1/agents`, {
+      data: { name: 'Status agent', projectIds: [project.id] },
+    });
+    expect(credentials.status()).toBe(201);
+    const token = (await credentials.json()).data.token;
+    const queue = async () =>
+      (
+        await (
+          await request.get(`${appServer}/api/v1/projects/${project.id}/work`, {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+        ).json()
+      ).data;
     await page.getByRole('heading', { name: card.title, exact: true }).click();
     await page.getByLabel('Statut', { exact: true }).selectOption('ready');
     await page.getByRole('button', { name: 'Terminé', exact: true }).click();
     await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
-    const first = await queue(); expect(first).toHaveLength(1);
+    const first = await queue();
+    expect(first).toHaveLength(1);
     await page.getByRole('heading', { name: card.title, exact: true }).click();
     await expect(page.getByLabel('Statut', { exact: true })).toBeEnabled();
     await page.getByLabel('Statut', { exact: true }).selectOption('draft');
@@ -573,50 +890,71 @@ test.describe('project task execution', () => {
     await page.getByLabel('Statut', { exact: true }).selectOption('ready');
     await page.getByRole('button', { name: 'Terminé', exact: true }).click();
     await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
-    const next = await queue(); expect(next).toHaveLength(1); expect(next[0].id).not.toBe(first[0].id);
+    const next = await queue();
+    expect(next).toHaveLength(1);
+    expect(next[0].id).not.toBe(first[0].id);
   });
 
-test('interruption and recovery remain visible without replacing a local title draft', async ({ page, request, appServer }) => {
-  await login(page, appServer);
-  const project = seed[0], card = project.cards[0];
-  await page.request.put(`${appServer}/api/v1/projects/${project.id}/github`, { data: { repository: 'flo91360/PlaniFiKateur' } });
-  const credentials = await page.request.post(`${appServer}/api/v1/agents`, { data: { name: 'Recovery agent', projectIds: [project.id] } });
-  expect(credentials.status()).toBe(201); const token = (await credentials.json()).data.token;
-  const base = `${appServer}/api/v1/projects/${project.id}/cards/${card.id}/work`;
-  const prepared = await page.request.post(base, { data: {} });
-  expect(prepared.status()).toBe(201); let run = (await prepared.json()).data;
-  const action = async (name, data = {}) => {
-    const response = await request.post(`${base}/${run.id}/${name}`, { headers: { Authorization: `Bearer ${token}` }, data: { version: run.version, leaseToken: run.leaseToken, ...data } });
-    expect(response.status()).toBe(200); run = (await response.json()).data;
-  };
-  await action('claim');
-  await page.getByRole('heading', { name: card.title, exact: true }).click();
-  await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('progress', { timeout: 10000 });
-  await expect(page.getByLabel('Statut', { exact: true })).toBeDisabled();
-  await page.getByLabel('Titre de la carte', { exact: true }).fill('Brouillon local conservé');
-  await action('interrupt', { message: 'Connexion à l’outil interrompue.' });
-  await expect(page.getByLabel('Titre de la carte', { exact: true })).toBeFocused();
-  await expect.poll(async () => (await (await page.request.get(base)).json()).data[0].state).toBe('interrupted');
-  await expect(page.getByLabel('Titre de la carte', { exact: true })).toHaveValue('Brouillon local conservé');
-  await page.getByLabel('Titre de la carte', { exact: true }).fill(card.title);
-  await page.getByRole('button', { name: 'Terminé', exact: true }).click();
-  await page.getByRole('heading', { name: card.title, exact: true }).click();
-  await expect(page.locator('.comments-section')).toContainText('Connexion à l’outil interrompue.');
-  await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('ready');
-  await action('claim');
-  await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('progress', { timeout: 10000 });
+  test('interruption and recovery remain visible without replacing a local title draft', async ({
+    page,
+    request,
+    appServer,
+  }) => {
+    await login(page, appServer);
+    const project = seed[0],
+      card = project.cards[0];
+    await page.request.put(`${appServer}/api/v1/projects/${project.id}/github`, {
+      data: { repository: 'flo91360/PlaniFiKateur' },
+    });
+    const credentials = await page.request.post(`${appServer}/api/v1/agents`, {
+      data: { name: 'Recovery agent', projectIds: [project.id] },
+    });
+    expect(credentials.status()).toBe(201);
+    const token = (await credentials.json()).data.token;
+    const base = `${appServer}/api/v1/projects/${project.id}/cards/${card.id}/work`;
+    const prepared = await page.request.post(base, { data: {} });
+    expect(prepared.status()).toBe(201);
+    let run = (await prepared.json()).data;
+    const action = async (name, data = {}) => {
+      const response = await request.post(`${base}/${run.id}/${name}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { version: run.version, leaseToken: run.leaseToken, ...data },
+      });
+      expect(response.status()).toBe(200);
+      run = (await response.json()).data;
+    };
+    await action('claim');
+    await page.getByRole('heading', { name: card.title, exact: true }).click();
+    await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('progress', { timeout: 10000 });
+    await expect(page.getByLabel('Statut', { exact: true })).toBeDisabled();
+    await page.getByLabel('Titre de la carte', { exact: true }).fill('Brouillon local conservé');
+    await action('interrupt', { message: 'Connexion à l’outil interrompue.' });
+    await expect(page.getByLabel('Titre de la carte', { exact: true })).toBeFocused();
+    await expect.poll(async () => (await (await page.request.get(base)).json()).data[0].state).toBe('interrupted');
+    await expect(page.getByLabel('Titre de la carte', { exact: true })).toHaveValue('Brouillon local conservé');
+    await page.getByLabel('Titre de la carte', { exact: true }).fill(card.title);
+    await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+    await page.getByRole('heading', { name: card.title, exact: true }).click();
+    await expect(page.locator('.comments-section')).toContainText('Connexion à l’outil interrompue.');
+    await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('ready');
+    await action('claim');
+    await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('progress', { timeout: 10000 });
+  });
 });
 
-});
-
-test('administrator cancels then confirms account deletion and immediately revokes member access', async ({ page, browser, appServer }) => {
+test('administrator cancels then confirms account deletion and immediately revokes member access', async ({
+  page,
+  browser,
+  appServer,
+}) => {
   await login(page, appServer);
   await page.getByRole('button', { name: 'Mon compte', exact: true }).click();
   await page.getByLabel('Nom du membre', { exact: true }).fill('Bob');
   await page.getByLabel('E-mail du membre', { exact: true }).fill('bob@example.test');
   await page.getByRole('button', { name: 'Créer une invitation', exact: true }).click();
   await expect(page.getByLabel('Lien d’invitation')).toHaveValue(/#invitation=[a-f0-9]{64}$/);
-  const context = await browser.newContext(); const member = await context.newPage();
+  const context = await browser.newContext();
+  const member = await context.newPage();
   try {
     await member.goto(await page.getByLabel('Lien d’invitation').inputValue());
     await member.getByLabel('Votre nom', { exact: true }).fill('Bob');
@@ -635,23 +973,47 @@ test('administrator cancels then confirms account deletion and immediately revok
     await row.getByRole('button', { name: 'Confirmer la suppression du compte', exact: true }).click();
     await expect(row).toHaveCount(0);
     await expect(page.getByRole('dialog')).toContainText('Le compte de Bob a été supprimé.');
-    await expect(page.locator('.member-list li').getByRole('button', { name: 'Supprimer le compte', exact: true })).toHaveCount(0);
+    await expect(
+      page.locator('.member-list li').getByRole('button', { name: 'Supprimer le compte', exact: true }),
+    ).toHaveCount(0);
     expect((await context.request.get(`${appServer}/api/v1/workspace`)).status()).toBe(401);
-    await member.reload(); await expect(member.getByLabel('Adresse e-mail', { exact: true })).toBeVisible();
-  } finally { await context.close(); }
+    await member.reload();
+    await expect(member.getByLabel('Adresse e-mail', { exact: true })).toBeVisible();
+  } finally {
+    await context.close();
+  }
 });
-
 
 test.describe('automatic GitHub delivery', () => {
   test.use({ githubEnabled: true });
-  test('a signed tag push updates the project Infos card automatically and survives reload', async ({ page, request, appServer }) => {
+  test('a signed tag push updates the project Infos card automatically and survives reload', async ({
+    page,
+    request,
+    appServer,
+  }) => {
     await login(page, appServer);
-    const configured = await page.request.put(`${appServer}/api/v1/projects/planifikateur/github`, { data: { repository: 'owner/first' } });
+    const configured = await page.request.put(`${appServer}/api/v1/projects/planifikateur/github`, {
+      data: { repository: 'owner/first' },
+    });
     expect(configured.status()).toBe(200);
     await page.reload();
-    const infos = page.locator('.list-column').filter({ has: page.getByRole('heading', { name: 'Infos', exact: true }) });
-    const raw = JSON.stringify({ ref: 'refs/tags/v2.0.0', deleted: false, repository: { full_name: 'owner/first', pushed_at: Date.parse('2026-10-12T07:32:00Z') / 1000 } });
-    const publish = () => request.post(`${appServer}/api/v1/github/webhook`, { headers: { 'Content-Type': 'application/json', 'X-GitHub-Event': 'push', 'X-Hub-Signature-256': 'sha256=' + createHmac('sha256', 'browser-github-secret').update(raw).digest('hex') }, data: raw });
+    const infos = page
+      .locator('.list-column')
+      .filter({ has: page.getByRole('heading', { name: 'Infos', exact: true }) });
+    const raw = JSON.stringify({
+      ref: 'refs/tags/v2.0.0',
+      deleted: false,
+      repository: { full_name: 'owner/first', pushed_at: Date.parse('2026-10-12T07:32:00Z') / 1000 },
+    });
+    const publish = () =>
+      request.post(`${appServer}/api/v1/github/webhook`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-GitHub-Event': 'push',
+          'X-Hub-Signature-256': 'sha256=' + createHmac('sha256', 'browser-github-secret').update(raw).digest('hex'),
+        },
+        data: raw,
+      });
     expect((await publish()).status()).toBe(200);
     const version = infos.locator('.card').filter({ has: page.getByRole('heading', { name: 'v2.0.0', exact: true }) });
     await expect(version.locator('h3')).toHaveText('v2.0.0', { timeout: 15000 });
@@ -660,26 +1022,76 @@ test.describe('automatic GitHub delivery', () => {
     await expect(infos.locator('.card')).toHaveCount(3);
     await page.reload();
     await expect(version.locator('h3')).toHaveText('v2.0.0');
-    await expect(infos.getByRole('link', { name: 'Lire le mode d’emploi (README)' })).toHaveAttribute('href', 'https://github.com/owner/first#readme');
+    await expect(infos.getByRole('link', { name: 'Lire le mode d’emploi (README)' })).toHaveAttribute(
+      'href',
+      'https://github.com/owner/first#readme',
+    );
     await infos.locator('.card').filter({ hasText: 'Mode d’emploi du projet' }).click();
-    await expect(page.getByRole('link', { name: 'Consulter le mode d’emploi (README)' })).toHaveAttribute('href', 'https://github.com/owner/first#readme');
+    await expect(page.getByRole('link', { name: 'Consulter le mode d’emploi (README)' })).toHaveAttribute(
+      'href',
+      'https://github.com/owner/first#readme',
+    );
     await page.getByRole('button', { name: 'Terminé', exact: true }).click();
-    const downloads = { repository: 'owner/first', version: 'v2.0.0', commit: 'a'.repeat(40), folderId: 'drive-version-folder', files: [{ id: 'drive-executable-id', name: 'Product.exe', size: 100, md5: 'b'.repeat(32) }] };
-    const release = JSON.stringify({ action: 'edited', repository: { full_name: 'owner/first' }, release: { draft: false, tag_name: 'v2.0.0', published_at: '2026-10-12T07:32:00Z', body: driveReleaseBody('Nouvelle interface et corrections', downloads) } });
-    expect((await request.post(`${appServer}/api/v1/github/webhook`, { headers: { 'Content-Type': 'application/json', 'X-GitHub-Event': 'release', 'X-Hub-Signature-256': 'sha256=' + createHmac('sha256', 'browser-github-secret').update(release).digest('hex') }, data: release })).status()).toBe(200);
+    const downloads = {
+      repository: 'owner/first',
+      version: 'v2.0.0',
+      commit: 'a'.repeat(40),
+      folderId: 'drive-version-folder',
+      files: [{ id: 'drive-executable-id', name: 'Product.exe', size: 100, md5: 'b'.repeat(32) }],
+    };
+    const release = JSON.stringify({
+      action: 'edited',
+      repository: { full_name: 'owner/first' },
+      release: {
+        draft: false,
+        tag_name: 'v2.0.0',
+        published_at: '2026-10-12T07:32:00Z',
+        body: driveReleaseBody('Nouvelle interface et corrections', downloads),
+      },
+    });
+    expect(
+      (
+        await request.post(`${appServer}/api/v1/github/webhook`, {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-GitHub-Event': 'release',
+            'X-Hub-Signature-256':
+              'sha256=' + createHmac('sha256', 'browser-github-secret').update(release).digest('hex'),
+          },
+          data: release,
+        })
+      ).status(),
+    ).toBe(200);
     await page.reload();
-    const changelog = infos.locator('.card').filter({ has: page.getByRole('heading', { name: 'Changelog', exact: true }) });
+    const changelog = infos
+      .locator('.card')
+      .filter({ has: page.getByRole('heading', { name: 'Changelog', exact: true }) });
     await expect(changelog.locator('p')).toContainText('Nouvelle interface et corrections');
-    await expect(infos.getByRole('link', { name: 'Lire le changelog (CHANGELOG.md)' })).toHaveAttribute('href', 'https://github.com/owner/first/blob/HEAD/CHANGELOG.md');
+    await expect(infos.getByRole('link', { name: 'Lire le changelog (CHANGELOG.md)' })).toHaveAttribute(
+      'href',
+      'https://github.com/owner/first/blob/HEAD/CHANGELOG.md',
+    );
     await changelog.click();
     await expect(page.getByLabel('Description', { exact: true })).toHaveValue(/Nouvelle interface et corrections/);
-    await expect(page.getByRole('link', { name: 'Consulter le changelog (CHANGELOG.md)' })).toHaveAttribute('href', 'https://github.com/owner/first/blob/HEAD/CHANGELOG.md');
+    await expect(page.getByRole('link', { name: 'Consulter le changelog (CHANGELOG.md)' })).toHaveAttribute(
+      'href',
+      'https://github.com/owner/first/blob/HEAD/CHANGELOG.md',
+    );
     await page.getByRole('button', { name: 'Terminé', exact: true }).click();
     await version.click();
-    await expect(page.getByRole('link', { name: 'Télécharger cette version sur Google Drive' })).toHaveAttribute('href', 'https://drive.google.com/drive/folders/drive-version-folder');
-    await expect(page.getByRole('link', { name: 'Product.exe', exact: true })).toHaveAttribute('href', 'https://drive.google.com/file/d/drive-executable-id/view');
+    await expect(page.getByRole('link', { name: 'Télécharger cette version sur Google Drive' })).toHaveAttribute(
+      'href',
+      'https://drive.google.com/drive/folders/drive-version-folder',
+    );
+    await expect(page.getByRole('link', { name: 'Product.exe', exact: true })).toHaveAttribute(
+      'href',
+      'https://drive.google.com/file/d/drive-executable-id/view',
+    );
   });
-  test('repositories persist separately for each project and missing configuration blocks preparation', async ({ page, appServer }) => {
+  test('repositories persist separately for each project and missing configuration blocks preparation', async ({
+    page,
+    appServer,
+  }) => {
     await login(page, appServer);
     const configure = async repository => {
       await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
@@ -705,20 +1117,32 @@ test.describe('automatic GitHub delivery', () => {
     await page.reload();
     const projectMenu = page.getByRole('button', { name: 'Ouvrir les projets', exact: true });
     if (await projectMenu.isVisible()) await projectMenu.click();
-    await page.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /Klaviflo/ }).click();
+    await page
+      .getByRole('navigation', { name: 'Projets' })
+      .getByRole('button', { name: /Klaviflo/ })
+      .click();
     await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
     await page.getByText('Dépôt GitHub et fusion automatique', { exact: true }).click();
     await expect(page.getByLabel('Dépôt du projet', { exact: true })).toHaveValue('flo91360/Klaviflo');
     await page.getByRole('button', { name: 'Fermer', exact: true }).click();
     const menu = page.getByRole('button', { name: 'Ouvrir les projets', exact: true });
     if (await menu.isVisible()) await menu.click();
-    await page.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /PlaniFiKateur/ }).click();
+    await page
+      .getByRole('navigation', { name: 'Projets' })
+      .getByRole('button', { name: /PlaniFiKateur/ })
+      .click();
     await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
     await page.getByText('Dépôt GitHub et fusion automatique', { exact: true }).click();
     await expect(page.getByLabel('Dépôt du projet', { exact: true })).toHaveValue('flo91360/PlaniFiKateur');
   });
-  test('shows the linked PR and finishes only after a signed merge notification', async ({ page, request, appServer }) => {
-    await login(page, appServer); const project = seed[0], card = project.cards[0];
+  test('shows the linked PR and finishes only after a signed merge notification', async ({
+    page,
+    request,
+    appServer,
+  }) => {
+    await login(page, appServer);
+    const project = seed[0],
+      card = project.cards[0];
     await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
     const settings = page.getByRole('dialog');
     const discussion = page.locator('.comments-section');
@@ -736,20 +1160,59 @@ test.describe('automatic GitHub delivery', () => {
     await page.getByRole('button', { name: 'Terminé', exact: true }).click();
     await page.getByRole('heading', { name: card.title, exact: true }).click();
     await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('ready');
-    const credentials = await page.request.post(`${appServer}/api/v1/agents`, { data: { name: 'GitHub agent', projectIds: [project.id] } });
+    const credentials = await page.request.post(`${appServer}/api/v1/agents`, {
+      data: { name: 'GitHub agent', projectIds: [project.id] },
+    });
     const token = (await credentials.json()).data.token;
-    const queue = await request.get(`${appServer}/api/v1/projects/${project.id}/work`, { headers: { Authorization: `Bearer ${token}` } });
-    let run = (await queue.json()).data[0]; const base = `${appServer}/api/v1/projects/${project.id}/cards/${card.id}/work/${run.id}`;
-    const claimed = await request.post(`${base}/claim`, { headers: { Authorization: `Bearer ${token}` }, data: { version: run.version } });
-    run = (await claimed.json()).data; const sha = 'a'.repeat(40);
-    const submitted = await request.post(`${base}/submit`, { headers: { Authorization: `Bearer ${token}` }, data: { version: run.version, leaseToken: run.leaseToken, summary: 'Menu corrigé', checks: 'Contrôles GitHub attendus', links: [], pullRequest: { url: 'https://github.com/flo91360/PlaniFiKateur/pull/7', headSha: sha } } });
+    const queue = await request.get(`${appServer}/api/v1/projects/${project.id}/work`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    let run = (await queue.json()).data[0];
+    const base = `${appServer}/api/v1/projects/${project.id}/cards/${card.id}/work/${run.id}`;
+    const claimed = await request.post(`${base}/claim`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { version: run.version },
+    });
+    run = (await claimed.json()).data;
+    const sha = 'a'.repeat(40);
+    const submitted = await request.post(`${base}/submit`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: {
+        version: run.version,
+        leaseToken: run.leaseToken,
+        summary: 'Menu corrigé',
+        checks: 'Contrôles GitHub attendus',
+        links: [],
+        pullRequest: { url: 'https://github.com/flo91360/PlaniFiKateur/pull/7', headSha: sha },
+      },
+    });
     expect(submitted.status()).toBe(200);
     await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('review', { timeout: 10000 });
     await expect(page.getByRole('button', { name: 'Valider le résultat', exact: true })).toHaveCount(0);
-    await expect(discussion.getByRole('link', { name: 'https://github.com/flo91360/PlaniFiKateur/pull/7', exact: true })).toBeVisible();
-    const event = { action: 'closed', repository: { full_name: 'flo91360/PlaniFiKateur' }, pull_request: { number: 7, merged: true, merged_at: new Date().toISOString(), merge_commit_sha: 'b'.repeat(40), head: { sha, repo: { full_name: 'flo91360/PlaniFiKateur' } }, base: { ref: 'main' } } };
+    await expect(
+      discussion.getByRole('link', { name: 'https://github.com/flo91360/PlaniFiKateur/pull/7', exact: true }),
+    ).toBeVisible();
+    const event = {
+      action: 'closed',
+      repository: { full_name: 'flo91360/PlaniFiKateur' },
+      pull_request: {
+        number: 7,
+        merged: true,
+        merged_at: new Date().toISOString(),
+        merge_commit_sha: 'b'.repeat(40),
+        head: { sha, repo: { full_name: 'flo91360/PlaniFiKateur' } },
+        base: { ref: 'main' },
+      },
+    };
     const raw = JSON.stringify(event);
-    const response = await request.post(`${appServer}/api/v1/github/webhook`, { headers: { 'Content-Type': 'application/json', 'X-GitHub-Event': 'pull_request', 'X-Hub-Signature-256': 'sha256=' + createHmac('sha256', 'browser-github-secret').update(raw).digest('hex') }, data: raw });
+    const response = await request.post(`${appServer}/api/v1/github/webhook`, {
+      headers: {
+        'Content-Type': 'application/json',
+        'X-GitHub-Event': 'pull_request',
+        'X-Hub-Signature-256': 'sha256=' + createHmac('sha256', 'browser-github-secret').update(raw).digest('hex'),
+      },
+      data: raw,
+    });
     expect(response.status()).toBe(200);
     await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('done', { timeout: 10000 });
     await expect(discussion).toContainText('La PR a été fusionnée. La tâche est terminée.');
@@ -761,26 +1224,66 @@ test.describe('automatic GitHub delivery', () => {
 
 test.describe('Google Drive archive', () => {
   const runs = [];
-  test.use({ driveArchive: {
-    refresh: () => { runs.push(Date.now()); return Promise.resolve(); },
-    status: repository => ({ enabled: true, configurationError: '', error: '', lastRun: '2026-10-12T10:00:00Z', running: false, repository: repository || '', checkedAt: '', repositoryError: '', releases: repository ? [
-      { tag: 'v0.7.2', state: 'conflict', message: 'Un fichier différent existe déjà dans cette version. Aucun exécutable n’a été remplacé.', date: '2026-10-12T10:00:00Z', files: [] },
-      { tag: 'v0.7.1', state: 'archived', message: '', date: '2026-10-11T10:00:00Z', files: [{ name: 'DefilOrdi-Portable-0.7.1.exe', size: 10 }], folderUrl: 'https://drive.google.com/drive/folders/drive-version-folder' },
-    ] : [] }),
-  } });
-  test('project settings show each archived version, its Drive folder and the reason a version was skipped', async ({ page, appServer }) => {
+  test.use({
+    driveArchive: {
+      refresh: () => {
+        runs.push(Date.now());
+        return Promise.resolve();
+      },
+      status: repository => ({
+        enabled: true,
+        configurationError: '',
+        error: '',
+        lastRun: '2026-10-12T10:00:00Z',
+        running: false,
+        repository: repository || '',
+        checkedAt: '',
+        repositoryError: '',
+        releases: repository
+          ? [
+              {
+                tag: 'v0.7.2',
+                state: 'conflict',
+                message: 'Un fichier différent existe déjà dans cette version. Aucun exécutable n’a été remplacé.',
+                date: '2026-10-12T10:00:00Z',
+                files: [],
+              },
+              {
+                tag: 'v0.7.1',
+                state: 'archived',
+                message: '',
+                date: '2026-10-11T10:00:00Z',
+                files: [{ name: 'DefilOrdi-Portable-0.7.1.exe', size: 10 }],
+                folderUrl: 'https://drive.google.com/drive/folders/drive-version-folder',
+              },
+            ]
+          : [],
+      }),
+    },
+  });
+  test('project settings show each archived version, its Drive folder and the reason a version was skipped', async ({
+    page,
+    appServer,
+  }) => {
     await login(page, appServer);
     const project = seed[0];
     await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
     await page.getByText('Archivage des .exe sur Google Drive', { exact: true }).click();
     await expect(page.getByText('Associez un dépôt GitHub au projet : ses Releases', { exact: false })).toBeVisible();
     await page.getByRole('button', { name: 'Fermer', exact: true }).click();
-    await page.request.put(`${appServer}/api/v1/projects/${project.id}/github`, { data: { repository: 'flo91360/DefilOrdi' } });
+    await page.request.put(`${appServer}/api/v1/projects/${project.id}/github`, {
+      data: { repository: 'flo91360/DefilOrdi' },
+    });
     await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
     await page.getByText('Archivage des .exe sur Google Drive', { exact: true }).click();
     await expect(page.getByText('DefilOrdi/<version>/', { exact: true })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Ouvrir le dossier', exact: true })).toHaveAttribute('href', 'https://drive.google.com/drive/folders/drive-version-folder');
-    await expect(page.getByText('Non archivée : fichiers différents pour une version existante', { exact: false })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Ouvrir le dossier', exact: true })).toHaveAttribute(
+      'href',
+      'https://drive.google.com/drive/folders/drive-version-folder',
+    );
+    await expect(
+      page.getByText('Non archivée : fichiers différents pour une version existante', { exact: false }),
+    ).toBeVisible();
     const before = runs.length;
     await page.getByRole('button', { name: 'Vérifier les Releases maintenant', exact: true }).click();
     await expect.poll(() => runs.length).toBeGreaterThan(before);
@@ -791,24 +1294,48 @@ test.describe('Google Drive archive', () => {
 const fakeSpeech = () => {
   window.__speechStarts = 0;
   window.SpeechRecognition = window.webkitSpeechRecognition = class {
-    start() { window.__speech = this; window.__speechStarts++; this.results = []; }
-    stop() { setTimeout(() => this.onend?.(), 0); }
-    abort() { setTimeout(() => this.onend?.(), 0); }
-    say(transcript, isFinal) { this.results = [...this.results.filter(result => result.isFinal), Object.assign([{ transcript }], { isFinal })]; this.onresult?.({ resultIndex: 0, results: this.results }); }
+    start() {
+      window.__speech = this;
+      window.__speechStarts++;
+      this.results = [];
+    }
+    stop() {
+      setTimeout(() => this.onend?.(), 0);
+    }
+    abort() {
+      setTimeout(() => this.onend?.(), 0);
+    }
+    say(transcript, isFinal) {
+      this.results = [...this.results.filter(result => result.isFinal), Object.assign([{ transcript }], { isFinal })];
+      this.onresult?.({ resultIndex: 0, results: this.results });
+    }
   };
 };
 
-test('dictation is unavailable without browser support and the magic wand explains a missing server key', async ({ page, appServer }) => {
-  await page.addInitScript(() => { delete window.SpeechRecognition; delete window.webkitSpeechRecognition; });
+test('dictation is unavailable without browser support and the magic wand explains a missing server key', async ({
+  page,
+  appServer,
+}) => {
+  await page.addInitScript(() => {
+    delete window.SpeechRecognition;
+    delete window.webkitSpeechRecognition;
+  });
   await login(page, appServer);
   await page.getByRole('button', { name: 'Ajouter une carte dans Améliorations', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Reformuler avec l’IA', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Dicter la description', exact: true }).click();
-  await expect(page.getByRole('alert')).toHaveText('La dictée n’est pas prise en charge par ce navigateur. Utilisez Chrome, Edge ou Safari.');
+  await expect(page.getByRole('alert')).toHaveText(
+    'La dictée n’est pas prise en charge par ce navigateur. Utilisez Chrome, Edge ou Safari.',
+  );
   await page.getByLabel('Titre de la carte', { exact: true }).fill('Export');
   await page.getByLabel('Description', { exact: true }).fill('exporter les cartes');
   await page.getByRole('button', { name: 'Reformuler avec l’IA', exact: true }).click();
-  await expect(page.getByText('La reformulation IA n’est pas configurée : ajoutez CLAUDE_CODE_OAUTH_TOKEN (créé avec « claude setup-token ») aux variables du serveur du site.', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText(
+      'La reformulation IA n’est pas configurée : ajoutez CLAUDE_CODE_OAUTH_TOKEN (créé avec « claude setup-token ») aux variables du serveur du site.',
+      { exact: true },
+    ),
+  ).toBeVisible();
   await expect(page.getByLabel('Description', { exact: true })).toHaveValue('exporter les cartes');
 });
 
@@ -818,23 +1345,53 @@ test.describe('description assistant', () => {
   const query = ({ prompt }) => {
     calls.push(prompt);
     const answered = prompt.includes('Réponse : En CSV');
-    const result = answered ? { prompt: 'Objectif\nAjouter un export CSV de la liste des cartes.', questions: [] } : { prompt: 'Objectif\nAjouter un export de la liste des cartes.\nÀ préciser : format.', questions: ['Quel format de fichier ?'] };
+    const result = answered
+      ? { prompt: 'Objectif\nAjouter un export CSV de la liste des cartes.', questions: [] }
+      : {
+          prompt: 'Objectif\nAjouter un export de la liste des cartes.\nÀ préciser : format.',
+          questions: ['Quel format de fichier ?'],
+        };
     return (async function* () {
       yield { type: 'system', subtype: 'init', model: 'claude-opus-5-5' };
       yield { type: 'result', subtype: 'success', is_error: false, structured_output: result };
     })();
   };
-  const repositoryContext = { get: async repository => repository === 'owner/planifikateur' ? [{ name: 'README', content: 'Le tableau exporte déjà les projets en JSON.' }, { name: 'CLAUDE.md', content: 'Interface en français.' }] : [] };
-  test.use({ refiner: createRefiner({ token: 'browser-subscription-secret', query, directory: join(tmpdir(), 'planifikateur-browser-refine') }), repositoryContext });
+  const repositoryContext = {
+    get: async repository =>
+      repository === 'owner/planifikateur'
+        ? [
+            { name: 'README', content: 'Le tableau exporte déjà les projets en JSON.' },
+            { name: 'CLAUDE.md', content: 'Interface en français.' },
+          ]
+        : [],
+  };
+  test.use({
+    refiner: createRefiner({
+      token: 'browser-subscription-secret',
+      query,
+      directory: join(tmpdir(), 'planifikateur-browser-refine'),
+    }),
+    repositoryContext,
+  });
 
-  test('a dictated description is saved, then clarified by the magic wand and can be restored', async ({ page, appServer }) => {
+  test('a dictated description is saved, then clarified by the magic wand and can be restored', async ({
+    page,
+    appServer,
+  }) => {
     calls.length = 0;
     await page.addInitScript(fakeSpeech);
     await login(page, appServer);
-    const project = seed[0], card = project.cards[0];
+    const project = seed[0],
+      card = project.cards[0];
     const cardUrl = `${appServer}/api/v1/projects/${project.id}/cards/${card.id}`;
     const savedDescription = async () => (await (await page.request.get(cardUrl)).json()).data.description;
-    expect((await page.request.put(`${appServer}/api/v1/projects/${project.id}/github`, { data: { repository: 'owner/planifikateur' } })).status()).toBe(200);
+    expect(
+      (
+        await page.request.put(`${appServer}/api/v1/projects/${project.id}/github`, {
+          data: { repository: 'owner/planifikateur' },
+        })
+      ).status(),
+    ).toBe(200);
     await page.getByRole('heading', { name: card.title, exact: true }).click();
     const description = page.getByLabel('Description', { exact: true });
     await description.fill('');
@@ -856,16 +1413,22 @@ test.describe('description assistant', () => {
 
     await page.getByRole('button', { name: 'Reformuler avec l’IA', exact: true }).click();
     const proposal = page.getByRole('region', { name: 'Proposition de l’IA', exact: true });
-    await expect(proposal.getByLabel('Demande reformulée', { exact: true })).toHaveValue('Objectif\nAjouter un export de la liste des cartes.\nÀ préciser : format.');
+    await expect(proposal.getByLabel('Demande reformulée', { exact: true })).toHaveValue(
+      'Objectif\nAjouter un export de la liste des cartes.\nÀ préciser : format.',
+    );
     await expect(description).toHaveValue('Ajouter un export de la liste des cartes');
-    await expect(proposal.getByText('Documentation du dépôt utilisée : README, CLAUDE.md', { exact: true })).toBeVisible();
+    await expect(
+      proposal.getByText('Documentation du dépôt utilisée : README, CLAUDE.md', { exact: true }),
+    ).toBeVisible();
     expect(calls[0]).toContain('<<<README\nLe tableau exporte déjà les projets en JSON.\n>>>');
     expect(calls[0]).toContain(`Titre de la carte : ${card.title}`);
     expect(calls[0]).toContain('Ajouter un export de la liste des cartes');
     await expect(proposal.getByRole('button', { name: 'Reformuler avec mes réponses', exact: true })).toBeDisabled();
     await proposal.getByLabel('Réponse : Quel format de fichier ?', { exact: true }).fill('En CSV');
     await proposal.getByRole('button', { name: 'Reformuler avec mes réponses', exact: true }).click();
-    await expect(proposal.getByLabel('Demande reformulée', { exact: true })).toHaveValue('Objectif\nAjouter un export CSV de la liste des cartes.');
+    await expect(proposal.getByLabel('Demande reformulée', { exact: true })).toHaveValue(
+      'Objectif\nAjouter un export CSV de la liste des cartes.',
+    );
     await expect(proposal.getByText('Points à préciser', { exact: true })).toHaveCount(0);
     expect(calls[1]).toContain('Question : Quel format de fichier ?\nRéponse : En CSV');
     await proposal.getByRole('button', { name: 'Remplacer la description', exact: true }).click();
@@ -880,15 +1443,25 @@ test.describe('description assistant', () => {
   });
 });
 
-
-test('adds another member to card followers and preserves their ability to unsubscribe', async ({ page, request, browser, appServer }) => {
+test('adds another member to card followers and preserves their ability to unsubscribe', async ({
+  page,
+  request,
+  browser,
+  appServer,
+}) => {
   await login(page, appServer);
-  const adminResponse = await request.post(`${appServer}/api/v1/session`, { data: { email: testEmail, password: testPassword } });
+  const adminResponse = await request.post(`${appServer}/api/v1/session`, {
+    data: { email: testEmail, password: testPassword },
+  });
   expect(adminResponse.ok()).toBeTruthy();
-  const invitation = await (await request.post(`${appServer}/api/v1/users`, { data: { name: 'Bob', email: 'bob@example.test' } })).json();
+  const invitation = await (
+    await request.post(`${appServer}/api/v1/users`, { data: { name: 'Bob', email: 'bob@example.test' } })
+  ).json();
   const bobContext = await browser.newContext();
   try {
-    const accepted = await bobContext.request.post(`${appServer}/api/v1/accounts/accept`, { data: { token: invitation.data.token, name: 'Bob', password: 'bob-personal-password-123' } });
+    const accepted = await bobContext.request.post(`${appServer}/api/v1/accounts/accept`, {
+      data: { token: invitation.data.token, name: 'Bob', password: 'bob-personal-password-123' },
+    });
     expect(accepted.ok()).toBeTruthy();
     const card = seed[0].cards[0];
     const preview = page.locator('.card').filter({ has: page.getByRole('heading', { name: card.title, exact: true }) });
@@ -913,7 +1486,9 @@ test('adds another member to card followers and preserves their ability to unsub
     await expect(preview.locator('.card-avatar')).toHaveText(['B']);
     await page.getByRole('heading', { name: card.title, exact: true }).click();
     await expect(page.getByRole('list', { name: 'Membres abonnés' })).toHaveText('Bob');
-    await expect(page.getByLabel('Membre à abonner').locator(`option[value="${invitation.data.user.id}"]`)).toHaveAttribute('disabled', '');
+    await expect(
+      page.getByLabel('Membre à abonner').locator(`option[value="${invitation.data.user.id}"]`),
+    ).toHaveAttribute('disabled', '');
     const bobPage = await bobContext.newPage();
     await bobPage.goto(appServer);
     await bobPage.getByRole('heading', { name: card.title, exact: true }).click();
@@ -925,5 +1500,7 @@ test('adds another member to card followers and preserves their ability to unsub
     await page.reload();
     await page.getByRole('heading', { name: card.title, exact: true }).click();
     await expect(page.getByText('Aucun membre ne suit cette carte.', { exact: true })).toBeVisible();
-  } finally { await bobContext.close(); }
+  } finally {
+    await bobContext.close();
+  }
 });

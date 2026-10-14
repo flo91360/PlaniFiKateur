@@ -11,13 +11,24 @@ if (!['backup', 'restore'].includes(action) || (action === 'restore' && (!source
 }
 const config = readConfig();
 if (!existsSync(config.database)) throw new Error('Base cible inexistante. Vérifiez PLANIFIKATEUR_DB_PATH.');
-if (action === 'restore' && resolve(source) === config.database) throw new Error('Choisissez un fichier de sauvegarde distinct de la base active.');
+if (action === 'restore' && resolve(source) === config.database)
+  throw new Error('Choisissez un fichier de sauvegarde distinct de la base active.');
 const store = createStore(config.database);
-const backups = createBackups(store, { directory: config.backupDirectory, intervalMs: config.backupIntervalMs, keep: config.backupKeep, start: false });
+const backups = createBackups(store, {
+  directory: config.backupDirectory,
+  intervalMs: config.backupIntervalMs,
+  keep: config.backupKeep,
+  start: false,
+});
 try {
   if (action === 'backup') console.log(`Sauvegarde créée : ${config.backupDirectory}/${backups.create().name}`);
   else {
     const restored = restoreBackup(store, resolve(source), backups.create);
-    console.log(`Restauration terminée : ${restored.projects.length} projets, révision ${restored.revision}. Copie de sécurité conservée dans ${config.backupDirectory}.`);
+    console.log(
+      `Restauration terminée : ${restored.projects.length} projets, révision ${restored.revision}. Copie de sécurité conservée dans ${config.backupDirectory}.`,
+    );
   }
-} finally { backups.close(); store.close(); }
+} finally {
+  backups.close();
+  store.close();
+}
