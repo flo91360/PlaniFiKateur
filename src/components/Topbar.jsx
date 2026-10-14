@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronRight, CircleHelp, FolderKanban, History, Menu } from 'lucide-react';
+import { ChevronRight, CircleHelp, FolderKanban, History, Inbox, Menu } from 'lucide-react';
 import { avatarLabel } from './Avatar.jsx';
 
 function saveLabel(saveStatus, offline) {
@@ -8,7 +8,15 @@ function saveLabel(saveStatus, offline) {
   return offline ? 'Sauvegardé sur cet appareil' : 'Sauvegardé sur le serveur';
 }
 
-export default function Topbar({ projectName, saveStatus, user, offline, onOpenSidebar, onOpenModal }) {
+export default function Topbar({
+  projectName,
+  saveStatus,
+  user,
+  offline,
+  attentionCount = 0,
+  onOpenSidebar,
+  onOpenModal,
+}) {
   return (
     <header className="topbar">
       <div className="breadcrumb">
@@ -25,6 +33,17 @@ export default function Topbar({ projectName, saveStatus, user, offline, onOpenS
           <span className={saveStatus === 'error' || saveStatus === 'conflict' ? 'error-dot' : 'online-dot'} />
           {saveLabel(saveStatus, offline)}
         </span>
+        {!offline && (
+          <button
+            className={`icon-button attention-button ${attentionCount ? 'pending' : ''}`}
+            aria-label={attentionCount ? `À traiter (${attentionCount})` : 'À traiter'}
+            title={attentionCount ? `${attentionCount} carte(s) attendent une réponse` : 'Rien à traiter'}
+            onClick={() => onOpenModal('attention')}
+          >
+            <Inbox size={19} />
+            {attentionCount > 0 && <span className="attention-count">{attentionCount}</span>}
+          </button>
+        )}
         <button className="icon-button" aria-label="Informations sur PlaniFiKateur" onClick={() => onOpenModal('info')}>
           <CircleHelp size={19} />
         </button>

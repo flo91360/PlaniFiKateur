@@ -2309,3 +2309,84 @@ textarea::placeholder {
     margin: 12px 12px 0;
   }
 }
+
+/* Boîte « À traiter » */
+.attention-button {
+  position: relative;
+}
+.attention-button.pending {
+  color: #8e6d29;
+}
+.attention-count {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: #c98a16;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 17px;
+  text-align: center;
+}
+.attention-panel {
+  padding: 20px 25px 25px;
+}
+.attention-panel > p {
+  margin: 0 0 14px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.attention-panel ul {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.attention-panel li button {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  text-align: left;
+  color: inherit;
+}
+.attention-panel li button:hover {
+  border-color: #b9d3c4;
+}
+.attention-kind {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 10px;
+  color: #8e6d29;
+}
+.attention-kind time {
+  margin-left: auto;
+  color: var(--muted);
+}
+.attention-panel strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.attention-message {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #4f625a;
+  overflow-wrap: anywhere;
+}
+.attention-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--primary);
+}
