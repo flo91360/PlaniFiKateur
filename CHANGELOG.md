@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.33 — 2026-10-14
+<!-- planifikateur:etape-7-modifications-robustes -->
+
+- **Modifications robustes** : Une modification refusée par le serveur est retirée de la page avec un message expliquant pourquoi, et les autres sont enregistrées : la page ne se fige plus. Critères, pièces jointes et étiquettes s’enregistrent élément par élément, si bien que deux personnes qui cochent la même checklist gardent toutes deux leur coche. Une erreur d’affichage montre un message au lieu d’une page blanche, et le panneau d’exécution indique son chargement au lieu de proposer trop tôt de confier la carte à l’agent.
+
 ## 0.1.32 — 2026-10-14
 <!-- planifikateur:etape-6-fiabilite-worker -->
 

@@ -17,6 +17,9 @@ import { migrateWorkspace, readWorkspace, writeWorkspace } from './workspace-tab
 import { applyChanges, ChangeError } from '../src/lib/workspace-changes.js';
 import { allows, createAccess, MEMBER_ROLES, requirements, ROLES } from './access.js';
 
+// Erreur qui refuse une demande (4xx), par opposition à une panne du serveur.
+const refusal = error => error?.status >= 400 && error.status < 500;
+
 // Un projet, une liste ou une carte présent avant et absent après ?
 export const removesContent = (before, after) => {
   const ids = projects =>
@@ -765,21 +768,69 @@ export function createStore(filename, { backupDirectory } = {}) {
     // Applique des modifications fines (voir src/lib/workspace-changes.js) sur l’état courant,
     // sans exiger de révision. Les modifications dont la cible a disparu sont ignorées et
     // renvoyées dans `skipped` ; avec `strict`, elles annulent tout.
-    change(changes, actor, { strict = false } = {}) {
+    change(changes, actor, { strict = false, partial = false } = {}) {
       return transaction(() => {
         const before = this.read();
-        const { clean, skipped } = planChanges(before, changes, actor, strict);
-        // Rien à enregistrer (modifications ignorées ou déjà appliquées) : la révision ne bouge pas.
-        if (JSON.stringify(clean) !== JSON.stringify(before.projects)) commit(before, clean, actor);
-        return { ...this.readFor(actor), skipped };
+        if (!partial) {
+          const { clean, skipped } = planChanges(before, changes, actor, strict);
+          // Rien à enregistrer (modifications ignorées ou déjà appliquées) : la révision ne bouge pas.
+          if (JSON.stringify(clean) !== JSON.stringify(before.projects)) commit(before, clean, actor);
+          return { ...this.readFor(actor), skipped };
+        }
+        // `partial` : une modification refusée (droits, contenu invalide, statut piloté par l’agent)
+        // n’empêche pas les autres. Le lot est d’abord tenté en entier ; s’il est refusé, chaque
+        // modification est rejouée seule, dans l’ordre, et les refus sont renvoyés dans `rejected`.
+        const attempt = (name, callback) => {
+          db.exec(`SAVEPOINT ${name}`);
+          // Les événements d’une tentative annulée ne doivent pas être diffusés.
+          const events = new Map(queued);
+          try {
+            const result = callback();
+            db.exec(`RELEASE ${name}`);
+            return { result };
+          } catch (error) {
+            db.exec(`ROLLBACK TO ${name}`);
+            db.exec(`RELEASE ${name}`);
+            queued = events;
+            if (!refusal(error)) throw error;
+            return { error };
+          }
+        };
+        const apply = (state, batch) => {
+          const { clean, skipped } = planChanges(state, batch, actor, false);
+          if (JSON.stringify(clean) !== JSON.stringify(state.projects)) commit(state, clean, actor);
+          return skipped;
+        };
+        const whole = attempt('batch', () => apply(before, changes));
+        if (!whole.error) return { ...this.readFor(actor), skipped: whole.result, rejected: [] };
+        if (!Array.isArray(changes)) throw whole.error;
+        const skipped = [],
+          rejected = [];
+        changes.forEach((change, index) => {
+          const one = attempt('one', () => apply(this.read(), [change]));
+          if (one.error)
+            rejected.push({ index, type: change?.type ?? null, code: one.error.code, message: one.error.message });
+          else skipped.push(...one.result.map(item => ({ ...item, index })));
+        });
+        return { ...this.readFor(actor), skipped, rejected };
       });
     },
     // Vérifie des modifications sans les enregistrer (mêmes refus que `change`) et indique si
     // elles suppriment un élément : la sauvegarde de sécurité n’est faite qu’à cette condition.
-    previewChanges(changes, actor, { strict = false } = {}) {
+    // En mode `partial`, seules les modifications acceptées comptent.
+    previewChanges(changes, actor, { strict = false, partial = false } = {}) {
       const before = this.read();
-      const { clean } = planChanges(before, changes, actor, strict);
-      return { removes: removesContent(before.projects, clean) };
+      if (!partial)
+        return { removes: removesContent(before.projects, planChanges(before, changes, actor, strict).clean) };
+      let state = before;
+      for (const change of Array.isArray(changes) ? changes : []) {
+        try {
+          state = { ...state, projects: planChanges(state, [change], actor, false).clean };
+        } catch (error) {
+          if (!refusal(error)) throw error;
+        }
+      }
+      return { removes: removesContent(before.projects, state.projects) };
     },
     hasUsers() {
       return !!db.prepare('SELECT 1 FROM users LIMIT 1').get();

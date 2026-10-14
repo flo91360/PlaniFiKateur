@@ -162,6 +162,10 @@ export default function ExecutionPanel({
             </p>
           )}
         </>
+      ) : !execution.loaded ? (
+        <p className="execution-detail" aria-busy="true">
+          Chargement de l’exécution IA…
+        </p>
       ) : (
         <p className="execution-detail">
           Aucune exécution pour cette carte. Passez-la au statut « Prête à démarrer » ou confiez-la directement à
@@ -197,7 +201,7 @@ export default function ExecutionPanel({
         />
       ) : (
         <div className="execution-actions">
-          {!active && canLaunch && (
+          {!active && canLaunch && execution.loaded && (
             <button
               className="primary-button"
               disabled={busy || !canStart}

@@ -12,6 +12,12 @@
 //   card.delete    { projectId, cardId }          card.order     { projectId, cardIds }
 //   comment.create { projectId, cardId, comment } comment.update { projectId, cardId, commentId, text }
 //   comment.delete { projectId, cardId, commentId }
+//   checklist.create { projectId, cardId, item }  checklist.update { projectId, cardId, itemId, fields }
+//   checklist.delete { projectId, cardId, itemId }
+//   attachment.create { projectId, cardId, attachment } attachment.delete { projectId, cardId, attachmentId }
+//   tag.add { projectId, cardId, tag }            tag.remove { projectId, cardId, tag }
+// Les critères, pièces jointes et étiquettes se modifient élément par élément : deux sessions qui
+// cochent des critères différents de la même carte ne s'écrasent plus.
 // Les champs gérés par le serveur (auteurs, dates, cartes Infos) ne se modifient pas ainsi.
 
 export const PROJECT_FIELDS = ['name', 'description', 'emoji', 'color'];
@@ -43,7 +49,18 @@ export const CHANGE_TYPES = [
   'comment.create',
   'comment.update',
   'comment.delete',
+  'checklist.create',
+  'checklist.update',
+  'checklist.delete',
+  'attachment.create',
+  'attachment.delete',
+  'tag.add',
+  'tag.remove',
 ];
+// Champs de carte modifiés élément par élément par diffWorkspace (toujours acceptés en entier
+// dans card.update pour les intégrations).
+const ITEM_FIELDS = ['tags', 'checklist', 'attachments'];
+export const CHECKLIST_FIELDS = ['text', 'done'];
 
 export class ChangeError extends Error {
   constructor(message) {
@@ -62,6 +79,54 @@ const changedFields = (before, after, keys) => {
   return Object.keys(fields).length ? fields : null;
 };
 
+// Modifications élément par élément d'une liste de carte (étiquettes, critères, pièces jointes),
+// ou null si elles ne reproduisent pas exactement la nouvelle liste (ordre changé, par exemple) :
+// le champ est alors envoyé en entier.
+function diffItems(key, before, after, target) {
+  if (same(before, after)) return [];
+  const changes = [];
+  if (key === 'tags') {
+    for (const tag of before) if (!after.includes(tag)) changes.push({ type: 'tag.remove', ...target, tag });
+    for (const tag of after) if (!before.includes(tag)) changes.push({ type: 'tag.add', ...target, tag });
+  } else {
+    const kind = key === 'checklist' ? 'checklist' : 'attachment';
+    const idKey = key === 'checklist' ? 'itemId' : 'attachmentId';
+    const itemKey = key === 'checklist' ? 'item' : 'attachment';
+    const previous = new Map(before.map(item => [item.id, item]));
+    const kept = new Set(idsOf(after));
+    for (const item of before)
+      if (
+        !kept.has(item.id) ||
+        (kind === 'attachment' &&
+          !same(
+            item,
+            after.find(next => next.id === item.id),
+          ))
+      )
+        changes.push({ type: `${kind}.delete`, ...target, [idKey]: item.id });
+    for (const item of after) {
+      const old = previous.get(item.id);
+      if (!old || (kind === 'attachment' && !same(old, item)))
+        changes.push({ type: `${kind}.create`, ...target, [itemKey]: item });
+      else if (kind === 'checklist') {
+        const fields = changedFields(old, item, CHECKLIST_FIELDS);
+        if (fields) changes.push({ type: 'checklist.update', ...target, itemId: item.id, fields });
+      }
+    }
+  }
+  return same(applyItems(key, before, changes), after) ? changes : null;
+}
+
+// Applique à une liste de carte les modifications élément par élément de diffItems.
+function applyItems(key, items, changes) {
+  let next = items;
+  for (const change of changes) {
+    const result = applyItem(key, next, change);
+    if (typeof result !== 'string') next = result;
+  }
+  return next;
+}
+
 function diffCards(before, after, changes) {
   const previous = new Map(before.cards.map(card => [card.id, card]));
   const kept = new Set(idsOf(after.cards));
@@ -73,11 +138,21 @@ function diffCards(before, after, changes) {
       changes.push({ type: 'card.create', projectId: after.id, card });
       continue;
     }
-    const fields = changedFields(old, card, CARD_FIELDS);
-    if (fields) changes.push({ type: 'card.update', projectId: after.id, cardId: card.id, fields });
+    const fields =
+      changedFields(
+        old,
+        card,
+        CARD_FIELDS.filter(key => !ITEM_FIELDS.includes(key)),
+      ) || {};
+    const target = { projectId: after.id, cardId: card.id };
+    for (const key of ITEM_FIELDS) {
+      const items = diffItems(key, old[key] ?? [], card[key] ?? [], target);
+      if (items) changes.push(...items);
+      else fields[key] = card[key] ?? null;
+    }
+    if (Object.keys(fields).length) changes.push({ type: 'card.update', ...target, fields });
     const oldComments = new Map(old.comments.map(comment => [comment.id, comment]));
     const keptComments = new Set(idsOf(card.comments));
-    const target = { projectId: after.id, cardId: card.id };
     for (const comment of old.comments)
       if (!keptComments.has(comment.id)) changes.push({ type: 'comment.delete', ...target, commentId: comment.id });
     for (const comment of card.comments) {
@@ -241,6 +316,12 @@ function applyOne(projects, change) {
   const cardId = identifier(change.cardId, 'cardId');
   const card = project.cards.find(c => c.id === cardId);
   if (!card) return MISSING;
+  if (kind !== 'comment') {
+    const key = kind === 'tag' ? 'tags' : kind === 'checklist' ? 'checklist' : 'attachments';
+    const result = applyItem(key, card[key] ?? [], change);
+    if (typeof result === 'string') return result;
+    return replace({ ...project, cards: project.cards.map(c => (c.id === cardId ? { ...c, [key]: result } : c)) });
+  }
   const replaceComments = comments =>
     replace({ ...project, cards: project.cards.map(c => (c.id === cardId ? { ...c, comments } : c)) });
   if (action === 'create') {
@@ -264,6 +345,39 @@ function applyOne(projects, change) {
   if (action === 'delete') return replaceComments(card.comments.filter(c => c.id !== commentId));
   if (typeof change.text !== 'string') throw new ChangeError('text : texte attendu.');
   return replaceComments(card.comments.map(c => (c.id === commentId ? { ...c, text: change.text } : c)));
+}
+
+// Une modification d'étiquette, de critère ou de pièce jointe sur la liste `items` d'une carte :
+// nouvelle liste, ou raison pour laquelle elle ne s'applique pas.
+function applyItem(key, items, change) {
+  const action = change.type.split('.')[1];
+  if (key === 'tags') {
+    if (typeof change.tag !== 'string') throw new ChangeError('tag : texte attendu.');
+    if (action === 'add') return items.includes(change.tag) ? items : [...items, change.tag];
+    return items.filter(tag => tag !== change.tag);
+  }
+  if (key === 'checklist') {
+    if (action === 'create') {
+      const item = object(change.item, 'item');
+      identifier(item.id, 'item.id');
+      if (items.some(i => i.id === item.id)) return EXISTS;
+      return [...items, { id: item.id, text: item.text, done: item.done ?? false }];
+    }
+    const itemId = identifier(change.itemId, 'itemId');
+    if (!items.some(i => i.id === itemId)) return MISSING;
+    if (action === 'delete') return items.filter(i => i.id !== itemId);
+    const fields = fieldsOf(change.fields, CHECKLIST_FIELDS);
+    return items.map(i => (i.id === itemId ? { ...i, ...fields } : i));
+  }
+  if (action === 'create') {
+    const attachment = object(change.attachment, 'attachment');
+    identifier(attachment.id, 'attachment.id');
+    if (items.some(a => a.id === attachment.id)) return EXISTS;
+    return [...items, attachment];
+  }
+  const attachmentId = identifier(change.attachmentId, 'attachmentId');
+  if (!items.some(a => a.id === attachmentId)) return MISSING;
+  return items.filter(a => a.id !== attachmentId);
 }
 
 // Applique les modifications dans l’ordre. Une modification dont la cible a disparu (ou qui

@@ -165,3 +165,92 @@ test('a card moved to another project is deleted from one and created in the oth
     ['card.delete', 'card.create'],
   );
 });
+
+test('checklist items, attachments and tags are changed one by one, so concurrent edits are all kept', () => {
+  const before = base();
+  const target = before[0].cards[0];
+  assert.deepEqual(
+    target.checklist.map(item => [item.id, item.done]),
+    [
+      ['t1', true],
+      ['t2', false],
+    ],
+  );
+  const file = (id, text) => ({
+    id,
+    name: `${id}.txt`,
+    type: 'text/plain',
+    size: text.length,
+    data: Buffer.from(text).toString('base64'),
+  });
+  // Deux sessions lisent la même carte : l’une coche t2 et ajoute un fichier, l’autre décoche t1,
+  // retire une étiquette et en ajoute une.
+  const first = structuredClone(before);
+  first[0].cards[0].checklist[1].done = true;
+  first[0].cards[0].attachments = [file('a1', 'bonjour')];
+  const second = structuredClone(before);
+  second[0].cards[0].checklist[0].done = false;
+  second[0].cards[0].tags = [...second[0].cards[0].tags.slice(1), 'Urgent'];
+  const one = roundTrip(before, first);
+  const two = roundTrip(before, second);
+  assert.deepEqual(
+    one.map(change => change.type),
+    ['checklist.update', 'attachment.create'],
+  );
+  assert.ok(two.every(change => !(change.type === 'card.update' && 'tags' in change.fields)));
+  const merged = applyChanges(applyChanges(before, one).projects, two).projects[0].cards[0];
+  assert.deepEqual(
+    merged.checklist.map(item => [item.id, item.done]),
+    [
+      ['t1', false],
+      ['t2', true],
+    ],
+  );
+  assert.deepEqual(merged.attachments, [file('a1', 'bonjour')]);
+  assert.deepEqual(merged.tags, second[0].cards[0].tags);
+  // Retirer un fichier ou un critère, en ajouter un : une modification par élément.
+  const third = structuredClone(first);
+  third[0].cards[0].attachments = [];
+  third[0].cards[0].checklist = [
+    third[0].cards[0].checklist[0],
+    { id: 'nouveau', text: 'Vérifier sur mobile', done: false },
+  ];
+  assert.deepEqual(
+    roundTrip(first, third).map(change => change.type),
+    ['checklist.delete', 'checklist.create', 'attachment.delete'],
+  );
+});
+
+test('a reordered list is sent whole, and item changes whose target vanished are skipped', () => {
+  const before = base();
+  const after = structuredClone(before);
+  after[0].cards[0].checklist.reverse();
+  const changes = roundTrip(before, after);
+  assert.deepEqual(changes, [
+    {
+      type: 'card.update',
+      projectId: before[0].id,
+      cardId: before[0].cards[0].id,
+      fields: { checklist: after[0].cards[0].checklist },
+    },
+  ]);
+  const target = { projectId: before[0].id, cardId: before[0].cards[0].id };
+  const { skipped } = applyChanges(before, [
+    { type: 'checklist.update', ...target, itemId: 'absent', fields: { done: true } },
+    { type: 'attachment.delete', ...target, attachmentId: 'absent' },
+    { type: 'checklist.create', ...target, item: { id: 't1', text: 'Doublon', done: false } },
+    { type: 'tag.remove', ...target, tag: 'absente' },
+  ]);
+  assert.deepEqual(
+    skipped.map(item => [item.index, item.reason]),
+    [
+      [0, 'missing'],
+      [1, 'missing'],
+      [2, 'exists'],
+    ],
+  );
+  assert.throws(
+    () => applyChanges(before, [{ type: 'checklist.update', ...target, itemId: 't1', fields: { id: 'x' } }]),
+    ChangeError,
+  );
+});
