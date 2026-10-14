@@ -9,6 +9,9 @@ Un tableau de projets inspiré de Trello, conçu pour préparer des demandes con
 - Création et édition avec titre, description, statut, priorité, étiquettes et commentaires.
 - Dictée de la description au micro et reformulation de la demande par l’IA (« Reformuler avec l’IA »).
 - Recherche, filtres, affichage mobile et navigation au clavier.
+- Panneau « Exécution IA » dans le détail de carte : étapes, PR et contrôles GitHub, boutons pour confier la carte à l’agent, annuler, demander des corrections ou relancer.
+- Boîte « À traiter » avec badge : questions de l’agent et résultats à valider de tous les projets, ouverts en un clic.
+- Confirmation avant toute modification qui annulerait une exécution IA en cours.
 - Mode connecté : données SQLite partagées entre le site et l’API de consultation.
 - Comptes individuels par e-mail et mot de passe, invitations, déconnexion et gestion des membres par l’administrateur.
 - Créateur des cartes et auteur des commentaires attribués par le serveur ; historique des actions pour préparer les notifications.
@@ -110,7 +113,7 @@ Conserver également des copies hors du volume Railway.
 npm run export:preview
 ```
 
-`dist/PlaniFiKateur-apercu-v0.1.23.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
+`dist/PlaniFiKateur-apercu-v0.1.24.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 
@@ -172,7 +175,7 @@ Héberger le serveur sur une origine HTTPS avec un volume de données persistant
 
 Les comptes peuvent suivre ou ne plus suivre une carte depuis son détail, même sans en être auteurs. Les abonnements persistants alimentent les destinataires des futures notifications ; aucun envoi de notification n’est encore actif. Voir [la documentation des comptes](docs/accounts.md#suivre-une-carte).
 
-Les **Paramètres du projet** rassemblent le dépôt GitHub et les autorisations de l’agent. La discussion de chaque carte permet de suivre son traitement, répondre aux questions et consulter les livrables. Passer une carte au statut **Prête à démarrer** suffit : le worker la détecte automatiquement, sans bouton supplémentaire. La description de la carte constitue directement la demande pour l’agent. Le serveur conserve les exécutions. Le [worker Codex](docs/worker.md), lancé séparément avec `npm run worker`, prend les cartes, réalise les modifications et tests, ouvre la PR et effectue sa fusion après les contrôles GitHub réussis et la vérification de la carte. Le client de référence reste `scripts/agent-client.mjs`.
+Les **Paramètres du projet** rassemblent le dépôt GitHub et les autorisations de l’agent. La discussion de chaque carte permet de suivre son traitement, répondre aux questions et consulter les livrables. Passer une carte au statut **Prête à démarrer**, ou cliquer **Confier à l’agent** dans son panneau **Exécution IA**, suffit : le worker la détecte automatiquement. La description de la carte constitue directement la demande pour l’agent. Le serveur conserve les exécutions. Le [worker Codex](docs/worker.md), lancé séparément avec `npm run worker`, prend les cartes, réalise les modifications et tests, ouvre la PR et effectue sa fusion après les contrôles GitHub réussis et la vérification de la carte. Le client de référence reste `scripts/agent-client.mjs`.
 
 L’administrateur peut supprimer un membre depuis « Mon compte », après confirmation. L’accès est révoqué immédiatement et les contributions restent attribuées à leur auteur.
 

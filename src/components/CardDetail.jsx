@@ -164,11 +164,14 @@ const changesRequest = (card, patch) =>
 const systemCards = projectId => [`${projectId}-git-version`, `${projectId}-readme`, `${projectId}-changelog`];
 
 function CancelConfirm({ onConfirm, onRevert }) {
+  // Le bandeau s’affiche en haut du détail : le rendre visible même si la saisie a eu lieu plus bas.
+  const banner = useRef(null);
+  useEffect(() => banner.current?.scrollIntoView({ block: 'nearest' }), []);
   return (
-    <div className="execution-confirm" role="alert">
+    <div ref={banner} className="execution-confirm" role="alert">
       <p>
-        Cette modification change la demande : l’exécution IA en cours sera annulée et la carte repassera « À explorer »
-        jusqu’à ce qu’elle soit de nouveau confiée à l’agent.
+        Cette modification change la demande : l’exécution IA en cours sera annulée et la carte repassera «&nbsp;À
+        explorer&nbsp;» jusqu’à ce qu’elle soit de nouveau confiée à l’agent.
       </p>
       <button className="danger-button" onClick={onConfirm}>
         Annuler l’exécution et enregistrer
@@ -222,13 +225,18 @@ export default function CardDetail({
 
   const runActive = unfinished(execution.current);
   // Modification qui annulerait l’exécution en cours : { patch, close } en attente de confirmation.
+  // Un champ quitté (defer) reste un brouillon local : la confirmation vient à la fermeture, sans
+  // déplacer la page au moment où la personne clique ailleurs.
   const [pending, setPending] = useState(null);
-  const update = (patch, { close = false } = {}) => {
-    if (runActive && changesRequest(card, patch)) return setPending({ patch, close });
+  const update = (patch, { close = false, defer = false } = {}) => {
+    if (runActive && changesRequest(card, patch)) {
+      if (!defer) setPending({ patch, close });
+      return;
+    }
     onUpdate(patch);
     if (close) onClose();
   };
-  const saveFields = (nextDescription = description, options) => {
+  const saveFields = (nextDescription = description, options = { defer: true }) => {
     update({ title: title.trim() || card.title, description: nextDescription.trim(), tags: parseTags(tags) }, options);
     if (!title.trim()) setTitle(card.title);
   };
@@ -363,7 +371,9 @@ export default function CardDetail({
       <div className="detail-footer">
         <span>
           <Check size={14} />
-          {saveLabels[saveStatus] || 'Modifications non sauvegardées'}
+          {runActive && !fieldsSaved
+            ? 'Demande modifiée : confirmation à la fermeture'
+            : saveLabels[saveStatus] || 'Modifications non sauvegardées'}
         </span>
         <button className="primary-button" onClick={close}>
           Terminé

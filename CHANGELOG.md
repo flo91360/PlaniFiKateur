@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.24 — 2026-10-14
+<!-- planifikateur:audit-etape-3-20261014 -->
+
+- **Suivi de l’agent depuis les cartes** : Le détail de chaque carte affiche un panneau « Exécution IA » : étapes, dernier message, lien vers la PR et état des contrôles GitHub, avec des boutons pour confier la carte à l’agent, annuler l’exécution avec un motif, demander des corrections avant la fusion ou relancer l’agent. Une boîte « À traiter », dans la barre supérieure, liste avec un badge les questions de l’agent et les résultats à valider de tous les projets et ouvre la carte concernée en un clic. Modifier la demande d’une exécution en cours ou supprimer sa carte demande désormais une confirmation, avec la possibilité de rétablir la demande.
+
 ## 0.1.23 — 2026-10-14
 <!-- planifikateur:audit-etape-2-20261014 -->
 
