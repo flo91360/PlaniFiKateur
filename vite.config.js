@@ -28,7 +28,7 @@ export default defineConfig({
           if (!config.ownerToken || !config.readToken)
             throw new Error('Une exposition réseau nécessite les clés propriétaire et lecture.');
         }
-        const store = createStore(config.database);
+        const store = createStore(config.database, { backupDirectory: config.backupDirectory });
         config.versions = createVersionSync(store, { token: process.env.PLANIFIKATEUR_GITHUB_TOKEN || '' });
         config.repositoryContext = createRepositoryContext({ token: process.env.PLANIFIKATEUR_GITHUB_TOKEN || '' });
         config.backups = createBackups(store, {

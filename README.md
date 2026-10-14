@@ -12,13 +12,14 @@ Un tableau de projets inspiré de Trello, conçu pour préparer des demandes con
 - Panneau « Exécution IA » dans le détail de carte : étapes, PR et contrôles GitHub, boutons pour confier la carte à l’agent, annuler, demander des corrections ou relancer.
 - Boîte « À traiter » avec badge : questions de l’agent et résultats à valider de tous les projets, ouverts en un clic.
 - Confirmation avant toute modification qui annulerait une exécution IA en cours.
-- Mode connecté : données SQLite partagées entre le site et l’API de consultation.
+- Mode connecté : données SQLite partagées entre le site et l’API de consultation, rangées en tables (projets, listes, cartes, commentaires, pièces jointes).
+- Enregistrement des seules modifications : deux personnes peuvent travailler en même temps sur des cartes ou des champs différents sans conflit, et des routes par élément (`POST`, `PATCH`, `DELETE`) permettent aux intégrations de modifier projets, listes, cartes et commentaires.
 - Comptes individuels par e-mail et mot de passe, invitations, déconnexion et gestion des membres par l’administrateur.
 - Créateur des cartes et auteur des commentaires attribués par le serveur ; historique des actions pour préparer les notifications.
 - Accès agent en lecture seule avec une clé dédiée.
 - Consultation des cartes avec projet obligatoire, pour éviter de mélanger des titres identiques entre projets.
 - Actualisation automatique toutes les 5 secondes et au retour sur l’onglet, suspendue pendant l’édition et les sauvegardes.
-- Détection des modifications concurrentes et messages de sauvegarde fiables.
+- Fusion des modifications concurrentes par le serveur et messages de sauvegarde fiables.
 - Sauvegardes SQLite automatiques, copies avant suppression, téléchargement administrateur et restauration avec copie de sécurité.
 - Import/export JSON pour transférer des projets locaux sans remplacer les projets existants.
 
@@ -113,7 +114,7 @@ Conserver également des copies hors du volume Railway.
 npm run export:preview
 ```
 
-`dist/PlaniFiKateur-apercu-v0.1.24.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
+`dist/PlaniFiKateur-apercu-v0.1.25.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 

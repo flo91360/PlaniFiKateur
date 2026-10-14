@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { withInfos } from './infos.js';
 import { seed } from '../data/demo.js';
 import { validateWorkspace } from './workspace.js';
-import { apiFetch } from './api-client.js';
+import { apiData, apiFetch } from './api-client.js';
+import { applyChanges, diffWorkspace } from './workspace-changes.js';
 
 const STORAGE = 'planifikateur.workspace.v1';
 export const offlineMode = globalThis.__PLANIFIKATEUR_OFFLINE__ === true || globalThis.location?.protocol === 'file:';
@@ -128,6 +129,8 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
     setState(next);
     if (!offlineMode) setSaveStatus('saving');
   }, []);
+  // Envoie seulement les modifications locales : le serveur les applique sur son état courant,
+  // y compris quand une autre session a modifié d’autres éléments entre-temps.
   const flush = useCallback(async () => {
     if (offlineMode || !initialized.current || saving.current || current.current === saved.current) return;
     saving.current = true;
@@ -136,36 +139,26 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
     try {
       while (current.current !== saved.current) {
         const snapshot = current.current;
-        const data = await request('workspace', {
-          method: 'PUT',
-          headers: { 'If-Match': `"${revision.current}"` },
-          data: { projects: snapshot },
+        const changes = diffWorkspace(saved.current, snapshot);
+        if (!changes.length) {
+          // Modifications annulées avant l’envoi : l’état local redevient celui du serveur.
+          current.current = saved.current;
+          setState(saved.current);
+          continue;
+        }
+        const data = await apiData('workspace', {
+          method: 'PATCH',
+          data: { changes },
+          fallback: 'Le serveur ne répond pas.',
         });
         const canonical = validateWorkspace(data.projects);
         revision.current = data.revision;
         saved.current = canonical;
-        if (current.current === snapshot) current.current = canonical;
-        else
-          current.current = current.current.map(p => ({
-            ...p,
-            cards: p.cards.map(c => {
-              const remote = canonical.find(project => project.id === p.id)?.cards.find(card => card.id === c.id);
-              if (!remote) return c;
-              return {
-                ...c,
-                createdBy: remote.createdBy,
-                createdAt: remote.createdAt,
-                updatedBy: remote.updatedBy,
-                updatedAt: remote.updatedAt,
-                comments: c.comments.map(comment => {
-                  const stamped = remote.comments.find(item => item.id === comment.id);
-                  return stamped
-                    ? { ...comment, author: stamped.author, authorId: stamped.authorId, date: stamped.date }
-                    : comment;
-                }),
-              };
-            }),
-          }));
+        // Les modifications faites pendant l’envoi sont rejouées sur l’état renvoyé par le serveur.
+        current.current =
+          current.current === snapshot
+            ? canonical
+            : applyChanges(canonical, diffWorkspace(snapshot, current.current)).projects;
         setState(current.current);
       }
       setSaveStatus('saved');

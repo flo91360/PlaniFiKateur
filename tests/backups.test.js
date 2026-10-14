@@ -63,7 +63,7 @@ test('corrupt or foreign backups never overwrite the workspace', t => {
   foreign.close();
   const { DatabaseSync } = process.getBuiltinModule('node:sqlite');
   const db = new DatabaseSync(join(dir, 'foreign.sqlite'));
-  db.prepare('UPDATE workspace SET projects = ? WHERE id = 1').run('[{"id":"bad"}]');
+  db.prepare("UPDATE cards SET status = 'bad'").run();
   db.close();
   assert.throws(() => restoreBackup(store, join(dir, 'foreign.sqlite'), backups.create));
   assert.deepEqual(store.read(), before);

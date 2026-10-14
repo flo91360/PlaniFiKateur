@@ -4,6 +4,16 @@
 
 Les copies utilisent `VACUUM INTO` : chaque fichier SQLite est autonome et inclut les modifications validées, même si elles étaient dans le journal WAL. Les copies sont vérifiées avant publication ; un fichier partiel n’est jamais proposé au téléchargement. Les **28 dernières copies** sont conservées, y compris celles prises au démarrage et avant suppression ; cela ne garantit pas 7 jours d’historique si vous redéployez ou supprimez souvent.
 
+## Passage au stockage en tables (v0.1.25)
+
+Jusqu’à la v0.1.24, tout le tableau était un seul document JSON. À partir de la v0.1.25, projets, listes, cartes, commentaires et pièces jointes sont rangés dans des tables SQLite séparées. La conversion a lieu **une seule fois**, au premier démarrage de la nouvelle version :
+
+1. le serveur copie d’abord la base telle quelle dans le répertoire des sauvegardes, sous le nom `planifikateur-avant-tables-<date>.sqlite` ;
+2. il convertit le tableau, relit les tables et vérifie que le résultat est identique au document d’origine ;
+3. il valide la conversion en une seule transaction. Au moindre écart, rien n’est modifié et le démarrage échoue avec un message explicite.
+
+Cette copie n’est pas comptée dans les 28 sauvegardes tournantes et n’est jamais supprimée automatiquement. Pour revenir à une version antérieure à la v0.1.25, restaurer cette copie (voir ci-dessous) **avant** de redémarrer l’ancienne version : une ancienne version ne lit pas les tables. Les sauvegardes des deux formats se restaurent avec la version actuelle.
+
 ## Railway
 
 Avec `PLANIFIKATEUR_DB_PATH=/data/planifikateur.sqlite` et le volume monté à `/data`, les copies vont automatiquement dans **`/data/backups`**, sur le même volume. Aucun service supplémentaire ni clé supplémentaire n’est nécessaire.

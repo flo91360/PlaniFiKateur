@@ -76,9 +76,43 @@ La spécification **OpenAPI 3.1** est servie à `/openapi.json` et conservée da
 
 ## Synchronisation de l’interface
 
-Les routes `/api/v1/session` et `/api/v1/workspace` sont réservées à l’interface. GET session indique le compte connecté et si le premier compte administrateur doit être créé ; il n’établit pas de session anonyme. POST session reçoit `{ "email": "…", "password": "…" }` ; DELETE termine la session. GET workspace fournit projets et révision ; PUT enregistre un tableau validé, uniquement avec une session personnelle, du JSON et l’en-tête `If-Match: "révision"`.
+Les routes `/api/v1/session` et `/api/v1/workspace` sont réservées à l’interface. GET session indique le compte connecté et si le premier compte administrateur doit être créé ; il n’établit pas de session anonyme. POST session reçoit `{ "email": "…", "password": "…" }` ; DELETE termine la session. GET workspace fournit projets et révision.
 
-Une écriture périmée reçoit 409 et ne remplace jamais le tableau d’un autre navigateur. L’interface conserve alors les modifications en mémoire et permet de les exporter avant de recharger explicitement le serveur. Une sauvegarde réseau échouée peut être relancée. Les limites de contenu sont documentées dans `src/lib/workspace.js` ; une requête ne peut dépasser 4 Mo.
+L’interface enregistre ses changements avec `PATCH /api/v1/workspace` et `{ "changes": [...] }` : seulement ce qui a changé depuis sa dernière lecture (voir [Modifier le tableau](#modifier-le-tableau)). Le serveur l’applique sur son état courant, sans révision à fournir. Deux navigateurs qui modifient des projets, des cartes ou des champs différents ne sont donc plus en conflit ; pour un même champ, la dernière écriture l’emporte. La réponse contient le tableau à jour, qui apporte aussi les changements des autres sessions. `PUT /api/v1/workspace` reste disponible pour remplacer tout le tableau : il exige l’en-tête `If-Match: "révision"` et renvoie 409 si le tableau a changé depuis.
+
+Une sauvegarde refusée (statut piloté par une exécution IA, contenu invalide) ou en échec réseau laisse les modifications en mémoire. L’interface permet de les exporter, de relancer l’envoi ou de recharger explicitement le serveur. Les limites de contenu sont documentées dans `src/lib/workspace.js` ; une requête ne peut dépasser 4 Mo.
+
+## Modifier le tableau
+
+Toutes ces routes exigent une **session personnelle** de la même origine ; une clé de lecture ou d’agent reçoit 401. Les auteurs, créateurs et dates sont attribués par le serveur, et chaque changement apparaît dans l’historique. Une suppression de projet, liste ou carte est précédée d’une sauvegarde de sécurité.
+
+| Route | Usage |
+| --- | --- |
+| `PATCH /api/v1/workspace` | Lot de modifications fines, appliqué en une transaction ; réponse `{ "data": { projects, revision, updatedAt, skipped } }` |
+| `POST /api/v1/projects` | `{ name, description?, emoji?, color?, lists? }` ; trois listes par défaut et les cartes Infos ; réponse 201 |
+| `PATCH /api/v1/projects/{projectId}` | `{ name?, description?, emoji?, color? }` |
+| `DELETE /api/v1/projects/{projectId}` | Supprime le projet, ses listes et ses cartes |
+| `POST /api/v1/projects/{projectId}/lists` | `{ name, color? }` (`green`, `purple`, `orange`) ; réponse 201 |
+| `PATCH /api/v1/projects/{projectId}/lists/{listId}` | `{ name?, color? }` |
+| `DELETE /api/v1/projects/{projectId}/lists/{listId}` | Liste vide uniquement, sinon 409 (`change_not_empty`) |
+| `POST /api/v1/projects/{projectId}/cards` | `{ listId, title, description?, status?, priority?, aiEffort?, tags?, checklist?, attachments? }` ; réponse 201 |
+| `PATCH /api/v1/projects/{projectId}/cards/{cardId}` | Mêmes champs, tous facultatifs ; seuls les champs envoyés changent |
+| `DELETE /api/v1/projects/{projectId}/cards/{cardId}` | Supprime la carte, ses commentaires et ses pièces jointes |
+| `POST /api/v1/projects/{projectId}/cards/{cardId}/comments` | `{ text }` ; réponse 201 avec le commentaire signé par le serveur |
+
+Les routes par élément répondent 404 (`change_missing`) quand l’élément n’existe pas et 400 pour un champ inconnu ou un contenu invalide. Les cartes renvoyées ont la même forme qu’en consultation (projet et nom de liste). Modifier la demande d’une carte (titre, description, étiquettes, critères, pièces jointes ou effort) annule son exécution IA en cours ; changer le statut d’une carte prise en charge renvoie 409 (`managed_status`).
+
+Dans `PATCH /api/v1/workspace`, chaque modification a un `type` :
+
+| Type | Champs |
+| --- | --- |
+| `project.create`, `project.update`, `project.delete` | `project` (complet), ou `projectId` et `fields` (`name`, `description`, `emoji`, `color`) |
+| `list.create`, `list.update`, `list.delete` | `projectId` puis `list`, ou `listId` et `fields` (`name`, `color`) |
+| `card.create`, `card.update`, `card.delete` | `projectId` puis `card`, ou `cardId` et `fields` (`listId`, `title`, `description`, `status`, `priority`, `aiEffort`, `tags`, `checklist`, `attachments`) |
+| `comment.create`, `comment.update`, `comment.delete` | `projectId`, `cardId` puis `comment` (`id`, `text`), ou `commentId` et `text` |
+| `project.order`, `list.order`, `card.order` | `projectIds`, ou `projectId` et `listIds` / `cardIds` |
+
+Dans `fields`, `null` retire un champ facultatif (`aiEffort`). Un ordre ne déplace que les éléments cités : ceux ajoutés entre-temps par une autre session gardent leur place. Une modification dont la cible a disparu (carte supprimée ailleurs, par exemple), qui recrée un élément existant ou qui supprime une liste encore utilisée est ignorée et listée dans `skipped` avec son `index` et sa raison (`missing`, `exists`, `not_empty`). Le lot entier est refusé (400) si une modification est mal formée ou si le tableau obtenu est invalide. Le module `src/lib/workspace-changes.js` calcule ces modifications (`diffWorkspace`) et les applique (`applyChanges`).
 
 ## Récupérer des projets locaux
 
@@ -88,7 +122,7 @@ Les anciennes copies HTML restent indépendantes : les projets de votre navigate
 
 ## Actualisation et sauvegardes
 
-`GET /api/v1/workspace` accepte `If-None-Match: "révision"` et renvoie **304 sans corps** si la révision est inchangée. L’authentification du compte est vérifiée même pour cette réponse. Le site vérifie les changements toutes les 5 secondes et au retour sur l’onglet, sans envoyer de nouvelle écriture pour les données reçues. Les lectures sont suspendues pendant une fenêtre d’édition, un déplacement ou une sauvegarde ; une réponse arrivée pendant une saisie ou après une nouvelle sauvegarde est ignorée. Les conflits restent explicites et aucune fusion automatique n’est effectuée. Un problème réseau d’actualisation est affiché sans remplacer le tableau, puis réessayé automatiquement. La copie HTML hors ligne n’effectue aucune actualisation serveur.
+`GET /api/v1/workspace` accepte `If-None-Match: "révision"` et renvoie **304 sans corps** si la révision est inchangée. L’authentification du compte est vérifiée même pour cette réponse. Le site vérifie les changements toutes les 5 secondes et au retour sur l’onglet, sans envoyer de nouvelle écriture pour les données reçues. Les lectures sont suspendues pendant une fenêtre d’édition, un déplacement ou une sauvegarde ; une réponse arrivée pendant une saisie ou après une nouvelle sauvegarde est ignorée. Les modifications locales sont fusionnées par le serveur au moment de l’enregistrement. Un problème réseau d’actualisation est affiché sans remplacer le tableau, puis réessayé automatiquement. La copie HTML hors ligne n’effectue aucune actualisation serveur.
 
 Les routes suivantes nécessitent une **session administrateur**, vérifient l’origine et refusent la clé agent :
 
