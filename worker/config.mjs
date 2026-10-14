@@ -82,7 +82,11 @@ export function readWorkerConfig(env = process.env) {
     claudeHome: resolve(env.CLAUDE_CONFIG_DIR || `${stateRoot}/claude`),
     pollMs: number('PLANIFIKATEUR_WORKER_POLL_MS', 10000, 1000, 60000),
     heartbeatMs: number('PLANIFIKATEUR_WORKER_HEARTBEAT_MS', 60000, 1000, 120000),
-    taskTimeoutMs: number('PLANIFIKATEUR_WORKER_TIMEOUT_MS', 20 * 60000, 1000, 2 * 60 * 60000),
+    taskTimeoutMs: number('PLANIFIKATEUR_WORKER_TIMEOUT_MS', 60 * 60000, 1000, 2 * 60 * 60000),
+    setupTimeoutMs: number('PLANIFIKATEUR_WORKER_SETUP_TIMEOUT_MS', 15 * 60000, 1000, 2 * 60 * 60000),
+    modelTimeoutMs: number('PLANIFIKATEUR_WORKER_MODEL_TIMEOUT_MS', 30 * 60000, 1000, 2 * 60 * 60000),
+    testsTimeoutMs: number('PLANIFIKATEUR_WORKER_TESTS_TIMEOUT_MS', 30 * 60000, 1000, 2 * 60 * 60000),
+    publicationTimeoutMs: number('PLANIFIKATEUR_WORKER_PUBLICATION_TIMEOUT_MS', 10 * 60000, 1000, 2 * 60 * 60000),
     maxAttempts: number('PLANIFIKATEUR_WORKER_MAX_ATTEMPTS', 3, 1, 10),
     installCommands: commands('PLANIFIKATEUR_WORKER_INSTALL_COMMANDS', [['npm', 'ci']]),
     testCommands: commands('PLANIFIKATEUR_WORKER_TEST_COMMANDS', [

@@ -5,14 +5,24 @@ const EXPIRED = 'Réservation expirée : le site n’a pas confirmé sa prolonga
 // Réservation d’une exécution prise en charge : le jeton de bail accompagne chaque action,
 // un heartbeat la prolonge, et la tâche est interrompue (signal) si le site ne confirme plus.
 // `run` suit la dernière version renvoyée par le site.
+export class WorkerTimeoutError extends Error {
+  constructor(phase, duration) {
+    super(`Délai dépassé (${phase}, ${Math.round(duration / 1000)} s). Une reprise automatique est prévue.`);
+    this.name = 'WorkerTimeoutError';
+  }
+}
+
 export function createReservation({ site, run, config, log, parentSignal }) {
   const token = run.leaseToken;
   const controller = new AbortController();
-  const signal = AbortSignal.any([
-    controller.signal,
-    AbortSignal.timeout(config.taskTimeoutMs),
-    ...(parentSignal ? [parentSignal] : []),
-  ]);
+  const total = new AbortController();
+  const totalTimer = setTimeout(
+    () => total.abort(new WorkerTimeoutError('exécution complète', config.taskTimeoutMs)),
+    config.taskTimeoutMs,
+  );
+  totalTimer.unref();
+  let phaseSignal;
+  const signal = AbortSignal.any([controller.signal, total.signal, ...(parentSignal ? [parentSignal] : [])]);
   let deadline = Date.parse(run.leaseExpiresAt),
     deadlineTimer,
     failed = false,
@@ -32,7 +42,28 @@ export function createReservation({ site, run, config, log, parentSignal }) {
   };
   const reservation = {
     run,
-    signal,
+    get signal() {
+      return phaseSignal || signal;
+    },
+    async phase(name, duration, work) {
+      const phase = new AbortController();
+      const timer = setTimeout(() => phase.abort(new WorkerTimeoutError(name, duration)), duration);
+      timer.unref();
+      const current = AbortSignal.any([signal, phase.signal]);
+      phaseSignal = current;
+      try {
+        current.throwIfAborted();
+        const result = await work();
+        current.throwIfAborted();
+        return result;
+      } catch (error) {
+        if (current.aborted) throw current.reason;
+        throw error;
+      } finally {
+        clearTimeout(timer);
+        phaseSignal = undefined;
+      }
+    },
     token,
     // Vrai si la tâche a été arrêtée faute de prolongation : ce n’est pas un échec du modèle.
     get failed() {
@@ -41,7 +72,7 @@ export function createReservation({ site, run, config, log, parentSignal }) {
     get failure() {
       return controller.signal.reason?.message;
     },
-    async action(name, data = {}, actionSignal = signal) {
+    async action(name, data = {}, actionSignal = reservation.signal) {
       const response = await site.action({ ...reservation.run, leaseToken: token }, name, data, actionSignal);
       reservation.run = { ...response, leaseToken: token };
       if (reservation.run.state === 'running') renew(reservation.run);
@@ -53,6 +84,7 @@ export function createReservation({ site, run, config, log, parentSignal }) {
     },
     async stop() {
       clearInterval(heartbeat);
+      clearTimeout(totalTimer);
       await heartbeatPromise;
       clearTimeout(deadlineTimer);
     },

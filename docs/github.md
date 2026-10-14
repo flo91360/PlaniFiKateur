@@ -1,7 +1,7 @@
-# PR d’agent : tests puis fusion automatique — v0.1.28
+# PR d’agent : tests puis fusion automatique — v0.1.29
 
 Toutes les nouvelles tâches sont livrées par PR GitHub avec fusion automatique,
-sans sélection du mode de livraison. Depuis la v0.1.28, un responsable peut exiger
+sans sélection du mode de livraison. Depuis la v0.1.29, un responsable peut exiger
 dans **Paramètres du projet → Validation avant fusion** que chaque PR soit en plus
 approuvée depuis la carte (**Approuver la fusion**) : `merge-eligibility` répond
 alors `approval_required` tant que le commit testé n’est pas approuvé, et une

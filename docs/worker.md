@@ -107,7 +107,28 @@ de confiance : il exécute leur code et n’isole pas des utilisateurs hostiles.
 
 Paramètres facultatifs : `PLANIFIKATEUR_CODEX_MODEL`, `PLANIFIKATEUR_WORKER_POLL_MS`
 (10 s), `PLANIFIKATEUR_WORKER_HEARTBEAT_MS` (60 s),
-`PLANIFIKATEUR_WORKER_TIMEOUT_MS` (20 min), `PLANIFIKATEUR_WORKER_MAX_ATTEMPTS` (3).
+`PLANIFIKATEUR_WORKER_TIMEOUT_MS` (60 min), `PLANIFIKATEUR_WORKER_MAX_ATTEMPTS` (3).
+Les délais par phase sont indépendants :
+`PLANIFIKATEUR_WORKER_SETUP_TIMEOUT_MS` (15 min),
+`PLANIFIKATEUR_WORKER_MODEL_TIMEOUT_MS` (30 min),
+`PLANIFIKATEUR_WORKER_TESTS_TIMEOUT_MS` (30 min pour toutes les vérifications locales),
+`PLANIFIKATEUR_WORKER_PUBLICATION_TIMEOUT_MS` (10 min).
+Chaque valeur est en millisecondes, entre 1 s et 2 h ; le plafond global reste
+applicable à l’ensemble de la prise en charge. Une ancienne variable globale à
+20 min conserve sa valeur : la supprimer ou l’augmenter pour bénéficier du nouveau
+plafond. Les commentaires distinguent un délai dépassé, un arrêt du worker et une
+réservation perdue. Un délai dépassé entraîne une reprise automatique, sans demande
+de validation humaine.
+
+Le résultat IA et les tests réussis sont sauvegardés dans le volume du worker.
+Après une interruption des tests ou de la publication, la reprise évite un nouvel
+appel au modèle et ne relance que les vérifications restantes. Le contenu complet
+du dépôt, les fichiers générés, la demande, les réponses, les soumissions et la
+branche cible sont contrôlés avant de réutiliser ce résultat. Toute modification
+invalide cette reprise ; un test échoué est renvoyé au modèle pour correction.
+Une interruption pendant le travail IA reprend la conversation, sans présumer que
+le modèle a terminé. Conserver le volume reste nécessaire.
+
 Les commandes configurées côté service utilisent des tableaux JSON, sans shell :
 
 ```json

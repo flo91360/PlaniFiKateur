@@ -116,6 +116,10 @@ async function fixture(t, options = {}) {
     logs = [];
   const execute = async (command, args) => {
     calls.push({ command, env: args.env });
+    if (options.execute) {
+      const result = await options.execute(command, args);
+      if (result) return result;
+    }
     if (options.preset && command[0] === 'node' && command[1] === '--version')
       return { code: 0, output: `v${profile.nodeMajor}.0.0` };
     if (options.preset && command[0] === 'godot' && command[1] === '--version')
@@ -1070,6 +1074,7 @@ test('delayed PR synchronization retries automatically without using the model f
   assert.equal((await f.state.get(f.current().id)).attempts, 0);
   assert.equal((await worker.processTask(f.current())).status, 'merging');
   assert.equal(f.pr.number, 1);
+  assert.equal(f.modelCalls.length, 1);
   assert.equal(f.current().submissions.at(-1).pullRequest.headSha, f.pr.head.sha);
 });
 
@@ -1265,4 +1270,131 @@ test('GitHub client publishes structured PR bodies and uses credentials only at 
   await client.ensurePullRequest(repository, 'planifikateur/uuid', 'Title', 'Line one\nLine two');
   assert.equal(JSON.parse(calls[1].options.body).body, 'Line one\nLine two');
   assert.ok(calls.every(c => new URL(c.url).origin === 'https://api.github.com' && c.options.redirect === 'error'));
+});
+
+test('browser timeout resumes only unfinished checks with the saved result and no new model call', async t => {
+  let browserAttempts = 0;
+  const f = await fixture(t, {
+    execute: async (command, args) => {
+      if (command[1] === 'browser-check.mjs' && ++browserAttempts === 1)
+        await delay(15000, undefined, { signal: args.signal });
+    },
+  });
+  const worker = createWorker({ ...f.config, testsTimeoutMs: 5000, maxAttempts: 1 }, f.dependencies);
+  assert.equal((await worker.processTask(f.prepare())).status, 'interrupted');
+  assert.match(f.current().interruption, /Délai dépassé.*vérifications locales/);
+  assert.doesNotMatch(f.current().interruption, /worker a été arrêté/);
+  assert.equal(f.pr, undefined);
+  const saved = await f.state.get(f.current().id);
+  assert.equal(saved.checkpoint.completedTests.length, 1);
+  assert.equal(saved.checkpoint.result.summary, 'Greeting translated');
+  const restarted = createWorker(f.config, f.dependencies);
+  assert.equal((await restarted.processTask(f.current())).status, 'merging');
+  assert.equal(f.modelCalls.length, 1);
+  assert.equal(browserAttempts, 2);
+  assert.equal(f.calls.filter(c => c.command[1] === '--test').length, 1);
+});
+
+test('shutdown during tests preserves the completed IA result and the worker resumes without Codex', async t => {
+  const controller = new AbortController();
+  let interrupted = false;
+  const f = await fixture(t, {
+    execute: async (command, args) => {
+      if (command[1] === 'browser-check.mjs' && !interrupted) {
+        interrupted = true;
+        controller.abort(new Error('Deployment restart'));
+        args.signal.throwIfAborted();
+      }
+    },
+  });
+  assert.equal((await f.worker.processTask(f.prepare(), controller.signal)).status, 'interrupted');
+  assert.match(f.current().interruption, /worker a été arrêté/);
+  assert.equal((await createWorker(f.config, f.dependencies).processTask(f.current())).status, 'merging');
+  assert.equal(f.modelCalls.length, 1);
+  assert.equal(f.calls.filter(c => c.command[1] === '--test').length, 1);
+});
+
+test('changed checkout invalidates the saved IA result and previously successful checks', async t => {
+  const controller = new AbortController();
+  let interrupted = false;
+  const f = await fixture(t, {
+    execute: async (command, args) => {
+      if (command[1] === 'browser-check.mjs' && !interrupted) {
+        interrupted = true;
+        controller.abort();
+        args.signal.throwIfAborted();
+      }
+    },
+  });
+  await f.worker.processTask(f.prepare(), controller.signal);
+  await writeFile(
+    join(f.config.stateRoot, 'jobs', f.current().id, 'greet.mjs'),
+    "export const greet = () => 'changed';\n",
+  );
+  assert.equal((await f.worker.processTask(f.current())).status, 'merging');
+  assert.equal(f.modelCalls.length, 2);
+  assert.equal(f.calls.filter(c => c.command[1] === '--test').length, 2);
+});
+
+test('IA timeout is distinct from shutdown and the testing phase receives its own deadline', async t => {
+  const f = await fixture(t, {
+    model: async input => {
+      await delay(1000, undefined, { signal: input.signal });
+    },
+  });
+  const worker = createWorker({ ...f.config, modelTimeoutMs: 30 }, f.dependencies);
+  assert.equal((await worker.processTask(f.prepare())).status, 'interrupted');
+  assert.match(f.current().interruption, /Délai dépassé.*travail IA/);
+  assert.equal(f.pr, undefined);
+  assert.equal((await f.state.get(f.current().id)).checkpoint, undefined);
+});
+
+test('phase deadline configuration keeps explicit legacy values and validates every limit', () => {
+  const env = {
+    PLANIFIKATEUR_URL: 'https://example.com',
+    PLANIFIKATEUR_AGENT_TOKEN: 'agent',
+    PLANIFIKATEUR_GITHUB_TOKEN: 'github',
+  };
+  const config = readWorkerConfig(env);
+  assert.equal(config.taskTimeoutMs, 60 * 60000);
+  assert.equal(config.modelTimeoutMs, 30 * 60000);
+  assert.equal(config.testsTimeoutMs, 30 * 60000);
+  assert.equal(config.setupTimeoutMs, 15 * 60000);
+  assert.equal(config.publicationTimeoutMs, 10 * 60000);
+  assert.equal(readWorkerConfig({ ...env, PLANIFIKATEUR_WORKER_TIMEOUT_MS: '1200000' }).taskTimeoutMs, 1200000);
+  for (const phase of ['SETUP', 'MODEL', 'TESTS', 'PUBLICATION']) {
+    assert.throws(() => readWorkerConfig({ ...env, [`PLANIFIKATEUR_WORKER_${phase}_TIMEOUT_MS`]: '0' }), /invalide/);
+    assert.throws(
+      () => readWorkerConfig({ ...env, [`PLANIFIKATEUR_WORKER_${phase}_TIMEOUT_MS`]: '7200001' }),
+      /invalide/,
+    );
+  }
+});
+
+test('changed generated attachment invalidates the checkpoint even when ignored by Git', async t => {
+  const controller = new AbortController();
+  let interrupted = false;
+  const f = await fixture(t, {
+    model: async input => {
+      await writeFile(join(input.cwd, 'greet.mjs'), "export const greet = () => 'bonjour';\n");
+      await mkdir(join(input.cwd, '.planifikateur/generated'), { recursive: true });
+      await writeFile(join(input.cwd, '.planifikateur/generated/result.txt'), 'Expected result');
+      return { status: 'result', summary: 'Generated result', files: ['.planifikateur/generated/result.txt'] };
+    },
+    execute: async (command, args) => {
+      if (command[1] === 'browser-check.mjs' && !interrupted) {
+        interrupted = true;
+        controller.abort();
+        args.signal.throwIfAborted();
+      }
+    },
+  });
+  await f.worker.processTask(f.prepare(), controller.signal);
+  await writeFile(
+    join(f.config.stateRoot, 'jobs', f.current().id, '.planifikateur/generated/result.txt'),
+    'Changed result',
+  );
+  assert.equal((await f.worker.processTask(f.current())).status, 'merging');
+  assert.equal(f.modelCalls.length, 2);
+  assert.equal(f.calls.filter(c => c.command[1] === '--test').length, 2);
 });
