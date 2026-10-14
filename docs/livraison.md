@@ -35,6 +35,7 @@ demande, puis préparer avec un identifiant stable pendant toute cette livraison
 ```sh
 npm run delivery:prepare -- --id livraison-menu --title "Menu" --summary "Le menu permet de retrouver les projets."
 npm run delivery:check
+npm run format
 npm test
 npm run test:browser
 git diff --check

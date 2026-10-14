@@ -28,7 +28,8 @@ Node.js 24 est requis (`engines`).
 ```sh
 npm ci && npm ci --prefix worker   # les tests importent aussi le code du worker
 npm run dev                        # site + API sur 127.0.0.1:3000
-npm test                           # tests Node
+npm run format                     # met en forme le code (Prettier)
+npm test                           # format:check et lint (ESLint), puis tests Node
 npm run test:browser               # compile, exporte l’aperçu, puis Playwright
 ```
 
@@ -39,11 +40,15 @@ Hors CI, Playwright cherche Chromium via `PLAYWRIGHT_CHROMIUM_EXECUTABLE` ou
 
 - Textes de l’interface, messages d’erreur, documentation et commits du dépôt
   en français. Modules ES uniquement.
+- Code mis en forme par Prettier (`.prettierrc.json`, largeur 120) : lancer
+  `npm run format` avant les tests, qui refusent un code non formaté ou une
+  erreur ESLint.
 - Peu de dépendances : préférer les modules intégrés de Node (`node:sqlite`,
   `node:crypto`, `node:test`) avant d’ajouter un paquet.
 - Réponses API `{ "data": ... }`, erreurs `{ "error": { "code", "message" } }`.
-  Toute route ajoutée ou modifiée se reflète dans `public/openapi.json` et
-  `docs/api.md` (ou `docs/agents.md` pour le parcours agent).
+  Toute route ajoutée ou modifiée se reflète dans `public/openapi.json`, la
+  liste de `tests/openapi.test.js` et `docs/api.md` (ou `docs/agents.md` pour
+  le parcours agent).
 - Les secrets (`PLANIFIKATEUR_*_TOKEN`, clés GitHub, Drive, IA) ne sont jamais
   transmis au navigateur, ni écrits dans une carte, une URL, Git ou un journal.
 - Les profils d’exécution du worker sont du code installé de confiance : ne

@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.22 — 2026-10-14
+<!-- planifikateur:audit-etape-1-20261014 -->
+
+- **Hygiène du code et de l’interface** : Les textes de l’interface décrivent le parcours réel de l’agent IA au lieu d’annoncer des agents « bientôt ». Le code est mis en forme par Prettier et contrôlé par ESLint avant chaque lancement de npm test, et un test bloqué échoue après 60 secondes. Les erreurs internes de l’API sont journalisées sans paramètres ni corps de requête. La configuration d’exécution d’un projet n’accepte plus que le profil et la branche : aucune commande ne peut être imposée au worker par l’API. La spécification OpenAPI décrit toutes les routes servies, contrôlées par un test.
+
 ## 0.1.21 — 2026-10-13
 <!-- planifikateur:worker-liberer-checkouts -->
 

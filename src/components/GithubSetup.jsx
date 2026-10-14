@@ -1,11 +1,59 @@
 import React, { useState } from 'react';
 import { workRequest } from './AgentSetup.jsx';
 export default function GithubSetup({ projectId, configuration, onConfigured }) {
-  const [repository, setRepository] = useState(configuration?.repository || ''), [busy, setBusy] = useState(false), [error, setError] = useState(''), [saved, setSaved] = useState(false);
+  const [repository, setRepository] = useState(configuration?.repository || ''),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState(''),
+    [saved, setSaved] = useState(false);
   const save = async () => {
-    setBusy(true); setError(''); setSaved(false);
-    try { await workRequest(`projects/${projectId}/github`, 'PUT', { repository: repository.trim() }); onConfigured(await workRequest(`projects/${projectId}/github`)); setSaved(true); }
-    catch (cause) { setError(cause.message); } finally { setBusy(false); }
+    setBusy(true);
+    setError('');
+    setSaved(false);
+    try {
+      await workRequest(`projects/${projectId}/github`, 'PUT', { repository: repository.trim() });
+      onConfigured(await workRequest(`projects/${projectId}/github`));
+      setSaved(true);
+    } catch (cause) {
+      setError(cause.message);
+    } finally {
+      setBusy(false);
+    }
   };
-  return <details className="agent-setup"><summary>Dépôt GitHub et fusion automatique</summary><label>Dépôt du projet<input aria-label="Dépôt du projet" placeholder="propriétaire/dépôt" value={repository} onChange={e => { setRepository(e.target.value); setSaved(false); }} maxLength={200} /></label><button className="secondary-button" disabled={busy || !repository.trim()} onClick={() => void save()}>Enregistrer le dépôt</button>{saved && <p role="status">Dépôt enregistré pour ce projet.</p>}<p>Les PR seront fusionnées après réussite des contrôles du profil d’exécution. La carte sera terminée après confirmation de GitHub.</p>{!configuration?.webhookConfigured && <p>La connexion GitHub reste à configurer sur le serveur et dans le dépôt.</p>}<a href="https://github.com/flo91360/PlaniFiKateur/blob/main/docs/github.md" target="_blank" rel="noreferrer">Guide de configuration GitHub</a>{error && <p role="alert" className="form-error">{error}</p>}</details>;
+  return (
+    <details className="agent-setup">
+      <summary>Dépôt GitHub et fusion automatique</summary>
+      <label>
+        Dépôt du projet
+        <input
+          aria-label="Dépôt du projet"
+          placeholder="propriétaire/dépôt"
+          value={repository}
+          onChange={e => {
+            setRepository(e.target.value);
+            setSaved(false);
+          }}
+          maxLength={200}
+        />
+      </label>
+      <button className="secondary-button" disabled={busy || !repository.trim()} onClick={() => void save()}>
+        Enregistrer le dépôt
+      </button>
+      {saved && <p role="status">Dépôt enregistré pour ce projet.</p>}
+      <p>
+        Les PR seront fusionnées après réussite des contrôles du profil d’exécution. La carte sera terminée après
+        confirmation de GitHub.
+      </p>
+      {!configuration?.webhookConfigured && (
+        <p>La connexion GitHub reste à configurer sur le serveur et dans le dépôt.</p>
+      )}
+      <a href="https://github.com/flo91360/PlaniFiKateur/blob/main/docs/github.md" target="_blank" rel="noreferrer">
+        Guide de configuration GitHub
+      </a>
+      {error && (
+        <p role="alert" className="form-error">
+          {error}
+        </p>
+      )}
+    </details>
+  );
 }

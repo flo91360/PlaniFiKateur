@@ -12,23 +12,32 @@ export async function codexSessionModel(home, threadId) {
     const filename = (await readdir(directory, { recursive: true })).find(file => file.endsWith(`${threadId}.jsonl`));
     if (!filename) return null;
     let model = null;
-    for await (const line of createInterface({ input: createReadStream(join(directory, filename)), crlfDelay: Infinity })) {
+    for await (const line of createInterface({
+      input: createReadStream(join(directory, filename)),
+      crlfDelay: Infinity,
+    })) {
       try {
         const entry = JSON.parse(line);
-        if (['turn_context', 'session_meta'].includes(entry.type) && typeof entry.payload?.model === 'string') model = entry.payload.model;
+        if (['turn_context', 'session_meta'].includes(entry.type) && typeof entry.payload?.model === 'string')
+          model = entry.payload.model;
       } catch {}
     }
     return model;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 export const resultSchema = {
-  type: 'object', additionalProperties: false,
+  type: 'object',
+  additionalProperties: false,
   properties: {
     status: { type: 'string', enum: ['result', 'question'] },
-    summary: { type: 'string' }, question: { type: 'string' },
+    summary: { type: 'string' },
+    question: { type: 'string' },
     files: { type: 'array', items: { type: 'string' }, maxItems: 10 },
-  }, required: ['status', 'summary', 'question', 'files'],
+  },
+  required: ['status', 'summary', 'question', 'files'],
 };
 
 export function taskPrompt(run, feedback = '', attachments = []) {
@@ -59,13 +68,17 @@ export async function prepareAttachments(run, cwd) {
   const files = run.cardSnapshot.attachments || [];
   if (!files.length) return [];
   await mkdir(directory, { recursive: true, mode: 0o700 });
-  return Promise.all(files.map(async (file, index) => {
-    // Never use a supplied filename as a path, even for older/untrusted snapshots.
-    const safeName = String(file.name).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120);
-    const path = join(directory, `${index + 1}-${safeName || 'file'}`);
-    await writeFile(path, Buffer.from(file.data, 'base64'), { mode: 0o600 });
-    return { name: file.name, type: file.type, size: file.size, path };
-  }));
+  return Promise.all(
+    files.map(async (file, index) => {
+      // Never use a supplied filename as a path, even for older/untrusted snapshots.
+      const safeName = String(file.name)
+        .replace(/[^a-zA-Z0-9._-]/g, '_')
+        .slice(0, 120);
+      const path = join(directory, `${index + 1}-${safeName || 'file'}`);
+      await writeFile(path, Buffer.from(file.data, 'base64'), { mode: 0o600 });
+      return { name: file.name, type: file.type, size: file.size, path };
+    }),
+  );
 }
 
 export function createCodexRunner(config, dependencies = {}) {
@@ -73,27 +86,57 @@ export function createCodexRunner(config, dependencies = {}) {
     async run({ run, job, cwd, signal, onThread, onRuntime, feedback, environment }) {
       const { Codex } = dependencies.Codex ? dependencies : await import('@openai/codex-sdk');
       await mkdir(config.codexHome, { recursive: true, mode: 0o700 });
-      const home = join(cwd, '.planifikateur', 'home'); await mkdir(home, { recursive: true });
-      const codex = new Codex({ apiKey: config.apiKey, env: { ...commandEnvironment(environment), HOME: home, CODEX_HOME: config.codexHome, PLANIFIKATEUR_WORKER: '1', ...(environment?.ELECTRON_SKIP_BINARY_DOWNLOAD ? { ELECTRON_SKIP_BINARY_DOWNLOAD: environment.ELECTRON_SKIP_BINARY_DOWNLOAD } : {}) } });
+      const home = join(cwd, '.planifikateur', 'home');
+      await mkdir(home, { recursive: true });
+      const codex = new Codex({
+        apiKey: config.apiKey,
+        env: {
+          ...commandEnvironment(environment),
+          HOME: home,
+          CODEX_HOME: config.codexHome,
+          PLANIFIKATEUR_WORKER: '1',
+          ...(environment?.ELECTRON_SKIP_BINARY_DOWNLOAD
+            ? { ELECTRON_SKIP_BINARY_DOWNLOAD: environment.ELECTRON_SKIP_BINARY_DOWNLOAD }
+            : {}),
+        },
+      });
       const ai = job.ai || run.ai || {};
       const model = ai.model || config.model;
-      const options = { workingDirectory: cwd, sandboxMode: 'workspace-write', approvalPolicy: 'never', networkAccessEnabled: true, ...(model ? { model } : {}), ...(ai.effort ? { modelReasoningEffort: ai.effort } : {}) };
+      const options = {
+        workingDirectory: cwd,
+        sandboxMode: 'workspace-write',
+        approvalPolicy: 'never',
+        networkAccessEnabled: true,
+        ...(model ? { model } : {}),
+        ...(ai.effort ? { modelReasoningEffort: ai.effort } : {}),
+      };
       const thread = job.threadId ? codex.resumeThread(job.threadId, options) : codex.startThread(options);
       const attachments = await prepareAttachments(run, cwd);
-      const images = attachments.filter(file => ['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.type));
+      const images = attachments.filter(file =>
+        ['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.type),
+      );
       const prompt = taskPrompt(run, feedback, attachments);
-      const input = images.length ? [{ type: 'text', text: prompt }, ...images.map(file => ({ type: 'local_image', path: file.path }))] : prompt;
+      const input = images.length
+        ? [{ type: 'text', text: prompt }, ...images.map(file => ({ type: 'local_image', path: file.path }))]
+        : prompt;
       const { events } = await thread.runStreamed(input, { outputSchema: resultSchema, signal });
-      let response = '', completed = false, threadId = job.threadId;
+      let response = '',
+        completed = false,
+        threadId = job.threadId;
       for await (const event of events) {
-        if (event.type === 'thread.started') { threadId = event.thread_id; await onThread(event.thread_id); }
+        if (event.type === 'thread.started') {
+          threadId = event.thread_id;
+          await onThread(event.thread_id);
+        }
         if (event.type === 'item.completed' && event.item.type === 'agent_message') response = event.item.text;
-        if (event.type === 'turn.failed' || event.type === 'error') throw new Error('L’exécution Codex a échoué. Vérifiez sa connexion et les logs privés du service.');
+        if (event.type === 'turn.failed' || event.type === 'error')
+          throw new Error('L’exécution Codex a échoué. Vérifiez sa connexion et les logs privés du service.');
         if (event.type === 'turn.completed') completed = true;
       }
       if (!completed) throw new Error('Codex s’est arrêté sans résultat.');
       const effective = await codexSessionModel(config.codexHome, threadId);
-      if (effective || model) await onRuntime?.({ engine: 'codex', model: effective || model, effort: ai.effort || '' });
+      if (effective || model)
+        await onRuntime?.({ engine: 'codex', model: effective || model, effort: ai.effort || '' });
       return parseModelResult(response);
     },
   };

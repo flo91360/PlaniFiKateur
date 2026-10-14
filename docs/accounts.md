@@ -113,6 +113,15 @@ Routes réservées aux sessions personnelles, toujours avec le projet :
   `{ "data": { "following": true } }` (ou `false`).
 - `PUT` sur la même route avec `{ "following": true }` ou `false` définit
   uniquement le choix du compte connecté. Répéter le même choix est sans effet.
+- `GET /api/v1/projects/{projectId}/cards/{cardId}/subscribers` renvoie les
+  membres actifs avec leur suivi : `{ "data": [{ "id", "name", "following" }] }`.
+- `PUT` sur la même route avec `{ "userId": "…" }` abonne un autre membre actif
+  à la carte et renvoie la liste mise à jour ; un compte inactif ou inexistant
+  renvoie 400 (`invalid_subscriber`).
+- `GET /api/v1/projects/{projectId}/card-followers` renvoie, pour chaque carte
+  du projet, les membres actifs qui la suivent :
+  `{ "data": { "<cardId>": [{ "id", "name" }] } }`. Le tableau s’en sert pour
+  afficher les avatars des abonnés sous chaque carte.
 
 Ces routes sont inaccessibles à la clé de consultation des agents. Une carte
 absente du projet demandé renvoie 404. Elles ne modifient pas la révision du

@@ -19,7 +19,9 @@ Un tableau de projets inspiré de Trello, conçu pour préparer des demandes con
 - Sauvegardes SQLite automatiques, copies avant suppression, téléchargement administrateur et restauration avec copie de sécurité.
 - Import/export JSON pour transférer des projets locaux sans remplacer les projets existants.
 
-Les données initiales sont des exemples. Aucun agent n’est exécuté ni aucune tâche déléguée automatiquement.
+Les données initiales sont des exemples. Une carte n’est confiée à l’agent IA
+que lorsqu’elle passe au statut **Prête à démarrer**, dans un projet dont le
+dépôt GitHub et l’agent sont configurés (voir [Évolutions suivantes](#évolutions-suivantes)).
 
 ## Dicter et reformuler une demande
 
@@ -83,10 +85,13 @@ La spécification OpenAPI est disponible dans [public/openapi.json](public/opena
 ## Tests
 
 ```sh
+npm run format
 npm test
 npm run test:browser
 ```
 
+`npm test` vérifie d’abord la mise en forme (Prettier, `npm run format:check`) et
+ESLint (`npm run lint`) ; un test qui dépasse 60 secondes échoue au lieu de bloquer.
 Les tests Node vérifient l’API, l’accès en lecture seule, les filtres, la pagination, la validation, les conflits et la conservation des cartes après réouverture de SQLite.
 
 Les tests navigateur couvrent les parcours sur ordinateur et mobile, la création d’une carte consultable par l’API, le partage entre navigateurs, les erreurs de sauvegarde, les conflits, l’import JSON et la copie autonome dans des aperçus qui interdisent les soumissions natives de formulaires.
@@ -105,7 +110,7 @@ Conserver également des copies hors du volume Railway.
 npm run export:preview
 ```
 
-`dist/PlaniFiKateur-apercu-v0.1.21.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
+`dist/PlaniFiKateur-apercu-v0.1.22.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 

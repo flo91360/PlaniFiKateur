@@ -3,45 +3,62 @@ import { join } from 'node:path';
 
 export const parseProjectVersion = version => {
   const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(version || '');
-  if (!match || match.slice(1).some(n => !Number.isSafeInteger(Number(n)))) throw new Error('La version du projet doit utiliser le format majeur.mineur.correctif.');
+  if (!match || match.slice(1).some(n => !Number.isSafeInteger(Number(n))))
+    throw new Error('La version du projet doit utiliser le format majeur.mineur.correctif.');
   return match.slice(1).map(Number);
 };
 export function nextProjectVersion(base, current) {
-  const before = parseProjectVersion(base), after = parseProjectVersion(current);
+  const before = parseProjectVersion(base),
+    after = parseProjectVersion(current);
   const different = after.findIndex((n, i) => n !== before[i]);
   if (different >= 0 && after[different] > before[different]) return current;
-  before[2]++; parseProjectVersion(before.join('.')); return before.join('.');
+  before[2]++;
+  parseProjectVersion(before.join('.'));
+  return before.join('.');
 }
 export async function bumpProjectVersion(cwd, profile, command) {
   if (profile.preset === 'trameergo') return bumpQmakeVersion(cwd, profile, command);
   if (!['planifikateur', 'defilordi', 'funkart'].includes(profile.preset)) return null;
-  const npm = profile.preset !== 'funkart', file = npm ? 'package.json' : 'project.godot';
-  const regular = async name => { const details = await lstat(join(cwd, name)); if (!details.isFile()) throw new Error(`Le fichier de version ${name} doit être un fichier ordinaire.`); };
+  const npm = profile.preset !== 'funkart',
+    file = npm ? 'package.json' : 'project.godot';
+  const regular = async name => {
+    const details = await lstat(join(cwd, name));
+    if (!details.isFile()) throw new Error(`Le fichier de version ${name} doit être un fichier ordinaire.`);
+  };
   await regular(file);
   const base = await command(['git', 'show', `origin/${profile.branch}:${file}`]);
   const current = await readFile(join(cwd, file), 'utf8');
   const godotVersion = source => /^config\/version="([^"]+)"$/m.exec(source)?.[1];
-  const version = nextProjectVersion(npm ? JSON.parse(base).version : godotVersion(base), npm ? JSON.parse(current).version : godotVersion(current));
+  const version = nextProjectVersion(
+    npm ? JSON.parse(base).version : godotVersion(base),
+    npm ? JSON.parse(current).version : godotVersion(current),
+  );
   if (npm) {
     const json = JSON.parse(current);
     await regular('package-lock.json');
     const lock = JSON.parse(await readFile(join(cwd, 'package-lock.json'), 'utf8'));
-    json.version = version; lock.version = version;
+    json.version = version;
+    lock.version = version;
     if (lock.packages?.['']) lock.packages[''].version = version;
     await writeFile(join(cwd, file), JSON.stringify(json, null, 2) + '\n');
     await writeFile(join(cwd, 'package-lock.json'), JSON.stringify(lock, null, 2) + '\n');
     if (profile.preset === 'planifikateur') {
       const previous = JSON.parse(base).version;
       try {
-        if (!(await lstat(join(cwd, 'docs'))).isDirectory()) throw new Error('Le dossier docs doit être un répertoire ordinaire.');
-      } catch (error) { if (error.code !== 'ENOENT') throw error; }
+        if (!(await lstat(join(cwd, 'docs'))).isDirectory())
+          throw new Error('Le dossier docs doit être un répertoire ordinaire.');
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+      }
       for (const document of ['README.md', 'docs/agents.md', 'docs/github.md']) {
         try {
           await regular(document);
           const source = await readFile(join(cwd, document), 'utf8');
           const pattern = new RegExp(`(?<![0-9.])${previous.replaceAll('.', '\\.')}\\b`, 'g');
           await writeFile(join(cwd, document), source.replace(pattern, version));
-        } catch (error) { if (error.code !== 'ENOENT') throw error; }
+        } catch (error) {
+          if (error.code !== 'ENOENT') throw error;
+        }
       }
     }
   } else await writeFile(join(cwd, file), current.replace(/^config\/version="[^"]+"$/m, `config/version="${version}"`));
@@ -53,9 +70,11 @@ const qmakeVersion = source => /^VERSION\s*=\s*(\S+)\s*$/m.exec(source)?.[1];
 async function bumpQmakeVersion(cwd, profile, command) {
   const projects = (await readdir(cwd)).filter(name => name.endsWith('.pro'));
   if (projects.length !== 1) return null;
-  const [file] = projects, details = await lstat(join(cwd, file));
+  const [file] = projects,
+    details = await lstat(join(cwd, file));
   if (!details.isFile()) throw new Error(`Le fichier de version ${file} doit être un fichier ordinaire.`);
-  const current = await readFile(join(cwd, file), 'utf8'), base = qmakeVersion(await command(['git', 'show', `origin/${profile.branch}:${file}`]));
+  const current = await readFile(join(cwd, file), 'utf8'),
+    base = qmakeVersion(await command(['git', 'show', `origin/${profile.branch}:${file}`]));
   if (!base || !qmakeVersion(current)) return null;
   const version = nextProjectVersion(base, qmakeVersion(current));
   await writeFile(join(cwd, file), current.replace(/^VERSION\s*=\s*\S+\s*$/m, `VERSION = ${version}`));

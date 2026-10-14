@@ -1,0 +1,13 @@
+# Prettier met en forme le code (JS, JSX, MJS) et les styles CSS.
+# Documentation, workflows et fichiers JSON gardent leur format : certains
+# sont réécrits par npm ou par le module de livraison (version, changelog).
+*.md
+*.json
+*.yml
+*.yaml
+*.html
+.planifikateur/
+.data/
+dist/
+playwright-report/
+test-results/

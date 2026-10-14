@@ -10,11 +10,18 @@ export function trimDocument(content, limit = FILE_LIMIT) {
 }
 
 export function createRepositoryContext({ token = '', transport = fetch, headTtlMs = 60000, timeoutMs = 5000 } = {}) {
-  const heads = new Map(), documents = new Map();
+  const heads = new Map(),
+    documents = new Map();
   const request = async (path, accept) => {
     const response = await transport(`https://api.github.com${path}`, {
-      redirect: 'error', signal: AbortSignal.timeout(timeoutMs),
-      headers: { Accept: accept, 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'PlaniFiKateur', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      redirect: 'error',
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: {
+        Accept: accept,
+        'X-GitHub-Api-Version': '2022-11-28',
+        'User-Agent': 'PlaniFiKateur',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
     });
     if (!response.ok) {
       await response.body?.cancel().catch(() => {});
@@ -26,7 +33,8 @@ export function createRepositoryContext({ token = '', transport = fetch, headTtl
   const raw = path => request(path, 'application/vnd.github.raw+json');
   // Un seul appel léger par minute et par branche pour savoir si le commit a changé.
   const head = async (repository, branch) => {
-    const key = `${repository}@${branch}`.toLowerCase(), cached = heads.get(key);
+    const key = `${repository}@${branch}`.toLowerCase(),
+      cached = heads.get(key);
     if (cached && cached.until > Date.now()) return cached.sha;
     let sha = null;
     try {
@@ -44,12 +52,26 @@ export function createRepositoryContext({ token = '', transport = fetch, headTtl
       const key = `${repository.toLowerCase()}@${sha}`;
       if (!documents.has(key)) {
         try {
-          let [readme, guide] = await Promise.all([raw(`/repos/${repository}/readme?ref=${sha}`), raw(`/repos/${repository}/contents/CLAUDE.md?ref=${sha}`)]), guideName = 'CLAUDE.md';
-          if (guide === null) { guide = await raw(`/repos/${repository}/contents/AGENTS.md?ref=${sha}`); guideName = 'AGENTS.md'; }
-          const files = [['README', readme], [guideName, guide]].filter(([, content]) => content?.trim()).map(([name, content]) => ({ name, content: trimDocument(content) }));
+          let [readme, guide] = await Promise.all([
+              raw(`/repos/${repository}/readme?ref=${sha}`),
+              raw(`/repos/${repository}/contents/CLAUDE.md?ref=${sha}`),
+            ]),
+            guideName = 'CLAUDE.md';
+          if (guide === null) {
+            guide = await raw(`/repos/${repository}/contents/AGENTS.md?ref=${sha}`);
+            guideName = 'AGENTS.md';
+          }
+          const files = [
+            ['README', readme],
+            [guideName, guide],
+          ]
+            .filter(([, content]) => content?.trim())
+            .map(([name, content]) => ({ name, content: trimDocument(content) }));
           documents.set(key, files);
           if (documents.size > 50) documents.delete(documents.keys().next().value);
-        } catch { return []; }
+        } catch {
+          return [];
+        }
       }
       return documents.get(key);
     },

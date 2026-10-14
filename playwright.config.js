@@ -7,7 +7,9 @@ export default defineConfig({
   use: {
     browserName: 'chromium',
     launchOptions: {
-      executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || (existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined),
+      executablePath:
+        process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ||
+        (existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined),
     },
     trace: 'retain-on-failure',
   },

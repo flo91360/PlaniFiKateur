@@ -35,10 +35,33 @@ test('Infos links the README of the associated repository and keeps it on naviga
   assert.equal(linked.cards.length, 3);
   assert.equal(linked.cards[1].readme, 'owner/repo');
   assert.match(linked.cards[1].description, /https:\/\/github\.com\/owner\/repo#readme/);
-  assert.deepEqual(validateWorkspace([{ ...linked, name: 'P', description: '', emoji: '◈', color: '#fff' }])[0].cards, linked.cards.map(card => ({ ...card, createdBy: null, createdAt: null, updatedBy: null, updatedAt: null, attachments: [] })));
+  assert.deepEqual(
+    validateWorkspace([{ ...linked, name: 'P', description: '', emoji: '◈', color: '#fff' }])[0].cards,
+    linked.cards.map(card => ({
+      ...card,
+      createdBy: null,
+      createdAt: null,
+      updatedBy: null,
+      updatedAt: null,
+      attachments: [],
+    })),
+  );
   assert.deepEqual(withInfos(linked), linked);
   assert.equal(withInfos(linked, { tag: 'Aucun tag disponible', date: '' }).cards[1].readme, undefined);
-  assert.throws(() => validateWorkspace([{ ...linked, name: 'P', description: '', emoji: '◈', color: '#fff', cards: [{ ...linked.cards[1], readme: 'evil.com/x/../y' }] }]), /mode d’emploi/);
+  assert.throws(
+    () =>
+      validateWorkspace([
+        {
+          ...linked,
+          name: 'P',
+          description: '',
+          emoji: '◈',
+          color: '#fff',
+          cards: [{ ...linked.cards[1], readme: 'evil.com/x/../y' }],
+        },
+      ]),
+    /mode d’emploi/,
+  );
 });
 
 test('Changelog links the CHANGELOG.md of the associated repository and keeps it on navigator refreshes', () => {
@@ -48,14 +71,40 @@ test('Changelog links the CHANGELOG.md of the associated repository and keeps it
   const linked = withInfos(empty, { ...version, repository: 'owner/repo' });
   assert.equal(linked.cards[2].changelog, 'owner/repo');
   assert.match(linked.cards[2].description, /https:\/\/github\.com\/owner\/repo\/blob\/HEAD\/CHANGELOG\.md/);
-  assert.deepEqual(cardLinks(linked.cards[2]), [{ href: 'https://github.com/owner/repo/blob/HEAD/CHANGELOG.md', label: 'Lire le changelog (CHANGELOG.md)', detail: 'Consulter le changelog (CHANGELOG.md)' }]);
+  assert.deepEqual(cardLinks(linked.cards[2]), [
+    {
+      href: 'https://github.com/owner/repo/blob/HEAD/CHANGELOG.md',
+      label: 'Lire le changelog (CHANGELOG.md)',
+      detail: 'Consulter le changelog (CHANGELOG.md)',
+    },
+  ]);
   assert.equal(cardLinks(linked.cards[1])[0].href, 'https://github.com/owner/repo#readme');
-  const released = withInfos(linked, { ...version, repository: 'owner/repo', changelog: [{ tag: 'v1.0.0', date: version.date, body: 'Nouveautés' }] });
+  const released = withInfos(linked, {
+    ...version,
+    repository: 'owner/repo',
+    changelog: [{ tag: 'v1.0.0', date: version.date, body: 'Nouveautés' }],
+  });
   assert.equal(released.cards[2].changelog, 'owner/repo');
   assert.deepEqual(withInfos(released), released);
-  assert.equal(validateWorkspace([{ ...released, name: 'P', description: '', emoji: '◈', color: '#fff' }])[0].cards[2].changelog, 'owner/repo');
+  assert.equal(
+    validateWorkspace([{ ...released, name: 'P', description: '', emoji: '◈', color: '#fff' }])[0].cards[2].changelog,
+    'owner/repo',
+  );
   assert.equal(withInfos(released, { tag: 'Aucun tag disponible', date: '' }).cards[2].changelog, undefined);
-  assert.throws(() => validateWorkspace([{ ...released, name: 'P', description: '', emoji: '◈', color: '#fff', cards: [{ ...released.cards[2], changelog: 'javascript:alert(1)' }] }]), /changelog/);
+  assert.throws(
+    () =>
+      validateWorkspace([
+        {
+          ...released,
+          name: 'P',
+          description: '',
+          emoji: '◈',
+          color: '#fff',
+          cards: [{ ...released.cards[2], changelog: 'javascript:alert(1)' }],
+        },
+      ]),
+    /changelog/,
+  );
 });
 
 test('existing databases receive Infos once and retain their other cards on restart', t => {
@@ -64,10 +113,19 @@ test('existing databases receive Infos once and retain their other cards on rest
   const file = join(dir, 'workspace.sqlite');
   let store = createStore(file);
   try {
-    const legacy = validateWorkspace(structuredClone(seed).map(project => ({ ...project, lists: project.lists.filter(list => list.name !== 'Infos'), cards: project.cards.filter(card => ![`${project.id}-git-version`, `${project.id}-readme`, `${project.id}-changelog`].includes(card.id)) })));
+    const legacy = validateWorkspace(
+      structuredClone(seed).map(project => ({
+        ...project,
+        lists: project.lists.filter(list => list.name !== 'Infos'),
+        cards: project.cards.filter(
+          card => ![`${project.id}-git-version`, `${project.id}-readme`, `${project.id}-changelog`].includes(card.id),
+        ),
+      })),
+    );
     store.write(legacy, store.getRevision());
     const previousRevision = store.getRevision();
-    store.close(); store = createStore(file);
+    store.close();
+    store = createStore(file);
     const snapshot = store.read();
     assert.equal(snapshot.revision, previousRevision + 1);
     for (const project of snapshot.projects) {
@@ -79,9 +137,12 @@ test('existing databases receive Infos once and retain their other cards on rest
       assert.equal(project.cards.at(-2).title, 'Mode d’emploi du projet');
       assert.deepEqual(project.cards.slice(0, -3), before.cards);
     }
-    store.close(); store = createStore(file);
+    store.close();
+    store = createStore(file);
     assert.deepEqual(store.read(), snapshot);
-  } finally { store.close(); }
+  } finally {
+    store.close();
+  }
 });
 
 test('build info uses an exact Git tag or the commit identifier and includes its timestamp', () => {
@@ -105,12 +166,15 @@ test('Changelog history and discussion persist across server restart and reposit
   try {
     const projectId = store.read().projects[0].id;
     store.workflows.configureGithub(projectId, 'owner/repo', { id: 'admin', name: 'Admin' });
-    store.recordGithubChangelog('owner/repo', [{ tag_name: 'v1.0.0', published_at: version.date, body: 'Premières nouveautés' }]);
+    store.recordGithubChangelog('owner/repo', [
+      { tag_name: 'v1.0.0', published_at: version.date, body: 'Premières nouveautés' },
+    ]);
     const snapshot = store.read();
     const card = snapshot.projects[0].cards.find(c => c.id === `${projectId}-changelog`);
     card.comments.push({ id: 'changelog-comment', author: 'Admin', text: 'Merci', date: version.date });
     store.write(snapshot.projects, snapshot.revision);
-    store.close(); store = createStore(filename);
+    store.close();
+    store = createStore(filename);
     const current = () => store.read().projects[0].cards.find(c => c.id === card.id);
     assert.match(current().description, /Premières nouveautés/);
     assert.equal(current().comments[0].text, 'Merci');
@@ -121,5 +185,7 @@ test('Changelog history and discussion persist across server restart and reposit
     store.refreshInfos();
     assert.match(current().description, /Premières nouveautés/);
     assert.equal(current().comments[0].text, 'Merci');
-  } finally { store.close(); }
+  } finally {
+    store.close();
+  }
 });

@@ -8,13 +8,18 @@ for (const mode of ['standalone', 'sandbox-with-storage', 'sandbox-without-stora
   test(`creation and editing in ${mode}`, async ({ page }) => {
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+    page.on('console', message => {
+      if (message.type() === 'error') errors.push(message.text());
+    });
     const embedded = mode !== 'standalone';
     const storageAvailable = mode !== 'sandbox-without-storage';
     const permissions = storageAvailable ? 'allow-scripts allow-same-origin' : 'allow-scripts';
     await page.route('http://planifikateur.test/**', route => {
       const wrapper = `<iframe title="Aperçu" sandbox="${permissions}" src="/app" style="position:fixed;inset:0;width:100%;height:100%;border:0"></iframe>`;
-      return route.fulfill({ contentType: 'text/html', body: embedded && route.request().url().endsWith('/wrapper') ? wrapper : html });
+      return route.fulfill({
+        contentType: 'text/html',
+        body: embedded && route.request().url().endsWith('/wrapper') ? wrapper : html,
+      });
     });
     await page.goto(`http://planifikateur.test/${embedded ? 'wrapper' : 'app'}`);
     const app = embedded ? page.frameLocator('iframe') : page;
@@ -25,6 +30,7 @@ for (const mode of ['standalone', 'sandbox-with-storage', 'sandbox-without-stora
 
     await openMenu();
     await expect(app.locator('.sidebar-footer small')).toHaveText(`v${version} · données locales`);
+    await expect(app.locator('.sidebar-tip h3')).toHaveText('Copie hors ligne.');
     await app.getByRole('button', { name: 'Nouveau projet', exact: true }).click();
     await expect(app.getByRole('button', { name: 'Créer le projet', exact: true })).toBeDisabled();
     await app.getByLabel('Nom du projet', { exact: true }).fill('test');
@@ -36,8 +42,16 @@ for (const mode of ['standalone', 'sandbox-with-storage', 'sandbox-without-stora
     await expect(app.locator('.list-column')).toHaveCount(4);
     const infos = app.locator('.list-column').filter({ has: app.getByRole('heading', { name: 'Infos', exact: true }) });
     await expect(infos.locator('.card')).toHaveCount(3);
-    await expect(infos.locator('.card h3')).toHaveText(['Aucun tag disponible', 'Mode d’emploi du projet', 'Changelog']);
-    await expect(infos.locator('.card p')).toHaveText(['Associez un dépôt GitHub au projet pour afficher sa dernière version.', 'Associez un dépôt GitHub au projet pour afficher le lien vers son mode d’emploi (README).', 'Associez un dépôt GitHub au projet pour afficher les nouveautés de chaque version.']);
+    await expect(infos.locator('.card h3')).toHaveText([
+      'Aucun tag disponible',
+      'Mode d’emploi du projet',
+      'Changelog',
+    ]);
+    await expect(infos.locator('.card p')).toHaveText([
+      'Associez un dépôt GitHub au projet pour afficher sa dernière version.',
+      'Associez un dépôt GitHub au projet pour afficher le lien vers son mode d’emploi (README).',
+      'Associez un dépôt GitHub au projet pour afficher les nouveautés de chaque version.',
+    ]);
 
     await app.getByRole('button', { name: 'Ajouter une liste', exact: true }).click();
     await app.getByLabel('Nom de la liste', { exact: true }).fill('Ma liste');
@@ -58,10 +72,17 @@ for (const mode of ['standalone', 'sandbox-with-storage', 'sandbox-without-stora
     await app.getByLabel('Étiquettes', { exact: true }).fill('UX, Recherche, UX');
     await expect(app.getByRole('heading', { name: /^Critères d’acceptation/ })).toHaveCount(0);
     await app.getByLabel('Votre commentaire').fill('Un premier commentaire');
-    await app.getByLabel('Ajouter des fichiers', { exact: true }).setInputFiles({ name: 'bug.txt', mimeType: 'text/plain', buffer: Buffer.from('Étapes du bug') });
+    await app
+      .getByLabel('Ajouter des fichiers', { exact: true })
+      .setInputFiles({ name: 'bug.txt', mimeType: 'text/plain', buffer: Buffer.from('Étapes du bug') });
     await expect(app.getByRole('link', { name: 'bug.txt', exact: true })).toBeVisible();
     await app.getByRole('button', { name: 'Créer la carte', exact: true }).click();
-    await expect(app.locator('.list-column').filter({ has: app.getByRole('heading', { name: 'Ma liste', exact: true }) }).locator('.card')).toHaveCount(1);
+    await expect(
+      app
+        .locator('.list-column')
+        .filter({ has: app.getByRole('heading', { name: 'Ma liste', exact: true }) })
+        .locator('.card'),
+    ).toHaveCount(1);
     await app.getByRole('heading', { name: 'Ma carte', exact: true }).click();
     await expect(app.getByLabel('Déplacer vers', { exact: true })).toHaveCount(0);
     await expect(app.locator('.detail-status')).toContainText('dans Ma liste');
@@ -74,8 +95,13 @@ for (const mode of ['standalone', 'sandbox-with-storage', 'sandbox-without-stora
     await expect(app.getByLabel('Description', { exact: true })).toHaveValue('Première ligne');
     await expect(app.getByText('Un premier commentaire', { exact: true })).toBeVisible();
     await expect(app.getByRole('link', { name: 'bug.txt', exact: true })).toBeVisible();
-    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/a9sAAAAASUVORK5CYII=', 'base64');
-    await app.getByLabel('Ajouter des fichiers', { exact: true }).setInputFiles({ name: 'capture.png', mimeType: 'image/png', buffer: png });
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/a9sAAAAASUVORK5CYII=',
+      'base64',
+    );
+    await app
+      .getByLabel('Ajouter des fichiers', { exact: true })
+      .setInputFiles({ name: 'capture.png', mimeType: 'image/png', buffer: png });
     await expect(app.getByRole('img', { name: 'Aperçu de capture.png', exact: true })).toBeVisible();
     await app.getByRole('button', { name: 'Retirer bug.txt', exact: true }).click();
     await expect(app.getByRole('link', { name: 'bug.txt', exact: true })).toHaveCount(0);

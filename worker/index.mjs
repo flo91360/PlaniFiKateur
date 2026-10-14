@@ -21,10 +21,15 @@ try {
     } catch (error) {
       if (stop.signal.aborted) break;
       // No response body, process environment or model transcript in service logs.
-      console.error(`Connexion du worker refusée ou indisponible (${connectionDiagnostic(error)}). Vérifiez la configuration du site et de GitHub.`);
+      console.error(
+        `Connexion du worker refusée ou indisponible (${connectionDiagnostic(error)}). Vérifiez la configuration du site et de GitHub.`,
+      );
       if (once) process.exitCode = 1;
     }
     if (once || stop.signal.aborted) break;
     await delay(config.pollMs, undefined, { signal: stop.signal }).catch(() => {});
   } while (!stop.signal.aborted);
-} catch (error) { console.error(error.message); process.exitCode = 1; }
+} catch (error) {
+  console.error(error.message);
+  process.exitCode = 1;
+}
