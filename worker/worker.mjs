@@ -2,23 +2,30 @@ import { access, appendFile, mkdir, rm } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validId, validRepository } from './config.mjs';
-import {
-  ApiError,
-  PublicationPendingError,
-  createSiteClient,
-  createGithubClient,
-  connectionDiagnostic,
-  temporaryConnectionError,
-} from './clients.mjs';
+import { ApiError, PublicationPendingError, createSiteClient, createGithubClient } from './clients.mjs';
 import { createState } from './state.mjs';
 import { runCommand } from './commands.mjs';
 import { createCodexRunner } from './codex.mjs';
-import { collectOutputs } from './outputs.mjs';
+import { checkGeneratedFile, collectOutputs } from './outputs.mjs';
 import { createClaudeRunner } from './claude.mjs';
 import { validateAi, efforts, effortLabels } from './ai-settings.mjs';
 import { defaultExecutionProfile, validateExecutionProfile, resolveWorkerCommand } from './execution-profile.mjs';
 import { runtimeEnvironment, checkRuntime, projectDiagnostic } from './runtime.mjs';
 import { prepareDelivery } from './delivery.mjs';
+import { createReservation } from './reservation.mjs';
+
+const workerDirectory = dirname(fileURLToPath(import.meta.url));
+const MAX_ROUNDS = 3;
+const engineName = engine => (engine === 'codex' ? 'Codex' : 'Claude Code');
+
+// Un ancien worker posait cette question technique au lieu de republier sa PR ; le site la
+// reconnaît aussi. Une vraie demande de précision exige toujours une réponse humaine.
+const LEGACY_PUBLICATION_QUESTION = 'La PR ne pointe pas sur le commit testé.';
+const legacyPublicationQuestion = run =>
+  run.state === 'waiting' &&
+  !!run.submissions.at(-1)?.pullRequest &&
+  run.exchanges.at(-1)?.question === LEGACY_PUBLICATION_QUESTION &&
+  !run.exchanges.at(-1)?.answer;
 
 export function createWorker(config, dependencies = {}) {
   const site = dependencies.site || createSiteClient(config);
@@ -55,455 +62,411 @@ export function createWorker(config, dependencies = {}) {
     log(`Exécution ${job.id} : checkout local supprimé, tâche terminée.`);
   }
 
+  async function waitForAnswer(task, message, { resetAttempts = false } = {}) {
+    await task.reservation.action('question', { message });
+    task.job.phase = 'waiting';
+    if (resetAttempts) task.job.attempts = 0;
+    await state.put(task.job);
+    return { status: 'waiting' };
+  }
+
+  // État local de l’exécution : branche, réglages IA et profil figés à la première prise en charge.
+  async function loadJob(run, candidate) {
+    const job = (await state.get(run.id)) || {
+      id: run.id,
+      projectId: run.projectId,
+      cardId: run.cardId,
+      repository: run.repository.toLowerCase(),
+      branch: `planifikateur/${run.id}`,
+      attempts: 0,
+      answers: 0,
+    };
+    if (
+      job.repository !== run.repository.toLowerCase() ||
+      job.projectId !== run.projectId ||
+      job.cardId !== run.cardId ||
+      job.branch !== `planifikateur/${run.id}`
+    )
+      throw new Error('État du worker incompatible avec la carte.');
+    if (!job.ai) {
+      const ai = validateAi(run.aiRuntime || run.ai || { engine: 'codex', model: '' });
+      job.ai = {
+        ...ai,
+        model: ai.model || (ai.engine === 'codex' ? config.model || '' : ''),
+        effort: run.ai?.effort || '',
+      };
+    }
+    if (!efforts[job.ai.engine]?.includes(job.ai.effort) || (run.ai && job.ai.engine !== run.ai.engine))
+      throw new Error('Réglages IA incompatibles avec la conversation existante.');
+    if (!job.executionProfile)
+      job.executionProfile = validateExecutionProfile(run.executionProfile || defaultExecutionProfile());
+    if (run.executionProfile && JSON.stringify(job.executionProfile) !== JSON.stringify(run.executionProfile))
+      throw new Error('Le profil ne correspond plus à cette exécution.');
+    // Une nouvelle réponse humaine, une reprise de publication ou une correction de PR
+    // redonnent toutes leurs tentatives au modèle.
+    const answers = run.exchanges.filter(e => e.answer).length;
+    if (answers !== job.answers) {
+      job.attempts = 0;
+      job.answers = answers;
+    }
+    if (
+      candidate.publicationRecovery ||
+      candidate.interruption === LEGACY_PUBLICATION_QUESTION ||
+      (candidate.state === 'merging' && job.phase === 'merging')
+    )
+      job.attempts = 0;
+    return job;
+  }
+
+  // Checkout de la branche de la tâche à jour de la branche cible, dépendances installées.
+  async function prepareCheckout(task) {
+    const { job, reservation } = task;
+    const { signal } = reservation;
+    const profile = job.executionProfile,
+      targetBranch = profile.branch;
+    const cwd = join(config.stateRoot, 'jobs', job.id);
+    const home = join(cwd, '.planifikateur', 'home');
+    const env = {
+      ...runtimeEnvironment(profile, config),
+      HOME: home,
+      npm_config_cache: join(config.stateRoot, 'npm-cache'),
+      PLANIFIKATEUR_WORKER: '1',
+      CI: '1',
+    };
+    const gitEnv = {
+      ...env,
+      GIT_TERMINAL_PROMPT: '0',
+      GIT_CONFIG_NOSYSTEM: '1',
+      GIT_CONFIG_GLOBAL: '/dev/null',
+      GIT_ASKPASS: fileURLToPath(new URL('./git-askpass.mjs', import.meta.url)),
+      PLANIFIKATEUR_GIT_TOKEN: config.githubToken,
+    };
+    const command = async (args, extra = {}) => {
+      const result = await execute(args, { cwd, env: args[0] === 'git' ? gitEnv : env, signal, ...extra });
+      if (result.code !== 0) throw new Error(`Échec de ${args.slice(0, 3).join(' ')} : ${clean(result.output)}`);
+      return result.output.trim();
+    };
+    const url = `https://github.com/${job.repository}.git`;
+    await mkdir(config.stateRoot, { recursive: true });
+    await checkRuntime(profile, config, execute, signal);
+    await mkdir(join(config.stateRoot, 'jobs'), { recursive: true, mode: 0o700 });
+    let cloned = true;
+    try {
+      await access(join(cwd, '.git'));
+    } catch {
+      cloned = false;
+    }
+    if (!cloned) {
+      // Recover the same branch after losing the checkout; never force-push.
+      await command(['git', 'clone', '--no-tags', '--single-branch', '--branch', targetBranch, url, cwd], {
+        cwd: config.stateRoot,
+      });
+    }
+    await mkdir(home, { recursive: true });
+    await appendFile(join(cwd, '.git', 'info', 'exclude'), '\n.planifikateur/\n');
+    await command(['git', 'config', 'user.name', 'PlaniFiKateur IA']);
+    await command(['git', 'config', 'user.email', 'agent@planifikateur.invalid']);
+    if ((await command(['git', 'config', '--get', 'remote.origin.url'])) !== url)
+      throw new Error('L’origine du dépôt a changé.');
+    await command(['git', 'fetch', 'origin', targetBranch]);
+    if (!cloned) {
+      const remote = await command(['git', 'ls-remote', '--heads', 'origin', `refs/heads/${job.branch}`]);
+      if (remote) {
+        await command(['git', 'fetch', 'origin', `${job.branch}:refs/remotes/origin/${job.branch}`]);
+        await command(['git', 'checkout', '-b', job.branch, `origin/${job.branch}`]);
+      } else await command(['git', 'checkout', '-b', job.branch, `origin/${targetBranch}`]);
+    } else if ((await command(['git', 'branch', '--show-current'])) !== job.branch)
+      throw new Error('Le checkout ne correspond plus à la branche de la tâche.');
+    // Preserve partial work and let Codex resolve any conflicts with current main.
+    const merged = await execute(['git', 'merge', '--no-edit', `origin/${targetBranch}`], {
+      cwd,
+      env: gitEnv,
+      signal,
+    });
+    await reservation.action('progress', { message: `Préparation des dépendances du profil ${profile.preset}.` });
+    const legacy = reservation.run.legacyExecutionProfile;
+    for (const install of legacy ? config.installCommands : profile.installCommands)
+      await command(resolveWorkerCommand(install, workerDirectory));
+    await reservation.action('progress', {
+      message: 'Le dépôt est prêt. L’agent réalise la demande avant les vérifications locales.',
+    });
+    return {
+      cwd,
+      env,
+      gitEnv,
+      command,
+      url,
+      targetBranch,
+      testCommands: legacy ? config.testCommands : profile.testCommands,
+      conflicts: merged.code
+        ? `Résous les conflits avec ${targetBranch} avant de terminer : ${clean(merged.output)}`
+        : '',
+    };
+  }
+
+  // Fichiers générés contrôlés, puis version et changelog préparés si le dépôt a changé.
+  // Lève une erreur décrivant ce que le modèle doit corriger.
+  async function checkDeliverables(task, checkout, result, previous) {
+    const { run } = task.reservation;
+    const outputs = await collectOutputs(checkout.cwd, result.files || [], run.id);
+    const retained = (run.cardSnapshot.attachments || []).filter(file => !outputs.some(next => next.id === file.id));
+    if (
+      retained.length + outputs.length > 10 ||
+      [...retained, ...outputs].reduce((sum, file) => sum + file.size, 0) > 2 * 1024 * 1024
+    )
+      throw new Error('La carte manque de place pour ces fichiers : dix pièces jointes maximum et 2 Mo au total.');
+    const checks = [];
+    for (const file of outputs) checks.push(await checkGeneratedFile(file, checkout.command));
+    const repositoryChanged =
+      !!(await checkout.command(['git', 'status', '--porcelain'])) ||
+      !!(await checkout.command(['git', 'diff', `origin/${checkout.targetBranch}...HEAD`, '--name-only']));
+    if (!outputs.length && !repositoryChanged)
+      throw new Error(
+        'Aucun fichier ni modification livré. Pour une demande de fichier, crée le fichier dans .planifikateur/generated/ et indique son chemin dans files. Si tu ne peux pas réaliser la demande, pose une question précise avec status=question.',
+      );
+    if (repositoryChanged) {
+      const { version } = await prepareDelivery(checkout.cwd, task.job.executionProfile, checkout.command, {
+        runId: run.id,
+        title: run.cardSnapshot.title,
+        summary: result.summary,
+      });
+      checks.push(`Livraison ${version} : version et CHANGELOG.md vérifiés avant les tests`);
+    }
+    return { outputs, checks, artifactOnly: outputs.length > 0 && !previous && !repositoryChanged };
+  }
+
+  // Tests obligatoires du profil ; renvoie l’échec à transmettre au modèle, ou null.
+  async function runTests(task, checkout, checks) {
+    for (const test of checkout.testCommands) {
+      await task.reservation.action('progress', { message: `Vérification locale : ${test.join(' ')}.` });
+      const outcome = await execute(resolveWorkerCommand(test, workerDirectory), {
+        cwd: checkout.cwd,
+        env: checkout.env,
+        signal: task.reservation.signal,
+      });
+      if (outcome.code !== 0) return `${test.join(' ')} a échoué : ${clean(outcome.output)}`;
+      checks.push(`${test.join(' ')} : réussi`);
+    }
+    return null;
+  }
+
+  // Le modèle réalise la demande ; ses livrables et les tests sont vérifiés jusqu’à trois fois,
+  // chaque échec lui étant renvoyé pour correction. Renvoie le résultat validé ou sa question.
+  async function produce(task, checkout, previous) {
+    const { job, reservation } = task;
+    const runner = job.ai.engine === 'claude-code' ? claude : model;
+    const onRuntime = async runtime => {
+      const safe = { ...validateAi(runtime), effort: job.ai.effort };
+      if (JSON.stringify(job.aiRuntime) === JSON.stringify(safe)) return;
+      if (safe.engine !== job.ai.engine) throw new Error('Le moteur de la conversation a changé.');
+      job.aiRuntime = safe;
+      job.ai.model = safe.model;
+      await state.put(job);
+      await reservation.action('progress', {
+        aiRuntime: safe,
+        message: `IA utilisée : ${engineName(safe.engine)} · ${safe.model} · effort ${effortLabels[safe.effort]}.`,
+      });
+    };
+    let feedback = checkout.conflicts;
+    for (let round = 0; round < MAX_ROUNDS; round++) {
+      const result = await runner.run({
+        run: { ...reservation.run, leaseToken: undefined },
+        job,
+        cwd: checkout.cwd,
+        signal: reservation.signal,
+        feedback,
+        environment: checkout.env,
+        onRuntime,
+        onThread: async id => {
+          job.threadId = id;
+          await state.put(job);
+        },
+      });
+      if (result.status === 'question') return { status: 'question', question: result.question };
+      let deliverables, failure;
+      try {
+        deliverables = await checkDeliverables(task, checkout, result, previous);
+      } catch (error) {
+        failure = `Corrige les fichiers à livrer : ${clean(error.message)}`;
+      }
+      if (!failure && !deliverables.artifactOnly) failure = await runTests(task, checkout, deliverables.checks);
+      if (!failure) return { result, ...deliverables };
+      if (round === MAX_ROUNDS - 1) throw new Error(failure);
+      feedback = `Corrige l’échec puis propose à nouveau le résultat : ${failure}`;
+    }
+  }
+
+  // Commit, push et PR (ou fichiers seuls livrés dans la carte), puis soumission au site.
+  async function publish(task, checkout, { result, checks, outputs, artifactOnly }) {
+    const { job, reservation } = task;
+    const { run, signal } = reservation;
+    const { command, targetBranch } = checkout;
+    await reservation.action('heartbeat');
+    if (
+      (await command(['git', 'config', '--get', 'remote.origin.url'])) !== checkout.url ||
+      (await command(['git', 'branch', '--show-current'])) !== job.branch
+    )
+      throw new Error('La branche ou l’origine a été modifiée par l’agent.');
+    const files = outputs.map(({ path, ...file }) => file);
+    if (artifactOnly) {
+      await reservation.action('submit', {
+        summary: result.summary,
+        checks: checks.join('\n'),
+        links: [],
+        files,
+        artifactOnly: true,
+      });
+      job.phase = 'done';
+      job.attempts = 0;
+      await state.put(job);
+      log(`Exécution ${run.id} : fichiers livrés dans la carte, tâche terminée.`);
+      await releaseCheckout(job);
+      return { status: 'done', files: files.map(file => file.name) };
+    }
+    await command(['git', 'add', '--all']);
+    if (await command(['git', 'diff', '--cached', '--name-only']))
+      await command(['git', 'commit', '-m', `Carte ${run.cardSnapshot.title.slice(0, 120)} (${run.id})`]);
+    if (!(await command(['git', 'diff', `origin/${targetBranch}...HEAD`, '--name-only'])))
+      return waitForAnswer(
+        task,
+        'La tâche n’a produit aucune modification par rapport à main. Pouvez-vous préciser ce qui doit changer ?',
+      );
+    const sha = await command(['git', 'rev-parse', 'HEAD']);
+    await reservation.action('progress', {
+      message: 'Les tests locaux ont réussi. Le worker publie la branche et prépare la PR.',
+    });
+    const pushed = await execute(['git', 'push', 'origin', `HEAD:refs/heads/${job.branch}`], {
+      cwd: checkout.cwd,
+      env: checkout.gitEnv,
+      signal,
+    });
+    if (pushed.code !== 0) {
+      // Retrying cannot fix a missing token permission: ask for the configuration change.
+      if (!workflowScopeRefused(pushed.output)) throw new Error(`Échec de git push origin : ${clean(pushed.output)}`);
+      const workflows = (
+        await command(['git', 'diff', `origin/${targetBranch}...HEAD`, '--name-only', '--', '.github/workflows'])
+      )
+        .split('\n')
+        .filter(Boolean);
+      const waiting = await waitForAnswer(task, workflowScopeQuestion(workflows), { resetAttempts: true });
+      log(`Exécution ${run.id} : publication refusée, le token GitHub ne peut pas modifier les workflows.`);
+      return waiting;
+    }
+    // PR starts unlabeled. Only enable merging after the site has bound this SHA.
+    const pr = await github.ensurePullRequest(
+      job.repository,
+      job.branch,
+      run.cardSnapshot.title.slice(0, 140),
+      `${result.summary}\n\nCarte PlaniFiKateur : ${run.cardId}\nExécution : ${run.id}\n\nVérifications locales :\n${checks.map(c => `- ${c}`).join('\n')}`,
+      signal,
+      sha,
+      targetBranch,
+    );
+    if (pr.head.sha !== sha) throw new Error(LEGACY_PUBLICATION_QUESTION);
+    job.pullRequest = { number: pr.number, url: pr.html_url, headSha: sha };
+    job.phase = 'pr';
+    await state.put(job);
+    await reservation.action('submit', {
+      summary: result.summary,
+      checks: checks.join('\n'),
+      links: [pr.html_url],
+      pullRequest: { url: pr.html_url, headSha: sha },
+      files,
+    });
+    job.phase = 'merging';
+    job.attempts = 0;
+    await state.put(job);
+    await github.label(job.repository, pr.number, signal);
+    log(`Exécution ${run.id} : PR #${pr.number}, tests GitHub et fusion en attente.`);
+    return { status: 'merging', number: pr.number, sha };
+  }
+
+  // Une tentative complète : checkout, réalisation et vérifications, publication.
+  async function attempt(task) {
+    const { candidate, job, reservation } = task;
+    if (candidate.workerQuestion) return waitForAnswer(task, candidate.workerQuestion);
+    if (job.attempts >= config.maxAttempts) {
+      await reservation.action('question', {
+        message:
+          'Les tentatives automatiques n’ont pas abouti. Pouvez-vous préciser la demande ou faire corriger la configuration du worker avant une nouvelle reprise ?',
+      });
+      return { status: 'waiting' };
+    }
+    job.attempts++;
+    task.attemptStarted = true;
+    job.phase = 'running';
+    await state.put(job);
+    const previous = reservation.run.submissions.at(-1)?.pullRequest || job.pullRequest;
+    if (previous) {
+      const pr = await github.pull(job.repository, previous.number, reservation.signal);
+      if (pr.state === 'open' && pr.labels.some(l => l.name === 'planifikateur-agent'))
+        await github.unlabel(job.repository, pr.number, reservation.signal);
+    }
+    log(`Prise en charge ${reservation.run.id}.`);
+    await reservation.action('progress', {
+      message: `Le worker prépare le dépôt et lance ${engineName(job.ai.engine)}.`,
+    });
+    const checkout = await prepareCheckout(task);
+    const produced = await produce(task, checkout, previous);
+    if (produced.status === 'question') return waitForAnswer(task, produced.question);
+    return publish(task, checkout, produced);
+  }
+
+  // Échec ou arrêt : l’exécution est interrompue sur le site (ou passe en question après
+  // trop de tentatives) et le worker attend une minute avant de la reprendre.
+  async function suspend(task, error, parentSignal) {
+    const { job, reservation } = task;
+    const { signal } = reservation;
+    // Infrastructure failures and shutdowns must not exhaust the model retry budget.
+    const publicationPending = error instanceof PublicationPendingError;
+    if (task.attemptStarted && (reservation.failed || parentSignal?.aborted || publicationPending))
+      job.attempts = Math.max(0, job.attempts - 1);
+    // A failed final label is recovered by reconcile; never resubmit a merged task.
+    const history = await site.history(reservation.run).catch(() => []);
+    let current = history.find(item => item.id === reservation.run.id);
+    if (current?.state === 'running') {
+      const exhausted = !signal.aborted && !publicationPending && job?.attempts >= config.maxAttempts;
+      const message = reservation.failed
+        ? reservation.failure
+        : signal.aborted
+          ? 'Le worker a été arrêté. Une reprise est possible.'
+          : error.message;
+      current = await site
+        .action({ ...current, leaseToken: reservation.token }, exhausted ? 'question' : 'interrupt', {
+          message: clean(message).slice(0, 10000),
+        })
+        .catch(() => current);
+    }
+    if (job) {
+      job.phase = current?.state || 'interrupted';
+      job.retryAfter = Date.now() + 60000;
+      await state.put(job);
+    }
+    log(
+      `Exécution ${reservation.run.id} suspendue : ${clean(reservation.failed ? reservation.failure : error.message)}`,
+    );
+    return { status: 'interrupted' };
+  }
+
   async function processTask(candidate, parentSignal) {
     if (!allowed(candidate)) return { status: 'ignored' };
     let run;
     try {
-      run = await site.action(
-        candidate,
-        candidate.state === 'merging' || candidate.publicationRecovery ? 'revise' : 'claim',
-        {},
-        parentSignal,
-      );
+      const action = candidate.state === 'merging' || candidate.publicationRecovery ? 'revise' : 'claim';
+      run = await site.action(candidate, action, {}, parentSignal);
     } catch (error) {
       if (error.status === 409) return { status: 'claimed_elsewhere' };
       throw error;
     }
-    const lease = run.leaseToken;
-    const controller = new AbortController();
-    const signal = AbortSignal.any([
-      controller.signal,
-      AbortSignal.timeout(config.taskTimeoutMs),
-      ...(parentSignal ? [parentSignal] : []),
-    ]);
-    let leaseDeadline = Date.parse(run.leaseExpiresAt),
-      leaseTimer,
-      reservationFailure = false;
-    const renewDeadline = response => {
-      const expires = Date.parse(response.leaseExpiresAt);
-      if (!Number.isFinite(expires)) return;
-      leaseDeadline = Math.max(leaseDeadline || 0, expires);
-      clearTimeout(leaseTimer);
-      leaseTimer = setTimeout(
-        () => {
-          reservationFailure = true;
-          controller.abort(new Error('Réservation expirée : le site n’a pas confirmé sa prolongation.'));
-        },
-        Math.max(0, leaseDeadline - Date.now()),
-      );
-      leaseTimer.unref();
-    };
-    renewDeadline(run);
-    const action = async (name, data = {}, actionSignal = signal) => {
-      run = { ...(await site.action({ ...run, leaseToken: lease }, name, data, actionSignal)), leaseToken: lease };
-      if (run.state === 'running') renewDeadline(run);
-      else {
-        clearInterval(timer);
-        clearTimeout(leaseTimer);
-      }
-      return run;
-    };
-    let heartbeating = false,
-      heartbeatPromise;
-    const timer = setInterval(() => {
-      if (heartbeating || signal.aborted) return;
-      heartbeating = true;
-      // Heartbeat does not change the version; do not overwrite a parallel action.
-      heartbeatPromise = site
-        .action({ ...run, leaseToken: lease }, 'heartbeat', {}, signal)
-        .then(response => {
-          if (run.state === 'running') renewDeadline(response);
-        })
-        .catch(error => {
-          if (signal.aborted || run.state !== 'running') return;
-          const diagnostic = connectionDiagnostic(error);
-          if (temporaryConnectionError(error) && Date.now() < leaseDeadline) {
-            log(
-              `Exécution ${run.id} : prolongation temporairement indisponible (${diagnostic}), nouvelle tentative prévue.`,
-            );
-            return;
-          }
-          reservationFailure = true;
-          controller.abort(
-            new Error(
-              temporaryConnectionError(error) && Date.now() >= leaseDeadline
-                ? 'Réservation expirée : le site n’a pas confirmé sa prolongation.'
-                : `Réservation perdue (${diagnostic}).`,
-            ),
-          );
-        })
-        .finally(() => {
-          heartbeating = false;
-        });
-    }, config.heartbeatMs);
-    timer.unref();
-    let job,
-      attemptStarted = false;
+    const reservation = createReservation({ site, run, config, log, parentSignal });
+    const task = { candidate, reservation, job: undefined, attemptStarted: false };
     try {
-      job = (await state.get(run.id)) || {
-        id: run.id,
-        projectId: run.projectId,
-        cardId: run.cardId,
-        repository: run.repository.toLowerCase(),
-        branch: `planifikateur/${run.id}`,
-        attempts: 0,
-        answers: 0,
-      };
-      if (
-        job.repository !== run.repository.toLowerCase() ||
-        job.projectId !== run.projectId ||
-        job.cardId !== run.cardId ||
-        job.branch !== `planifikateur/${run.id}`
-      )
-        throw new Error('État du worker incompatible avec la carte.');
-      if (!job.ai) {
-        const ai = validateAi(run.aiRuntime || run.ai || { engine: 'codex', model: '' });
-        job.ai = {
-          ...ai,
-          model: ai.model || (ai.engine === 'codex' ? config.model || '' : ''),
-          effort: run.ai?.effort || '',
-        };
-      }
-      if (!efforts[job.ai.engine]?.includes(job.ai.effort) || (run.ai && job.ai.engine !== run.ai.engine))
-        throw new Error('Réglages IA incompatibles avec la conversation existante.');
-      const runner = job.ai.engine === 'claude-code' ? claude : model;
-      const onRuntime = async runtime => {
-        const safe = { ...validateAi(runtime), effort: job.ai.effort };
-        if (JSON.stringify(job.aiRuntime) === JSON.stringify(safe)) return;
-        if (safe.engine !== job.ai.engine) throw new Error('Le moteur de la conversation a changé.');
-        job.aiRuntime = safe;
-        job.ai.model = safe.model;
-        await state.put(job);
-        await action('progress', {
-          aiRuntime: safe,
-          message: `IA utilisée : ${safe.engine === 'codex' ? 'Codex' : 'Claude Code'} · ${safe.model} · effort ${effortLabels[safe.effort]}.`,
-        });
-      };
-      if (!job.executionProfile)
-        job.executionProfile = validateExecutionProfile(run.executionProfile || defaultExecutionProfile());
-      if (run.executionProfile && JSON.stringify(job.executionProfile) !== JSON.stringify(run.executionProfile))
-        throw new Error('Le profil ne correspond plus à cette exécution.');
-      const profile = job.executionProfile,
-        targetBranch = profile.branch;
-      const answers = run.exchanges.filter(e => e.answer).length;
-      if (answers !== job.answers) {
-        job.attempts = 0;
-        job.answers = answers;
-      }
-      if (
-        candidate.publicationRecovery ||
-        candidate.interruption === 'La PR ne pointe pas sur le commit testé.' ||
-        (candidate.state === 'merging' && job.phase === 'merging')
-      )
-        job.attempts = 0;
-      if (candidate.workerQuestion) {
-        await action('question', { message: candidate.workerQuestion });
-        job.phase = 'waiting';
-        await state.put(job);
-        return { status: 'waiting' };
-      }
-      if (job.attempts >= config.maxAttempts) {
-        await action('question', {
-          message:
-            'Les tentatives automatiques n’ont pas abouti. Pouvez-vous préciser la demande ou faire corriger la configuration du worker avant une nouvelle reprise ?',
-        });
-        return { status: 'waiting' };
-      }
-      job.attempts++;
-      attemptStarted = true;
-      job.phase = 'running';
-      await state.put(job);
-      const previous = run.submissions.at(-1)?.pullRequest || job.pullRequest;
-      if (previous) {
-        const pr = await github.pull(job.repository, previous.number, signal);
-        if (pr.state === 'open' && pr.labels.some(l => l.name === 'planifikateur-agent'))
-          await github.unlabel(job.repository, pr.number, signal);
-      }
-      log(`Prise en charge ${run.id}.`);
-      await action('progress', {
-        message: `Le worker prépare le dépôt et lance ${job.ai.engine === 'codex' ? 'Codex' : 'Claude Code'}.`,
-      });
-      const cwd = join(config.stateRoot, 'jobs', run.id);
-      const home = join(cwd, '.planifikateur', 'home');
-      const env = {
-        ...runtimeEnvironment(profile, config),
-        HOME: home,
-        npm_config_cache: join(config.stateRoot, 'npm-cache'),
-        PLANIFIKATEUR_WORKER: '1',
-        CI: '1',
-      };
-      const gitEnv = {
-        ...env,
-        GIT_TERMINAL_PROMPT: '0',
-        GIT_CONFIG_NOSYSTEM: '1',
-        GIT_CONFIG_GLOBAL: '/dev/null',
-        GIT_ASKPASS: fileURLToPath(new URL('./git-askpass.mjs', import.meta.url)),
-        PLANIFIKATEUR_GIT_TOKEN: config.githubToken,
-      };
-      const command = async (args, extra = {}) => {
-        const result = await execute(args, { cwd, env: args[0] === 'git' ? gitEnv : env, signal, ...extra });
-        if (result.code !== 0) throw new Error(`Échec de ${args.slice(0, 3).join(' ')} : ${clean(result.output)}`);
-        return result.output.trim();
-      };
-      const url = `https://github.com/${job.repository}.git`;
-      await mkdir(config.stateRoot, { recursive: true });
-      await checkRuntime(profile, config, execute, signal);
-      await mkdir(join(config.stateRoot, 'jobs'), { recursive: true, mode: 0o700 });
-      let cloned = true;
-      try {
-        await access(join(cwd, '.git'));
-      } catch {
-        cloned = false;
-      }
-      if (!cloned) {
-        // Recover the same branch after losing the checkout; never force-push.
-        await command(['git', 'clone', '--no-tags', '--single-branch', '--branch', targetBranch, url, cwd], {
-          cwd: config.stateRoot,
-        });
-      }
-      await mkdir(home, { recursive: true });
-      await appendFile(join(cwd, '.git', 'info', 'exclude'), '\n.planifikateur/\n');
-      await command(['git', 'config', 'user.name', 'PlaniFiKateur IA']);
-      await command(['git', 'config', 'user.email', 'agent@planifikateur.invalid']);
-      if ((await command(['git', 'config', '--get', 'remote.origin.url'])) !== url)
-        throw new Error('L’origine du dépôt a changé.');
-      await command(['git', 'fetch', 'origin', targetBranch]);
-      if (!cloned) {
-        const remote = await command(['git', 'ls-remote', '--heads', 'origin', `refs/heads/${job.branch}`]);
-        if (remote) {
-          await command(['git', 'fetch', 'origin', `${job.branch}:refs/remotes/origin/${job.branch}`]);
-          await command(['git', 'checkout', '-b', job.branch, `origin/${job.branch}`]);
-        } else await command(['git', 'checkout', '-b', job.branch, `origin/${targetBranch}`]);
-      } else if ((await command(['git', 'branch', '--show-current'])) !== job.branch)
-        throw new Error('Le checkout ne correspond plus à la branche de la tâche.');
-      // Preserve partial work and let Codex resolve any conflicts with current main.
-      const merged = await execute(['git', 'merge', '--no-edit', `origin/${targetBranch}`], {
-        cwd,
-        env: gitEnv,
-        signal,
-      });
-      let feedback = merged.code
-        ? `Résous les conflits avec ${targetBranch} avant de terminer : ${clean(merged.output)}`
-        : '';
-      await action('progress', { message: `Préparation des dépendances du profil ${profile.preset}.` });
-      const workerDirectory = dirname(fileURLToPath(import.meta.url));
-      for (const install of run.legacyExecutionProfile ? config.installCommands : profile.installCommands)
-        await command(resolveWorkerCommand(install, workerDirectory));
-      await action('progress', {
-        message: 'Le dépôt est prêt. L’agent réalise la demande avant les vérifications locales.',
-      });
-      let result,
-        checks = [],
-        outputs = [],
-        artifactOnly = false;
-      for (let round = 0; round < 3; round++) {
-        result = await runner.run({
-          run: { ...run, leaseToken: undefined },
-          job,
-          cwd,
-          signal,
-          feedback,
-          environment: env,
-          onRuntime,
-          onThread: async id => {
-            job.threadId = id;
-            await state.put(job);
-          },
-        });
-        if (result.status === 'question') {
-          await action('question', { message: result.question });
-          job.phase = 'waiting';
-          await state.put(job);
-          return { status: 'waiting' };
-        }
-        checks = [];
-        let failure;
-        try {
-          outputs = await collectOutputs(cwd, result.files || [], run.id);
-          const retained = (run.cardSnapshot.attachments || []).filter(
-            file => !outputs.some(next => next.id === file.id),
-          );
-          if (
-            retained.length + outputs.length > 10 ||
-            [...retained, ...outputs].reduce((sum, file) => sum + file.size, 0) > 2 * 1024 * 1024
-          )
-            throw new Error(
-              'La carte manque de place pour ces fichiers : dix pièces jointes maximum et 2 Mo au total.',
-            );
-          for (const file of outputs) {
-            if (file.name.endsWith('.ui')) {
-              await command([
-                'python3',
-                '-c',
-                'import sys,xml.etree.ElementTree as ET; r=ET.parse(sys.argv[1]).getroot(); w=r.find("widget"); assert r.tag=="ui" and r.get("version")=="4.0" and r.findtext("class") and w is not None and w.get("class") and w.get("name"), "Document Qt Designer .ui incomplet"',
-                file.path,
-              ]);
-              checks.push(`${file.name} : structure XML Qt Designer vérifiée`);
-            } else if (file.name.endsWith('.json')) {
-              JSON.parse(Buffer.from(file.data, 'base64').toString('utf8'));
-              checks.push(`${file.name} : JSON valide`);
-            } else checks.push(`${file.name} : fichier généré (${file.size} octets)`);
-          }
-          const repositoryChanged =
-            !!(await command(['git', 'status', '--porcelain'])) ||
-            !!(await command(['git', 'diff', `origin/${targetBranch}...HEAD`, '--name-only']));
-          if (!outputs.length && !repositoryChanged)
-            throw new Error(
-              'Aucun fichier ni modification livré. Pour une demande de fichier, crée le fichier dans .planifikateur/generated/ et indique son chemin dans files. Si tu ne peux pas réaliser la demande, pose une question précise avec status=question.',
-            );
-          artifactOnly = outputs.length > 0 && !previous && !repositoryChanged;
-          if (repositoryChanged) {
-            const { version } = await prepareDelivery(cwd, profile, command, {
-              runId: run.id,
-              title: run.cardSnapshot.title,
-              summary: result.summary,
-            });
-            checks.push(`Livraison ${version} : version et CHANGELOG.md vérifiés avant les tests`);
-          }
-        } catch (error) {
-          failure = `Corrige les fichiers à livrer : ${clean(error.message)}`;
-        }
-        for (const test of failure || artifactOnly
-          ? []
-          : run.legacyExecutionProfile
-            ? config.testCommands
-            : profile.testCommands) {
-          await action('progress', { message: `Vérification locale : ${test.join(' ')}.` });
-          const outcome = await execute(resolveWorkerCommand(test, workerDirectory), { cwd, env, signal });
-          if (outcome.code !== 0) {
-            failure = `${test.join(' ')} a échoué : ${clean(outcome.output)}`;
-            break;
-          }
-          checks.push(`${test.join(' ')} : réussi`);
-        }
-        if (!failure) break;
-        if (round === 2) throw new Error(failure);
-        feedback = `Corrige l’échec puis propose à nouveau le résultat : ${failure}`;
-      }
-      await action('heartbeat');
-      if (
-        (await command(['git', 'config', '--get', 'remote.origin.url'])) !== url ||
-        (await command(['git', 'branch', '--show-current'])) !== job.branch
-      )
-        throw new Error('La branche ou l’origine a été modifiée par l’agent.');
-      const deliveredFiles = outputs.map(({ path, ...file }) => file);
-      if (artifactOnly) {
-        await action('submit', {
-          summary: result.summary,
-          checks: checks.join('\n'),
-          links: [],
-          files: deliveredFiles,
-          artifactOnly: true,
-        });
-        job.phase = 'done';
-        job.attempts = 0;
-        await state.put(job);
-        log(`Exécution ${run.id} : fichiers livrés dans la carte, tâche terminée.`);
-        await releaseCheckout(job);
-        return { status: 'done', files: deliveredFiles.map(file => file.name) };
-      }
-      await command(['git', 'add', '--all']);
-      if (await command(['git', 'diff', '--cached', '--name-only']))
-        await command(['git', 'commit', '-m', `Carte ${run.cardSnapshot.title.slice(0, 120)} (${run.id})`]);
-      const changed = await command(['git', 'diff', `origin/${targetBranch}...HEAD`, '--name-only']);
-      if (!changed) {
-        await action('question', {
-          message:
-            'La tâche n’a produit aucune modification par rapport à main. Pouvez-vous préciser ce qui doit changer ?',
-        });
-        job.phase = 'waiting';
-        await state.put(job);
-        return { status: 'waiting' };
-      }
-      const sha = await command(['git', 'rev-parse', 'HEAD']);
-      await action('progress', {
-        message: 'Les tests locaux ont réussi. Le worker publie la branche et prépare la PR.',
-      });
-      const pushed = await execute(['git', 'push', 'origin', `HEAD:refs/heads/${job.branch}`], {
-        cwd,
-        env: gitEnv,
-        signal,
-      });
-      if (pushed.code !== 0) {
-        // Retrying cannot fix a missing token permission: ask for the configuration change.
-        if (!workflowScopeRefused(pushed.output)) throw new Error(`Échec de git push origin : ${clean(pushed.output)}`);
-        const workflows = (
-          await command(['git', 'diff', `origin/${targetBranch}...HEAD`, '--name-only', '--', '.github/workflows'])
-        )
-          .split('\n')
-          .filter(Boolean);
-        await action('question', { message: workflowScopeQuestion(workflows) });
-        job.phase = 'waiting';
-        job.attempts = 0;
-        await state.put(job);
-        log(`Exécution ${run.id} : publication refusée, le token GitHub ne peut pas modifier les workflows.`);
-        return { status: 'waiting' };
-      }
-      // PR starts unlabeled. Only enable merging after the site has bound this SHA.
-      const pr = await github.ensurePullRequest(
-        job.repository,
-        job.branch,
-        run.cardSnapshot.title.slice(0, 140),
-        `${result.summary}\n\nCarte PlaniFiKateur : ${run.cardId}\nExécution : ${run.id}\n\nVérifications locales :\n${checks.map(c => `- ${c}`).join('\n')}`,
-        signal,
-        sha,
-        targetBranch,
-      );
-      if (pr.head.sha !== sha) throw new Error('La PR ne pointe pas sur le commit testé.');
-      job.pullRequest = { number: pr.number, url: pr.html_url, headSha: sha };
-      job.phase = 'pr';
-      await state.put(job);
-      await action('submit', {
-        summary: result.summary,
-        checks: checks.join('\n'),
-        links: [pr.html_url],
-        pullRequest: { url: pr.html_url, headSha: sha },
-        files: deliveredFiles,
-      });
-      job.phase = 'merging';
-      job.attempts = 0;
-      await state.put(job);
-      await github.label(job.repository, pr.number, signal);
-      log(`Exécution ${run.id} : PR #${pr.number}, tests GitHub et fusion en attente.`);
-      return { status: 'merging', number: pr.number, sha };
+      task.job = await loadJob(run, candidate);
+      return await attempt(task);
     } catch (error) {
-      // Infrastructure failures and shutdowns must not exhaust the model retry budget.
-      const publicationPending = error instanceof PublicationPendingError;
-      if (attemptStarted && (reservationFailure || parentSignal?.aborted || publicationPending))
-        job.attempts = Math.max(0, job.attempts - 1);
-      // A failed final label is recovered by reconcile; never resubmit a merged task.
-      const history = await site.history(run).catch(() => []);
-      let current = history.find(item => item.id === run.id);
-      if (current?.state === 'running') {
-        current = await site
-          .action(
-            { ...current, leaseToken: lease },
-            !signal.aborted && !publicationPending && job?.attempts >= config.maxAttempts ? 'question' : 'interrupt',
-            {
-              message: clean(
-                reservationFailure
-                  ? controller.signal.reason.message
-                  : signal.aborted
-                    ? 'Le worker a été arrêté. Une reprise est possible.'
-                    : error.message,
-              ).slice(0, 10000),
-            },
-          )
-          .catch(() => current);
-      }
-      if (job) {
-        job.phase = current?.state || 'interrupted';
-        job.retryAfter = Date.now() + 60000;
-        await state.put(job);
-      }
-      log(
-        `Exécution ${run.id} suspendue : ${clean(reservationFailure ? controller.signal.reason.message : error.message)}`,
-      );
-      return { status: 'interrupted' };
+      return suspend(task, error, parentSignal);
     } finally {
-      clearInterval(timer);
-      await heartbeatPromise;
-      clearTimeout(leaseTimer);
+      await reservation.stop();
     }
   }
 
@@ -538,13 +501,7 @@ export function createWorker(config, dependencies = {}) {
         log(`Exécution ${job.id} archivée localement : exécution absente de la carte.`);
         continue;
       }
-      if (
-        run.state === 'waiting' &&
-        allowed(run) &&
-        run.submissions.at(-1)?.pullRequest &&
-        run.exchanges.at(-1)?.question === 'La PR ne pointe pas sur le commit testé.' &&
-        !run.exchanges.at(-1)?.answer
-      ) {
+      if (allowed(run) && legacyPublicationQuestion(run)) {
         const pr = await github.pull(run.repository, run.submissions.at(-1).pullRequest.number, signal);
         if (
           pr.state === 'open' &&
