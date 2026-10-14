@@ -165,8 +165,12 @@ const systemCards = projectId => [`${projectId}-git-version`, `${projectId}-read
 
 function CancelConfirm({ onConfirm, onRevert }) {
   // Le bandeau s’affiche en haut du détail : le rendre visible même si la saisie a eu lieu plus bas.
+  // Accolades obligatoires : les navigateurs récents renvoient une promesse que React prendrait
+  // pour une fonction de nettoyage, ce qui ferait planter l’application au démontage.
   const banner = useRef(null);
-  useEffect(() => banner.current?.scrollIntoView({ block: 'nearest' }), []);
+  useEffect(() => {
+    banner.current?.scrollIntoView({ block: 'nearest' });
+  }, []);
   return (
     <div ref={banner} className="execution-confirm" role="alert">
       <p>

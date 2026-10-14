@@ -1001,6 +1001,15 @@ test.describe('project task execution', () => {
     request,
     appServer,
   }) => {
+    // Les navigateurs récents (Chrome 156) renvoient une promesse depuis scrollIntoView : le bandeau
+    // de confirmation ne doit pas la confondre avec une fonction de nettoyage React.
+    await page.addInitScript(() => {
+      const scroll = Element.prototype.scrollIntoView;
+      Element.prototype.scrollIntoView = function (...args) {
+        scroll.apply(this, args);
+        return Promise.resolve();
+      };
+    });
     await login(page, appServer);
     const project = seed[0],
       card = project.cards[0];
