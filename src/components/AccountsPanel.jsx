@@ -1,10 +1,7 @@
 import React, { useEffect, useState } from 'react';
-async function request(path, options = {}) {
-  const response = await fetch(`/api/v1/${path}`, { credentials: 'same-origin', ...options });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error?.message || 'Action impossible.');
-  return data;
-}
+import { apiData } from '../lib/api-client.js';
+
+const request = (path, options) => apiData(path, { fallback: 'Action impossible.', ...options });
 export default function AccountsPanel({ user, onLogout }) {
   const [users, setUsers] = useState([]),
     [name, setName] = useState(''),
@@ -17,7 +14,7 @@ export default function AccountsPanel({ user, onLogout }) {
   const [currentPassword, setCurrent] = useState(''),
     [password, setPassword] = useState('');
   const load = async () => {
-    if (user.role === 'admin') setUsers((await request('users')).data);
+    if (user.role === 'admin') setUsers(await request('users'));
   };
   useEffect(() => {
     void load().catch(cause => setError(cause.message));
@@ -36,12 +33,8 @@ export default function AccountsPanel({ user, onLogout }) {
     }
   };
   const invite = async id => {
-    const result = await request(id ? `users/${id}/invitation` : 'users', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email }),
-    });
-    setLink(`${location.origin}/#invitation=${result.data.token}`);
+    const result = await request(id ? `users/${id}/invitation` : 'users', { method: 'POST', data: { name, email } });
+    setLink(`${location.origin}/#invitation=${result.token}`);
     setMessage('Invitation valable 7 jours. Transmettez ce lien uniquement à la personne concernée.');
     setName('');
     setEmail('');
@@ -82,11 +75,7 @@ export default function AccountsPanel({ user, onLogout }) {
           disabled={busy || !currentPassword || password.length < 12}
           onClick={() =>
             void action(async () => {
-              await request('accounts/password', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ currentPassword, password }),
-              });
+              await request('accounts/password', { method: 'POST', data: { currentPassword, password } });
               setCurrent('');
               setPassword('');
               setMessage('Mot de passe modifié. Les autres sessions ont été déconnectées.');
@@ -160,11 +149,7 @@ export default function AccountsPanel({ user, onLogout }) {
                       disabled={busy}
                       onClick={() =>
                         void action(async () => {
-                          await request(`users/${member.id}`, {
-                            method: 'PATCH',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ active: !member.active }),
-                          });
+                          await request(`users/${member.id}`, { method: 'PATCH', data: { active: !member.active } });
                         })
                       }
                     >

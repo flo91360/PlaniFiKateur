@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { workRequest } from './AgentSetup.jsx';
+import { apiData } from '../lib/api-client.js';
 import { executionPresets, validateExecutionProfile } from '../../worker/execution-profile.mjs';
 
 export default function ExecutionSettings({ projectId, repository, user }) {
@@ -15,8 +15,8 @@ export default function ExecutionSettings({ projectId, repository, user }) {
     setError('');
     setMessage('');
     Promise.all([
-      workRequest(`projects/${projectId}/execution`, 'GET', null, controller.signal),
-      workRequest(`projects/${projectId}/worker-status`, 'GET', null, controller.signal),
+      apiData(`projects/${projectId}/execution`, { signal: controller.signal }),
+      apiData(`projects/${projectId}/worker-status`, { signal: controller.signal }),
     ])
       .then(([value, report]) => {
         setProfile(value);
@@ -26,7 +26,7 @@ export default function ExecutionSettings({ projectId, repository, user }) {
         if (!controller.signal.aborted) setError(cause.message);
       });
     const timer = setInterval(() => {
-      workRequest(`projects/${projectId}/worker-status`, 'GET', null, controller.signal)
+      apiData(`projects/${projectId}/worker-status`, { signal: controller.signal })
         .then(setStatus)
         .catch(() => {});
     }, 30000);
@@ -41,7 +41,10 @@ export default function ExecutionSettings({ projectId, repository, user }) {
     setMessage('');
     try {
       setProfile(
-        await workRequest(`projects/${projectId}/execution`, 'PUT', { preset: profile.preset, branch: profile.branch }),
+        await apiData(`projects/${projectId}/execution`, {
+          method: 'PUT',
+          data: { preset: profile.preset, branch: profile.branch },
+        }),
       );
       setStatus(null);
       setMessage('Profil enregistré pour les prochaines tâches.');

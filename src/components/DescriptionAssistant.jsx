@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { LoaderCircle, Mic, Square, Undo2, WandSparkles } from 'lucide-react';
-import { workRequest } from './AgentSetup.jsx';
+import { apiData } from '../lib/api-client.js';
 
 const unsupported = 'La dictée n’est pas prise en charge par ce navigateur. Utilisez Chrome, Edge ou Safari.';
 const speechErrors = {
@@ -146,12 +146,11 @@ export default function DescriptionAssistant({ value, onChange, offline = false,
     setRefining(true);
     setError('');
     try {
-      const result = await workRequest(
-        `projects/${projectId}/refine`,
-        'POST',
-        { title, description: latest.current, listId, exchanges: history.slice(-20) },
-        controller.signal,
-      );
+      const result = await apiData(`projects/${projectId}/refine`, {
+        method: 'POST',
+        data: { title, description: latest.current, listId, exchanges: history.slice(-20) },
+        signal: controller.signal,
+      });
       if (request.current !== controller) return;
       setProposal(result);
       setAnswers(result.questions.map(() => ''));

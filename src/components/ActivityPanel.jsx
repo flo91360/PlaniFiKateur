@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react';
+import { apiFetch } from '../lib/api-client.js';
+
 const labels = {
   'work.merged': 'a confirmé la fusion de la PR',
   'work.checks': 'a signalé le résultat des contrôles GitHub',
@@ -54,11 +56,9 @@ export default function ActivityPanel({ projectId, cardId }) {
     setBusy(true);
     setError('');
     try {
-      const response = await fetch(`/api/v1/${path}${before ? `?before=${before}` : ''}`, {
-        credentials: 'same-origin',
+      const result = await apiFetch(`${path}${before ? `?before=${before}` : ''}`, {
+        fallback: 'Historique indisponible.',
       });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error?.message || 'Historique indisponible.');
       setEvents(previous => (before ? [...previous, ...result.data] : result.data));
       setNext(result.meta.nextBefore);
     } catch (cause) {

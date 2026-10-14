@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { workRequest } from './AgentSetup.jsx';
+import { apiData } from '../lib/api-client.js';
 export default function GithubSetup({ projectId, configuration, onConfigured }) {
   const [repository, setRepository] = useState(configuration?.repository || ''),
     [busy, setBusy] = useState(false),
@@ -10,8 +10,8 @@ export default function GithubSetup({ projectId, configuration, onConfigured }) 
     setError('');
     setSaved(false);
     try {
-      await workRequest(`projects/${projectId}/github`, 'PUT', { repository: repository.trim() });
-      onConfigured(await workRequest(`projects/${projectId}/github`));
+      await apiData(`projects/${projectId}/github`, { method: 'PUT', data: { repository: repository.trim() } });
+      onConfigured(await apiData(`projects/${projectId}/github`));
       setSaved(true);
     } catch (cause) {
       setError(cause.message);

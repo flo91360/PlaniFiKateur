@@ -48,7 +48,7 @@ import ProjectAutomation from './components/ProjectAutomation.jsx';
 import { EffortSelect } from './components/AiSettings.jsx';
 import { effortLabels } from '../worker/ai-settings.mjs';
 import Avatar, { avatarLabel } from './components/Avatar.jsx';
-import { workRequest } from './components/AgentSetup.jsx';
+import { apiData } from './lib/api-client.js';
 
 const statuses = {
   draft: { label: 'À explorer', icon: Circle },
@@ -165,7 +165,7 @@ function App() {
     setProjectAi({ engine: 'codex', model: '' });
     if (offlineMode || !ready || !project?.id) return;
     const controller = new AbortController();
-    workRequest(`projects/${project.id}/ai`, 'GET', null, controller.signal)
+    apiData(`projects/${project.id}/ai`, { signal: controller.signal })
       .then(setProjectAi)
       .catch(() => {});
     return () => controller.abort();
@@ -1238,7 +1238,7 @@ function CardDetail({
     const controller = new AbortController();
     const load = async () => {
       try {
-        const runs = await workRequest(`projects/${projectId}/cards/${card.id}/work`, 'GET', null, controller.signal);
+        const runs = await apiData(`projects/${projectId}/cards/${card.id}/work`, { signal: controller.signal });
         if (!controller.signal.aborted) {
           setWorkflowManaged(
             runs.some(run => !['done', 'cancelled'].includes(run.state) && (run.state !== 'ready' || !!run.agent)),

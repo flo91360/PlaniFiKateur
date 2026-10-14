@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { workRequest } from './AgentSetup.jsx';
+import { apiData } from '../lib/api-client.js';
 import { efforts, effortLabels } from '../../worker/ai-settings.mjs';
 import { aiModels } from '../lib/ai-models.js';
 
@@ -37,7 +37,7 @@ export default function AiSettings({ projectId, user, onConfigured }) {
   const models = aiModels[ai?.engine] || [];
   useEffect(() => {
     const controller = new AbortController();
-    workRequest(`projects/${projectId}/ai`, 'GET', null, controller.signal)
+    apiData(`projects/${projectId}/ai`, { signal: controller.signal })
       .then(setAi)
       .catch(cause => {
         if (!controller.signal.aborted) setError(cause.message);
@@ -49,7 +49,7 @@ export default function AiSettings({ projectId, user, onConfigured }) {
     setError('');
     setMessage('');
     try {
-      const saved = await workRequest(`projects/${projectId}/ai`, 'PUT', ai);
+      const saved = await apiData(`projects/${projectId}/ai`, { method: 'PUT', data: ai });
       setAi(saved);
       onConfigured?.(saved);
       setMessage('Moteur et modèle enregistrés pour ce projet.');

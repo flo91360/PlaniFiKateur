@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { withInfos } from './infos.js';
 import { seed } from '../data/demo.js';
 import { validateWorkspace } from './workspace.js';
+import { apiFetch } from './api-client.js';
 
 const STORAGE = 'planifikateur.workspace.v1';
 export const offlineMode = globalThis.__PLANIFIKATEUR_OFFLINE__ === true || globalThis.location?.protocol === 'file:';
@@ -12,14 +13,8 @@ function readLocal() {
     return seed;
   }
 }
-async function request(path, options = {}) {
-  const response = await fetch(`/api/v1/${path}`, { credentials: 'same-origin', ...options });
-  if (response.status === 304) return null;
-  const data = await response.json();
-  if (!response.ok)
-    throw Object.assign(new Error(data.error?.message || 'Le serveur ne répond pas.'), { status: response.status });
-  return data;
-}
+// Session et workspace répondent sans enveloppe data ; 304 renvoie null.
+const request = (path, options) => apiFetch(path, { fallback: 'Le serveur ne répond pas.', ...options });
 
 export function useWorkspace({ pauseRefresh = false } = {}) {
   const [projects, setState] = useState(() => (offlineMode ? readLocal() : seed));
@@ -143,8 +138,8 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
         const snapshot = current.current;
         const data = await request('workspace', {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json', 'If-Match': `"${revision.current}"` },
-          body: JSON.stringify({ projects: snapshot }),
+          headers: { 'If-Match': `"${revision.current}"` },
+          data: { projects: snapshot },
         });
         const canonical = validateWorkspace(data.projects);
         revision.current = data.revision;
@@ -207,11 +202,7 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
     return () => window.removeEventListener('beforeunload', warn);
   }, []);
   const authenticate = async (path, data) => {
-    await request(path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
+    await request(path, { method: 'POST', data });
     await load();
   };
   const login = data => authenticate('session', data);
