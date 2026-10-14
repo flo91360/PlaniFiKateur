@@ -40,7 +40,9 @@ export default function ExecutionSettings({ projectId, repository, user }) {
     setError('');
     setMessage('');
     try {
-      setProfile(await workRequest(`projects/${projectId}/execution`, 'PUT', profile));
+      setProfile(
+        await workRequest(`projects/${projectId}/execution`, 'PUT', { preset: profile.preset, branch: profile.branch }),
+      );
       setStatus(null);
       setMessage('Profil enregistré pour les prochaines tâches.');
     } catch (cause) {

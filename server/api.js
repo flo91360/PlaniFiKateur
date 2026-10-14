@@ -185,7 +185,17 @@ export function createApi(store, config = {}) {
           });
         else if (req.method === 'PUT' && executionProject[2] === 'execution') {
           const actor = requireAdmin(req);
-          send(res, 200, { data: store.workflows.configureExecution(executionProject[1], await body(req), actor) });
+          const data = await body(req);
+          // Les commandes et contrôles GitHub viennent du profil installé avec le worker :
+          // l’API ne permet de choisir que le profil et la branche cible.
+          if (!data || typeof data !== 'object' || Object.keys(data).some(key => !['preset', 'branch'].includes(key)))
+            throw httpError(
+              400,
+              'invalid_execution_profile',
+              'Seuls le profil (preset) et la branche cible (branch) sont modifiables : les commandes et les contrôles GitHub viennent du profil installé avec le worker.',
+            );
+          const profile = { preset: data.preset, branch: data.branch };
+          send(res, 200, { data: store.workflows.configureExecution(executionProject[1], profile, actor) });
         } else throw httpError(405, 'method_not_allowed', 'Méthode non autorisée.');
         return true;
       }

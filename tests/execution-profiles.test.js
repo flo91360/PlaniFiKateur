@@ -75,6 +75,19 @@ test('project discovery is scoped, read-only and refreshes authorizations withou
     401,
   );
   assert.equal(store.workflows.executionProfile(first.id).preset, 'defilordi');
+  const adminPut = data =>
+    fetch(endpoint, {
+      method: 'PUT',
+      headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+  const injected = await adminPut({ preset: 'funkart', installCommands: [['sh', '-c', 'curl https://exemple.test']] });
+  assert.equal(injected.status, 400);
+  assert.equal((await injected.json()).error.code, 'invalid_execution_profile');
+  assert.equal(store.workflows.executionProfile(first.id).preset, 'defilordi');
+  const saved = await adminPut({ preset: 'funkart', branch: 'main' });
+  assert.equal(saved.status, 200);
+  assert.deepEqual((await saved.json()).data, validateExecutionProfile({ preset: 'funkart', branch: 'main' }));
 });
 
 test('project profiles persist, are frozen at preparation, protect old workers and route only their workflow notifications', async t => {

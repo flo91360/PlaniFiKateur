@@ -116,10 +116,12 @@ dans `PATH`. Le contrôleur continue de tourner avec Node 24.
 - Agent actif autorisé sur le projet :
   `POST /api/v1/agent/projects/{id}/diagnostic`.
 
-Les commandes et contrôles du profil peuvent aussi être ajustés par l’API
-administrateur : tableaux d’arguments `installCommands`, `testCommands` et
-`workflow: { file, name, jobs }`. Ils ne proviennent jamais de la carte ni du
-code de la PR et ne sont pas exécutés par un shell implicite.
+Le `PUT` n’accepte que `preset` et `branch` : tout autre champ, par exemple
+`installCommands`, `testCommands` ou `workflow`, est refusé avec 400
+(`invalid_execution_profile`). Les commandes et contrôles GitHub viennent
+uniquement du profil installé avec le worker : ils ne proviennent jamais de
+l’API, de la carte ni du code de la PR, et ne sont pas exécutés par un shell
+implicite.
 
 ## Mise en service et vérification
 
