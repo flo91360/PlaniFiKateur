@@ -256,6 +256,44 @@ test('a refused change is explained and removed from the page without blocking l
   expect(data.map(project => project.name)).not.toContain('Projet refusé');
 });
 
+test('saved attachments are previewed and downloaded from their route, not carried by the board', async ({
+  page,
+  appServer,
+}) => {
+  await login(page, appServer);
+  const card = seed[0].cards[2];
+  // PNG 1×1 transparent.
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+    'base64',
+  );
+  await page.getByRole('heading', { name: card.title, exact: true }).click();
+  await page.getByLabel('Ajouter des fichiers', { exact: true }).setInputFiles([
+    { name: 'capture.png', mimeType: 'image/png', buffer: png },
+    { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('Notes de réunion') },
+  ]);
+  await expect(page.getByRole('link', { name: 'notes.txt', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+  await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+  const board = await page.request.get(`${appServer}/api/v1/workspace`);
+  const saved = (await board.json()).projects[0].cards.find(item => item.id === card.id).attachments;
+  expect(saved.map(file => [file.name, 'data' in file])).toEqual([
+    ['capture.png', false],
+    ['notes.txt', false],
+  ]);
+  await page.reload();
+  await expect(page.locator('.project-heading h1')).toHaveText(seed[0].name);
+  await page.getByRole('heading', { name: card.title, exact: true }).click();
+  const preview = page.getByRole('img', { name: 'Aperçu de capture.png', exact: true });
+  await expect(preview).toHaveAttribute('src', /\/attachments\//);
+  await expect.poll(() => preview.evaluate(image => image.naturalWidth)).toBe(1);
+  const downloading = page.waitForEvent('download');
+  await page.getByRole('link', { name: 'notes.txt', exact: true }).click();
+  const download = await downloading;
+  expect(download.suggestedFilename()).toBe('notes.txt');
+  expect(readFileSync(await download.path(), 'utf8')).toBe('Notes de réunion');
+});
+
 test('JSON import adds local cards to the API without replacing existing projects', async ({
   page,
   request,

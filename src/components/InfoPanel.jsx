@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ArrowRight, FolderKanban, Sparkles } from 'lucide-react';
 import BackupsPanel from './BackupsPanel.jsx';
 import { createId as uid } from '../lib/id.js';
-import { exportWorkspace } from '../lib/use-workspace.js';
+import { exportWithAlert, SERVER_FORM } from '../lib/use-workspace.js';
 import { validateWorkspace } from '../lib/workspace.js';
 
 // Projets importés avec de nouveaux identifiants : ils s’ajoutent sans remplacer les existants.
@@ -25,7 +25,8 @@ async function readImport(file, projects) {
       })),
     };
   });
-  validateWorkspace([...projects, ...imported]);
+  // Les projets affichés n’ont pas le contenu de leurs pièces jointes ; leur taille suffit au contrôle.
+  validateWorkspace([...projects, ...imported], SERVER_FORM);
   return imported;
 }
 
@@ -37,7 +38,7 @@ function ReloadPrompt({ projects, onReload }) {
         Les modifications non sauvegardées de cette page seront abandonnées. Exportez-les avant de continuer si vous
         souhaitez les conserver.
       </p>
-      <button className="secondary-button" onClick={() => exportWorkspace(projects)}>
+      <button className="secondary-button" onClick={() => exportWithAlert(projects)}>
         Exporter mes modifications
       </button>
       <button className="primary-button" onClick={onReload}>
@@ -107,7 +108,7 @@ export default function InfoPanel({ view, projects, offline, isAdmin, onImport, 
       )}
       {!offline && isAdmin && view !== 'reload' && <BackupsPanel />}
       <div className="transfer-actions">
-        <button className="secondary-button" onClick={() => exportWorkspace(projects)}>
+        <button className="secondary-button" onClick={() => exportWithAlert(projects)}>
           Exporter les projets (JSON)
         </button>
         <label className="secondary-button import-button">

@@ -23,8 +23,11 @@ export function workspaceRoutes({ store, config, auth, guards }) {
             ctx.res.end();
             return;
           }
-          // Seuls les projets visibles par le compte, avec son rôle sur chacun (access).
-          const workspace = store.readFor(auth.requireAccount(ctx.req));
+          // Seuls les projets visibles par le compte, avec son rôle sur chacun (access). Le contenu
+          // des pièces jointes n’est inclus qu’avec ?attachments=data (export JSON).
+          const workspace = store.readFor(auth.requireAccount(ctx.req), {
+            attachmentData: ctx.url.searchParams.get('attachments') === 'data',
+          });
           ctx.res.setHeader('ETag', `"${workspace.revision}"`);
           ctx.send(200, workspace);
         },

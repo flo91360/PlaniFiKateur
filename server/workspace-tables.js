@@ -29,14 +29,35 @@ const groupBy = (rows, key) => {
   return groups;
 };
 
-export function readWorkspace(db) {
-  const lists = groupBy(db.prepare('SELECT * FROM lists ORDER BY project_id, position').all(), 'project_id');
-  const cards = groupBy(db.prepare('SELECT * FROM cards ORDER BY project_id, position').all(), 'project_id');
-  const comments = groupBy(db.prepare('SELECT * FROM comments ORDER BY card_id, position').all(), 'card_id');
-  const attachments = groupBy(db.prepare('SELECT * FROM attachments ORDER BY card_id, position').all(), 'card_id');
+// `projectId` limite la lecture à un projet ; sans `attachmentData`, les pièces jointes n’ont que
+// leur nom, leur type et leur taille (le contenu se télécharge par sa propre route).
+export function readWorkspace(db, { projectId = null, attachmentData = true } = {}) {
+  const one = projectId !== null;
+  const cardsOf = one ? 'WHERE card_id IN (SELECT id FROM cards WHERE project_id = ?)' : '';
+  const params = one ? [projectId] : [];
+  const lists = groupBy(
+    db.prepare(`SELECT * FROM lists ${one ? 'WHERE project_id = ?' : ''} ORDER BY project_id, position`).all(...params),
+    'project_id',
+  );
+  const cards = groupBy(
+    db.prepare(`SELECT * FROM cards ${one ? 'WHERE project_id = ?' : ''} ORDER BY project_id, position`).all(...params),
+    'project_id',
+  );
+  const comments = groupBy(
+    db.prepare(`SELECT * FROM comments ${cardsOf} ORDER BY card_id, position`).all(...params),
+    'card_id',
+  );
+  const attachments = groupBy(
+    db
+      .prepare(
+        `SELECT id, card_id, position, name, type, size${attachmentData ? ', data' : ''} FROM attachments ${cardsOf} ORDER BY card_id, position`,
+      )
+      .all(...params),
+    'card_id',
+  );
   return db
-    .prepare('SELECT * FROM projects ORDER BY position')
-    .all()
+    .prepare(`SELECT * FROM projects ${one ? 'WHERE id = ?' : ''} ORDER BY position`)
+    .all(...params)
     .map(p => ({
       id: p.id,
       name: p.name,
@@ -66,7 +87,7 @@ export function readWorkspace(db) {
             name: a.name,
             type: a.type,
             size: a.size,
-            data: a.data,
+            ...(attachmentData ? { data: a.data } : {}),
           })),
           tags: JSON.parse(c.tags),
           checklist: JSON.parse(c.checklist),
@@ -159,24 +180,30 @@ const COLUMNS = {
 };
 
 // Remplace le contenu des tables par `projects` (déjà validé) en n’écrivant que les différences.
+// `previous`, quand il est fourni, est l’état actuellement en base (tel que lu par readWorkspace) :
+// les différences sont alors calculées en mémoire, sans relire les tables ni les pièces jointes.
 // Renvoie le nombre de lignes écrites ou supprimées.
-export function writeWorkspace(db, projects) {
+export function writeWorkspace(db, projects, previous = null) {
   const wanted = rowsOf(projects);
+  const known = previous && rowsOf(previous);
   let written = 0;
   for (const [table, columns] of Object.entries(COLUMNS)) {
-    const existing = new Map(
-      db
-        .prepare(`SELECT ${columns.join(',')} FROM ${table}`)
-        .all()
-        .map(row => [row.id, JSON.stringify(columns.map(column => row[column]))]),
-    );
+    const existing = known
+      ? new Map(known[table].map(row => [row[0], row]))
+      : new Map(
+          db
+            .prepare(`SELECT ${columns.join(',')} FROM ${table}`)
+            .all()
+            .map(row => [row.id, columns.map(column => row[column])]),
+        );
     const upsert = db.prepare(
       `INSERT OR REPLACE INTO ${table}(${columns.join(',')}) VALUES(${columns.map(() => '?').join(',')})`,
     );
     const ids = new Set();
     for (const row of wanted[table]) {
       ids.add(row[0]);
-      if (existing.get(row[0]) !== JSON.stringify(row)) {
+      const current = existing.get(row[0]);
+      if (!current || current.length !== row.length || current.some((value, i) => value !== row[i])) {
         upsert.run(...row);
         written++;
       }

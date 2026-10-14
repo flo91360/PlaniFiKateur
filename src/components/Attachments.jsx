@@ -2,16 +2,24 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createId } from '../lib/id.js';
 
 const imageTypes = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
-function Attachment({ file, onRemove, disabled, readOnly }) {
-  const [url, setUrl] = useState('');
+// Fichier ajouté dans la page (contenu en base64) : lien local. Fichier déjà enregistré (le
+// serveur n’envoie pas son contenu) : lien vers sa route de téléchargement.
+function Attachment({ file, source, onRemove, disabled, readOnly }) {
+  const [local, setLocal] = useState('');
   useEffect(() => {
+    if (!file.data) return;
     const bytes = Uint8Array.from(atob(file.data), c => c.charCodeAt(0));
     const next = URL.createObjectURL(
       new Blob([bytes], { type: imageTypes.has(file.type) ? file.type : 'application/octet-stream' }),
     );
-    setUrl(next);
+    setLocal(next);
     return () => URL.revokeObjectURL(next);
   }, [file.data, file.type]);
+  const url = file.data
+    ? local
+    : source
+      ? `/api/v1/projects/${encodeURIComponent(source.projectId)}/cards/${encodeURIComponent(source.cardId)}/attachments/${encodeURIComponent(file.id)}`
+      : '';
   return (
     <li>
       {imageTypes.has(file.type) && url && <img src={url} alt={`Aperçu de ${file.name}`} />}
@@ -34,7 +42,15 @@ function Attachment({ file, onRemove, disabled, readOnly }) {
   );
 }
 // `readOnly` (lecteur du projet) : liste et téléchargement seulement.
-export default function Attachments({ otherBytes = 0, attachments, onChange, onBusy = () => {}, readOnly = false }) {
+// `source` ({ projectId, cardId }) : carte enregistrée, dont les fichiers se téléchargent du serveur.
+export default function Attachments({
+  otherBytes = 0,
+  attachments,
+  source = null,
+  onChange,
+  onBusy = () => {},
+  readOnly = false,
+}) {
   const [error, setError] = useState(''),
     [busy, setBusy] = useState(false);
   const reading = useRef(false),
@@ -134,6 +150,7 @@ export default function Attachments({ otherBytes = 0, attachments, onChange, onB
           <Attachment
             key={file.id}
             file={file}
+            source={source}
             disabled={busy}
             readOnly={readOnly}
             onRemove={() => onChange(attachments.filter(a => a.id !== file.id))}

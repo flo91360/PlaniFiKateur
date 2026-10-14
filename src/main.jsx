@@ -12,7 +12,7 @@ import { withInfos } from './lib/infos.js';
 import { createId as uid } from './lib/id.js';
 import { apiData } from './lib/api-client.js';
 import { applyAccent } from './lib/accents.js';
-import { useWorkspace, offlineMode, exportWorkspace } from './lib/use-workspace.js';
+import { useWorkspace, offlineMode, exportWithAlert } from './lib/use-workspace.js';
 import { useCardFollowers } from './lib/use-card-followers.js';
 import { useAttention } from './lib/use-attention.js';
 import { useServerEvents } from './lib/use-server-events.js';
@@ -355,7 +355,7 @@ function App() {
               saveNotice={workspace.saveNotice}
               onDismissNotice={workspace.dismissSaveNotice}
               onRefresh={workspace.refresh}
-              onExport={() => exportWorkspace(projects)}
+              onExport={() => exportWithAlert(projects)}
               onReload={() => setModal('reload')}
               onRetrySave={workspace.retrySave}
             />

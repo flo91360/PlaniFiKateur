@@ -16,6 +16,7 @@ Un tableau de projets inspiré de Trello, conçu pour préparer des demandes con
 - Enregistrement des seules modifications : deux personnes peuvent travailler en même temps sur des cartes ou des champs différents sans conflit, et des routes par élément (`POST`, `PATCH`, `DELETE`) permettent aux intégrations de modifier projets, listes, cartes et commentaires.
 - Critères, pièces jointes et étiquettes enregistrés élément par élément ; une modification refusée par le serveur est retirée de la page avec un message, sans bloquer les suivantes.
 - Garde-fou d’affichage : une erreur dans une partie de la page affiche un message au lieu d’une page blanche.
+- Tableau allégé : les pièces jointes se téléchargent à la demande, les droits et les notifications se lisent sans relire tout le tableau.
 - Comptes individuels par e-mail et mot de passe, invitations, déconnexion et gestion des membres par l’administrateur.
 - Droits par projet : lecture, contribution ou responsable, projet masqué aux autres membres ; seuls les responsables confient une carte à l’agent.
 - Validation avant fusion, en option par projet : la PR de l’agent attend l’approbation d’un responsable.
@@ -120,7 +121,7 @@ Conserver également des copies hors du volume Railway.
 npm run export:preview
 ```
 
-`dist/PlaniFiKateur-apercu-v0.1.33.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
+`dist/PlaniFiKateur-apercu-v0.1.34.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 
