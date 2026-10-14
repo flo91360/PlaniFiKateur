@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.25 — 2026-10-14
+<!-- planifikateur:audit-etape-4a-20261014 -->
+
+- **Données en tables et enregistrement sans conflit** : Le tableau est rangé dans des tables SQLite (projets, listes, cartes, commentaires, pièces jointes) au lieu d’un seul document. La conversion a lieu au premier démarrage, après une copie de la base existante (planifikateur-avant-tables-….sqlite dans le répertoire des sauvegardes) et une vérification complète : au moindre écart, rien n’est modifié. L’interface n’envoie plus tout le tableau mais seulement ses modifications : deux personnes peuvent modifier en même temps des cartes ou des champs différents sans message « Le tableau a changé », et chaque enregistrement apporte aussi les changements des autres. De nouvelles routes permettent aux intégrations de créer, modifier et supprimer projets, listes, cartes et commentaires.
+
 ## 0.1.24 — 2026-10-14
 <!-- planifikateur:audit-etape-3-20261014 -->
 
