@@ -1,4 +1,4 @@
-# Parcours agent par projet — v0.1.41
+# Parcours agent par projet — v0.1.42
 
 Un seul agent actif, sans délégation. Le site pilote les demandes et confirme la fusion GitHub ;
 l’agent s’exécute dans un service externe. Le [worker Codex](worker.md) fournit ce
@@ -50,7 +50,7 @@ demande confirmation à sa fermeture (aussitôt pour une pièce jointe ou l’ef
 avec la possibilité de rétablir la demande. La confirmation de suppression de la
 carte signale aussi l’annulation.
 Les transitions humaines exigent une version à jour pour éviter deux validations
-contradictoires. Depuis la v0.1.41, les droits par projet s’appliquent : confier une carte à
+contradictoires. Depuis la v0.1.42, les droits par projet s’appliquent : confier une carte à
 l’agent (statut « Prête à démarrer » ou « Confier à l’agent »), valider son résultat et demander
 des corrections sont réservés aux **responsables** du projet et aux administrateurs ; les
 contributeurs peuvent répondre à ses questions et annuler une exécution. Voir
