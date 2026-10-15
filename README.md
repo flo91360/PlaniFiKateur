@@ -106,13 +106,13 @@ npm run test:browser
 ESLint (`npm run lint`) ; un test qui dépasse 60 secondes échoue au lieu de bloquer.
 Les tests Node vérifient l’API, l’accès en lecture seule, les filtres, la pagination, la validation, les conflits et la conservation des cartes après réouverture de SQLite.
 
-Les tests navigateur couvrent les parcours sur ordinateur et mobile, la création d’une carte consultable par l’API, le partage entre navigateurs, les erreurs de sauvegarde, les conflits, l’import JSON et la copie autonome dans des aperçus qui interdisent les soumissions natives de formulaires.
+Les tests navigateur couvrent les parcours sur ordinateur (et sur mobile pour les tests d’affichage marqués `@mobile`), la création d’une carte consultable par l’API, le partage entre navigateurs, les erreurs de sauvegarde, les conflits, l’import JSON et la copie autonome dans des aperçus qui interdisent les soumissions natives de formulaires.
 
 Les tests utilisent Chromium installé sur la machine. S’il est absent, exécuter `npx playwright install chromium` ou définir `PLAYWRIGHT_CHROMIUM_EXECUTABLE` vers le navigateur de test.
 
 ## Sauvegardes
 
-Les copies sont automatiquement créées à côté de la base, sur le volume persistant. Depuis le site, l’administrateur les consulte et les télécharge dans la fenêtre **Espace personnel** du menu latéral, seul accès aux sauvegardes serveur. Voir [la procédure de sauvegarde et restauration](docs/backups.md) pour Railway, les paramètres et les commandes `npm run db:backup` / `npm run db:restore`.
+Les copies sont automatiquement créées à côté de la base, sur le volume persistant. Depuis le site, le bouton d’information permet de les consulter et de les télécharger. Voir [la procédure de sauvegarde et restauration](docs/backups.md) pour Railway, les paramètres et les commandes `npm run db:backup` / `npm run db:restore`.
 
 Conserver également des copies hors du volume Railway.
 
@@ -122,7 +122,7 @@ Conserver également des copies hors du volume Railway.
 npm run export:preview
 ```
 
-`dist/PlaniFiKateur-apercu-v0.1.38.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
+`dist/PlaniFiKateur-apercu-v0.1.39.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 

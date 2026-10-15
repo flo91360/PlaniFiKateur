@@ -79,67 +79,71 @@ const openWorkspace = async page => {
   await expect(page.getByRole('dialog', { name: 'Votre espace personnel' })).toBeVisible();
 };
 
-test('a UI-created card is readable by an agent and another browser', async ({ page, request, browser, appServer }) => {
-  await page.goto(appServer);
-  await page.getByLabel('Adresse e-mail', { exact: true }).fill(testEmail);
-  await page.getByLabel('Mot de passe', { exact: true }).fill('wrong');
-  await page.getByRole('button', { name: 'Se connecter', exact: true }).click();
-  await expect(page.getByRole('alert')).toHaveText('Adresse e-mail ou mot de passe incorrect.');
-  await login(page, appServer);
-  await newProject(page, 'Projet connecté');
-  await page.getByRole('button', { name: 'Ajouter une carte dans Bugs', exact: true }).click();
-  await expect(page.getByLabel('Effort IA', { exact: true })).toHaveValue('medium');
-  await expect(page.getByLabel('Effort IA', { exact: true }).locator('option[value=""]')).toHaveCount(0);
-  // Le bandeau d’exécution IA est présent dès la création ; son bouton attend une description.
-  const creationPanel = page.getByRole('region', { name: 'Exécution IA', exact: true });
-  const entrustAtCreation = creationPanel.getByRole('button', { name: 'Créer et confier à l’agent', exact: true });
-  await expect(creationPanel).toBeVisible();
-  await page.getByLabel('Titre de la carte', { exact: true }).fill('Bug visible par les agents');
-  await expect(entrustAtCreation).toBeDisabled();
-  await page.getByLabel('Description', { exact: true }).fill('Le contexte de la demande.');
-  await expect(entrustAtCreation).toBeEnabled();
-  await page.getByLabel('Statut', { exact: true }).selectOption('ready');
-  await page.getByLabel('Votre commentaire').fill('Une précision');
-  await page.getByRole('button', { name: 'Créer la carte', exact: true }).click();
-  await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
-  const projectData = await (
-    await request.get(`${appServer}/api/v1/projects`, { headers: { Authorization: `Bearer ${readToken}` } })
-  ).json();
-  const projectId = projectData.data.find(p => p.name === 'Projet connecté').id;
-  const response = await request.get(`${appServer}/api/v1/projects/${projectId}/cards?status=ready&q=Bug%20visible`, {
-    headers: { Authorization: `Bearer ${readToken}` },
-  });
-  expect(response.status()).toBe(200);
-  const { data } = await response.json();
-  expect(data).toHaveLength(1);
-  expect(data[0]).toMatchObject({
-    title: 'Bug visible par les agents',
-    projectName: 'Projet connecté',
-    listName: 'Bugs',
-    description: 'Le contexte de la demande.',
-    aiEffort: 'medium',
-  });
-  expect(data[0].comments[0].text).toBe('Une précision');
-  expect(
-    (
-      await request.put(`${appServer}/api/v1/workspace`, {
-        headers: { Authorization: `Bearer ${readToken}` },
-        data: {},
-      })
-    ).status(),
-  ).toBe(401);
-  const context = await browser.newContext();
-  const other = await context.newPage();
-  await login(other, appServer);
-  const menu = other.getByRole('button', { name: 'Ouvrir les projets', exact: true });
-  if (await menu.isVisible()) await menu.click();
-  await other
-    .getByRole('navigation', { name: 'Projets' })
-    .getByRole('button', { name: /Projet connecté/ })
-    .click();
-  await expect(other.getByRole('heading', { name: 'Bug visible par les agents', exact: true })).toBeVisible();
-  await context.close();
-});
+test(
+  'a UI-created card is readable by an agent and another browser',
+  { tag: '@mobile' },
+  async ({ page, request, browser, appServer }) => {
+    await page.goto(appServer);
+    await page.getByLabel('Adresse e-mail', { exact: true }).fill(testEmail);
+    await page.getByLabel('Mot de passe', { exact: true }).fill('wrong');
+    await page.getByRole('button', { name: 'Se connecter', exact: true }).click();
+    await expect(page.getByRole('alert')).toHaveText('Adresse e-mail ou mot de passe incorrect.');
+    await login(page, appServer);
+    await newProject(page, 'Projet connecté');
+    await page.getByRole('button', { name: 'Ajouter une carte dans Bugs', exact: true }).click();
+    await expect(page.getByLabel('Effort IA', { exact: true })).toHaveValue('medium');
+    await expect(page.getByLabel('Effort IA', { exact: true }).locator('option[value=""]')).toHaveCount(0);
+    // Le bandeau d’exécution IA est présent dès la création ; son bouton attend une description.
+    const creationPanel = page.getByRole('region', { name: 'Exécution IA', exact: true });
+    const entrustAtCreation = creationPanel.getByRole('button', { name: 'Créer et confier à l’agent', exact: true });
+    await expect(creationPanel).toBeVisible();
+    await page.getByLabel('Titre de la carte', { exact: true }).fill('Bug visible par les agents');
+    await expect(entrustAtCreation).toBeDisabled();
+    await page.getByLabel('Description', { exact: true }).fill('Le contexte de la demande.');
+    await expect(entrustAtCreation).toBeEnabled();
+    await page.getByLabel('Statut', { exact: true }).selectOption('ready');
+    await page.getByLabel('Votre commentaire').fill('Une précision');
+    await page.getByRole('button', { name: 'Créer la carte', exact: true }).click();
+    await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+    const projectData = await (
+      await request.get(`${appServer}/api/v1/projects`, { headers: { Authorization: `Bearer ${readToken}` } })
+    ).json();
+    const projectId = projectData.data.find(p => p.name === 'Projet connecté').id;
+    const response = await request.get(`${appServer}/api/v1/projects/${projectId}/cards?status=ready&q=Bug%20visible`, {
+      headers: { Authorization: `Bearer ${readToken}` },
+    });
+    expect(response.status()).toBe(200);
+    const { data } = await response.json();
+    expect(data).toHaveLength(1);
+    expect(data[0]).toMatchObject({
+      title: 'Bug visible par les agents',
+      projectName: 'Projet connecté',
+      listName: 'Bugs',
+      description: 'Le contexte de la demande.',
+      aiEffort: 'medium',
+    });
+    expect(data[0].comments[0].text).toBe('Une précision');
+    expect(
+      (
+        await request.put(`${appServer}/api/v1/workspace`, {
+          headers: { Authorization: `Bearer ${readToken}` },
+          data: {},
+        })
+      ).status(),
+    ).toBe(401);
+    const context = await browser.newContext();
+    const other = await context.newPage();
+    await login(other, appServer);
+    const menu = other.getByRole('button', { name: 'Ouvrir les projets', exact: true });
+    if (await menu.isVisible()) await menu.click();
+    await other
+      .getByRole('navigation', { name: 'Projets' })
+      .getByRole('button', { name: /Projet connecté/ })
+      .click();
+    await expect(other.getByRole('heading', { name: 'Bug visible par les agents', exact: true })).toBeVisible();
+    await context.close();
+  },
+);
 
 test('two browsers editing the same board merge their changes without a conflict', async ({
   page,
@@ -686,86 +690,87 @@ test('the accent chosen in « Mon compte » applies at once and follows the acco
   await expect(page.locator('.sidebar')).toHaveCSS('background-color', 'rgb(23, 46, 87)');
 });
 
-test('project roles hide, open read-only or reserve the agent to managers', async ({
-  page,
-  browser,
-  request,
-  appServer,
-}) => {
-  await login(page, appServer);
-  // Compte de Bob créé et activé, puis projet confidentiel masqué aux autres membres.
-  const invited = await page.request.post(`${appServer}/api/v1/users`, {
-    data: { name: 'Bob', email: 'bob@example.test' },
-  });
-  const { token } = (await invited.json()).data;
-  const password = 'bob-browser-password-123';
-  expect(
-    (await request.post(`${appServer}/api/v1/accounts/accept`, { data: { token, name: 'Bob', password } })).status(),
-  ).toBe(200);
-  const secret = (
-    await (await page.request.post(`${appServer}/api/v1/projects`, { data: { name: 'Projet confidentiel' } })).json()
-  ).data;
-  expect(
-    (
-      await page.request.put(`${appServer}/api/v1/projects/${secret.id}/members`, { data: { memberRole: 'none' } })
-    ).status(),
-  ).toBe(200);
-  // Droits du site vitrine réglés depuis l’interface : lecture pour Bob, rien pour les autres.
-  await page.reload();
-  await expect(page.locator('.project-heading h1')).toHaveText('PlaniFiKateur');
-  const menu = page.getByRole('button', { name: 'Ouvrir les projets', exact: true });
-  if (await menu.isVisible()) await menu.click();
-  await page
-    .getByRole('navigation', { name: 'Projets' })
-    .getByRole('button', { name: /Site vitrine/ })
-    .click();
-  await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
-  await page.getByText('Membres et droits', { exact: true }).click();
-  await page.getByLabel('Rôle des autres membres', { exact: true }).selectOption('none');
-  await page.getByLabel('Rôle de Bob', { exact: true }).selectOption('viewer');
-  await page.getByRole('button', { name: 'Enregistrer les droits', exact: true }).click();
-  await expect(page.getByText('Droits enregistrés pour ce projet.', { exact: true })).toBeVisible();
-  const context = await browser.newContext();
-  const member = await context.newPage();
-  await member.goto(appServer);
-  await member.getByLabel('Adresse e-mail', { exact: true }).fill('bob@example.test');
-  await member.getByLabel('Mot de passe', { exact: true }).fill(password);
-  await member.getByRole('button', { name: 'Se connecter', exact: true }).click();
-  await expect(member.locator('.project-heading h1')).toHaveText('PlaniFiKateur');
-  const projects = member.getByRole('navigation', { name: 'Projets' });
-  await expect(projects.getByRole('button', { name: /Projet confidentiel/ })).toHaveCount(0);
-  // Contribution sur PlaniFiKateur : modifier oui, confier à l’agent non.
-  await member.getByRole('heading', { name: seed[0].cards[2].title, exact: true }).click();
-  await expect(member.getByLabel('Statut', { exact: true }).locator('option[value="ready"]')).toHaveAttribute(
-    'disabled',
-    '',
-  );
-  await expect(member.getByRole('region', { name: 'Exécution IA', exact: true })).toContainText(
-    'Seuls les responsables du projet peuvent confier cette carte',
-  );
-  await expect(member.getByRole('button', { name: 'Confier à l’agent', exact: true })).toHaveCount(0);
-  await member.getByLabel('Priorité', { exact: true }).selectOption('high');
-  await member.getByRole('button', { name: 'Terminé', exact: true }).click();
-  await expect(member.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
-  // Une carte prête attend l’agent : sa demande n’est modifiable que par un responsable.
-  await member.getByRole('heading', { name: seed[0].cards[1].title, exact: true }).click();
-  await expect(member.getByLabel('Description', { exact: true })).not.toBeEditable();
-  await expect(member.getByText(/seul un responsable peut encore modifier la demande/)).toBeVisible();
-  await expect(member.getByLabel('Priorité', { exact: true })).toBeEnabled();
-  await member.getByRole('button', { name: 'Terminé', exact: true }).click();
-  // Lecture seule sur le site vitrine.
-  const memberMenu = member.getByRole('button', { name: 'Ouvrir les projets', exact: true });
-  if (await memberMenu.isVisible()) await memberMenu.click();
-  await projects.getByRole('button', { name: /Site vitrine/ }).click();
-  await expect(member.locator('.read-only-badge')).toHaveText('Lecture seule');
-  await expect(member.getByRole('button', { name: /^Ajouter une carte/ })).toHaveCount(0);
-  await expect(member.getByRole('button', { name: 'Supprimer le projet', exact: true })).toHaveCount(0);
-  await member.getByRole('heading', { name: seed[1].cards[0].title, exact: true }).click();
-  await expect(member.getByLabel('Titre de la carte', { exact: true })).not.toBeEditable();
-  await expect(member.getByLabel('Votre commentaire', { exact: true })).toHaveCount(0);
-  await expect(member.getByText('Lecture seule : votre rôle sur ce projet ne permet pas de commenter.')).toBeVisible();
-  await context.close();
-});
+test(
+  'project roles hide, open read-only or reserve the agent to managers',
+  { tag: '@mobile' },
+  async ({ page, browser, request, appServer }) => {
+    await login(page, appServer);
+    // Compte de Bob créé et activé, puis projet confidentiel masqué aux autres membres.
+    const invited = await page.request.post(`${appServer}/api/v1/users`, {
+      data: { name: 'Bob', email: 'bob@example.test' },
+    });
+    const { token } = (await invited.json()).data;
+    const password = 'bob-browser-password-123';
+    expect(
+      (await request.post(`${appServer}/api/v1/accounts/accept`, { data: { token, name: 'Bob', password } })).status(),
+    ).toBe(200);
+    const secret = (
+      await (await page.request.post(`${appServer}/api/v1/projects`, { data: { name: 'Projet confidentiel' } })).json()
+    ).data;
+    expect(
+      (
+        await page.request.put(`${appServer}/api/v1/projects/${secret.id}/members`, { data: { memberRole: 'none' } })
+      ).status(),
+    ).toBe(200);
+    // Droits du site vitrine réglés depuis l’interface : lecture pour Bob, rien pour les autres.
+    await page.reload();
+    await expect(page.locator('.project-heading h1')).toHaveText('PlaniFiKateur');
+    const menu = page.getByRole('button', { name: 'Ouvrir les projets', exact: true });
+    if (await menu.isVisible()) await menu.click();
+    await page
+      .getByRole('navigation', { name: 'Projets' })
+      .getByRole('button', { name: /Site vitrine/ })
+      .click();
+    await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
+    await page.getByText('Membres et droits', { exact: true }).click();
+    await page.getByLabel('Rôle des autres membres', { exact: true }).selectOption('none');
+    await page.getByLabel('Rôle de Bob', { exact: true }).selectOption('viewer');
+    await page.getByRole('button', { name: 'Enregistrer les droits', exact: true }).click();
+    await expect(page.getByText('Droits enregistrés pour ce projet.', { exact: true })).toBeVisible();
+    const context = await browser.newContext();
+    const member = await context.newPage();
+    await member.goto(appServer);
+    await member.getByLabel('Adresse e-mail', { exact: true }).fill('bob@example.test');
+    await member.getByLabel('Mot de passe', { exact: true }).fill(password);
+    await member.getByRole('button', { name: 'Se connecter', exact: true }).click();
+    await expect(member.locator('.project-heading h1')).toHaveText('PlaniFiKateur');
+    const projects = member.getByRole('navigation', { name: 'Projets' });
+    await expect(projects.getByRole('button', { name: /Projet confidentiel/ })).toHaveCount(0);
+    // Contribution sur PlaniFiKateur : modifier oui, confier à l’agent non.
+    await member.getByRole('heading', { name: seed[0].cards[2].title, exact: true }).click();
+    await expect(member.getByLabel('Statut', { exact: true }).locator('option[value="ready"]')).toHaveAttribute(
+      'disabled',
+      '',
+    );
+    await expect(member.getByRole('region', { name: 'Exécution IA', exact: true })).toContainText(
+      'Seuls les responsables du projet peuvent confier cette carte',
+    );
+    await expect(member.getByRole('button', { name: 'Confier à l’agent', exact: true })).toHaveCount(0);
+    await member.getByLabel('Priorité', { exact: true }).selectOption('high');
+    await member.getByRole('button', { name: 'Terminé', exact: true }).click();
+    await expect(member.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+    // Une carte prête attend l’agent : sa demande n’est modifiable que par un responsable.
+    await member.getByRole('heading', { name: seed[0].cards[1].title, exact: true }).click();
+    await expect(member.getByLabel('Description', { exact: true })).not.toBeEditable();
+    await expect(member.getByText(/seul un responsable peut encore modifier la demande/)).toBeVisible();
+    await expect(member.getByLabel('Priorité', { exact: true })).toBeEnabled();
+    await member.getByRole('button', { name: 'Terminé', exact: true }).click();
+    // Lecture seule sur le site vitrine.
+    const memberMenu = member.getByRole('button', { name: 'Ouvrir les projets', exact: true });
+    if (await memberMenu.isVisible()) await memberMenu.click();
+    await projects.getByRole('button', { name: /Site vitrine/ }).click();
+    await expect(member.locator('.read-only-badge')).toHaveText('Lecture seule');
+    await expect(member.getByRole('button', { name: /^Ajouter une carte/ })).toHaveCount(0);
+    await expect(member.getByRole('button', { name: 'Supprimer le projet', exact: true })).toHaveCount(0);
+    await member.getByRole('heading', { name: seed[1].cards[0].title, exact: true }).click();
+    await expect(member.getByLabel('Titre de la carte', { exact: true })).not.toBeEditable();
+    await expect(member.getByLabel('Votre commentaire', { exact: true })).toHaveCount(0);
+    await expect(
+      member.getByText('Lecture seule : votre rôle sur ce projet ne permet pas de commenter.'),
+    ).toBeVisible();
+    await context.close();
+  },
+);
 
 test('a comment from another member reaches the notifications live and opens the card', async ({
   page,
@@ -1684,55 +1689,56 @@ test.describe('automatic GitHub delivery', () => {
       'https://drive.google.com/file/d/drive-executable-id/view',
     );
   });
-  test('repositories persist separately for each project and missing configuration blocks preparation', async ({
-    page,
-    appServer,
-  }) => {
-    await login(page, appServer);
-    const configure = async repository => {
+  test(
+    'repositories persist separately for each project and missing configuration blocks preparation',
+    { tag: '@mobile' },
+    async ({ page, appServer }) => {
+      await login(page, appServer);
+      const configure = async repository => {
+        await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
+        await page.getByText('Dépôt GitHub et fusion automatique', { exact: true }).click();
+        await page.getByLabel('Dépôt du projet', { exact: true }).fill(repository);
+        await page.getByRole('button', { name: 'Enregistrer le dépôt', exact: true }).click();
+        await expect(page.getByRole('dialog').getByRole('status')).toHaveText('Dépôt enregistré pour ce projet.');
+        await page.getByRole('button', { name: 'Fermer', exact: true }).click();
+      };
+      await configure('flo91360/PlaniFiKateur');
+      await newProject(page, 'Klaviflo');
+      await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+      await page.getByRole('button', { name: 'Ajouter une carte dans Améliorations', exact: true }).click();
+      await page.getByLabel('Titre de la carte', { exact: true }).fill(seed[0].cards[0].title);
+      await page.getByLabel('Description', { exact: true }).fill('Améliorer le menu de Klaviflo');
+      await page.getByRole('button', { name: 'Créer la carte', exact: true }).click();
+      await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
       await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
       await page.getByText('Dépôt GitHub et fusion automatique', { exact: true }).click();
-      await page.getByLabel('Dépôt du projet', { exact: true }).fill(repository);
-      await page.getByRole('button', { name: 'Enregistrer le dépôt', exact: true }).click();
-      await expect(page.getByRole('dialog').getByRole('status')).toHaveText('Dépôt enregistré pour ce projet.');
+      await expect(page.getByLabel('Dépôt du projet', { exact: true })).toHaveValue('');
       await page.getByRole('button', { name: 'Fermer', exact: true }).click();
-    };
-    await configure('flo91360/PlaniFiKateur');
-    await newProject(page, 'Klaviflo');
-    await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
-    await page.getByRole('button', { name: 'Ajouter une carte dans Améliorations', exact: true }).click();
-    await page.getByLabel('Titre de la carte', { exact: true }).fill(seed[0].cards[0].title);
-    await page.getByLabel('Description', { exact: true }).fill('Améliorer le menu de Klaviflo');
-    await page.getByRole('button', { name: 'Créer la carte', exact: true }).click();
-    await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
-    await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
-    await page.getByText('Dépôt GitHub et fusion automatique', { exact: true }).click();
-    await expect(page.getByLabel('Dépôt du projet', { exact: true })).toHaveValue('');
-    await page.getByRole('button', { name: 'Fermer', exact: true }).click();
-    await configure('flo91360/Klaviflo');
-    await page.reload();
-    // isVisible n’attend pas : vérifier le menu mobile seulement une fois le tableau rechargé.
-    await expect(page.locator('.topbar')).toBeVisible();
-    const projectMenu = page.getByRole('button', { name: 'Ouvrir les projets', exact: true });
-    if (await projectMenu.isVisible()) await projectMenu.click();
-    await page
-      .getByRole('navigation', { name: 'Projets' })
-      .getByRole('button', { name: /Klaviflo/ })
-      .click();
-    await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
-    await page.getByText('Dépôt GitHub et fusion automatique', { exact: true }).click();
-    await expect(page.getByLabel('Dépôt du projet', { exact: true })).toHaveValue('flo91360/Klaviflo');
-    await page.getByRole('button', { name: 'Fermer', exact: true }).click();
-    const menu = page.getByRole('button', { name: 'Ouvrir les projets', exact: true });
-    if (await menu.isVisible()) await menu.click();
-    await page
-      .getByRole('navigation', { name: 'Projets' })
-      .getByRole('button', { name: /PlaniFiKateur/ })
-      .click();
-    await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
-    await page.getByText('Dépôt GitHub et fusion automatique', { exact: true }).click();
-    await expect(page.getByLabel('Dépôt du projet', { exact: true })).toHaveValue('flo91360/PlaniFiKateur');
-  });
+      await configure('flo91360/Klaviflo');
+      await page.reload();
+      // isVisible n’attend pas : vérifier le menu mobile seulement une fois le tableau rechargé.
+      await expect(page.locator('.topbar')).toBeVisible();
+      const projectMenu = page.getByRole('button', { name: 'Ouvrir les projets', exact: true });
+      if (await projectMenu.isVisible()) await projectMenu.click();
+      await page
+        .getByRole('navigation', { name: 'Projets' })
+        .getByRole('button', { name: /Klaviflo/ })
+        .click();
+      await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
+      await page.getByText('Dépôt GitHub et fusion automatique', { exact: true }).click();
+      await expect(page.getByLabel('Dépôt du projet', { exact: true })).toHaveValue('flo91360/Klaviflo');
+      await page.getByRole('button', { name: 'Fermer', exact: true }).click();
+      const menu = page.getByRole('button', { name: 'Ouvrir les projets', exact: true });
+      if (await menu.isVisible()) await menu.click();
+      await page
+        .getByRole('navigation', { name: 'Projets' })
+        .getByRole('button', { name: /PlaniFiKateur/ })
+        .click();
+      await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
+      await page.getByText('Dépôt GitHub et fusion automatique', { exact: true }).click();
+      await expect(page.getByLabel('Dépôt du projet', { exact: true })).toHaveValue('flo91360/PlaniFiKateur');
+    },
+  );
   test('shows the linked PR and finishes only after a signed merge notification', async ({
     page,
     request,

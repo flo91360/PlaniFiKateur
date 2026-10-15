@@ -2,10 +2,15 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
-## 0.1.38 — 2026-10-15
-<!-- planifikateur:4237a24c-578c-4b1a-8c75-d3ba5de92cc8 -->
+## 0.1.39 — 2026-10-15
+<!-- planifikateur:tests-mobile-allegees -->
 
-- **Sauvegarde serveur** : J'ai corrigé les 4 tests navigateur en échec, mais je n'ai pas pu les relancer : l'environnement bloque toute commande shell, donc la prochaine exécution du worker sera la première vérification. **Cause de l'échec :** les tests cherchaient le bouton « Espace personnel » avec un nom qui devait commencer par « Espace personnel ». Or le nom lu par Playwright commence par la lettre « P » de l'avatar : « P Espace personnel Un peu d'ordre, plein d'idées ». Aucun bouton ne correspondait, d'où le délai dépassé. J'ai corrigé la recherche dans `tests/browser/connectivity.spec.js` pour qu'elle trouve « Espace personnel » n'importe où dans le nom. L'application n'est pas modifiée par cette correction. **Changement livré par la carte :** les sauvegardes serveur ne sont plus accessibles que depuis la fenêtre « Espace personnel », ouverte depuis le bandeau latéral gauche. **L'accès retiré :** le doublon se trouvait dans la fenêtre « À propos de PlaniFiKateur », ouverte par le bouton « ? » en haut à droite. Le bouton « Historique » voisin n'a jamais affiché les sauvegardes, il ne montre que le journal des actions. **Pourquoi « Espace personnel » :** cette fenêtre présente les données de l'espace (projets, cartes, export et import JSON), et une sauvegarde est une copie de ces mêmes données. La fenêtre « À propos » sert à expliquer l'application, pas à administrer la base. **Modifications :** - `src/components/InfoPanel.jsx` : le panneau de sauvegardes ne s'affiche plus que dans « Espace personnel », toujours pour l'administrateur et en mode connecté. La logique de sauvegarde (`BackupsPanel.jsx`, API serveur) n'a pas changé : liste des copies, création et téléchargement d'une sauvegarde SQLite, téléchargement des anciennes copies. - `src/components/Sidebar.jsx` : le bouton « Espace personnel » ferme aussi le menu latéral sur mobile avant d'ouvrir la fenêtre. - Tests navigateur : - Le test de sauvegarde vérifie que ni « À propos » ni « Historique des projets » ne proposent les sauvega
+- **Tests navigateur allégés** : Le projet mobile ne rejoue plus que les tests d’affichage marqués @mobile et la CI réutilise Chromium en cache : les tests navigateur sont nettement plus courts, en CI comme sur le worker.
+
+## 0.1.38 — 2026-10-15
+<!-- planifikateur:4eded793-f029-4a29-9a17-22ae66aa3073 -->
+
+- **Visuel** : Ajout d'un espace de 14 px entre le bouton « Nouveau projet » et l'encadré de texte situé juste en dessous dans le bandeau de gauche (src/style.css, règle .new-project, avec un commentaire explicatif). Cause : l'encadré est poussé vers le bas du bandeau par une marge haute automatique. Quand le bandeau manque de hauteur (plusieurs projets ou petit écran), cette marge tombe à zéro et l'encadré se colle au bouton. Avec la nouvelle marge basse du bouton, un petit écart reste visible même quand le bandeau est plein. Quand il y a de la place, l'encadré reste en bas comme avant. Seule la règle de ce bouton change. Les tests du navigateur cliquent sur ce bouton par son nom, qui n'a pas changé. Non vérifié : les commandes shell échouent dans le bac à sable de l'agent (« Can't mount proc »), donc ni le formatage Prettier ni les tests n'ont été lancés, et l'écart n'a pas été constaté à l'écran.
 
 ## 0.1.37 — 2026-10-15
 <!-- planifikateur:suppression-branches-fusionnees -->
