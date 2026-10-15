@@ -19,3 +19,24 @@ test('refused and skipped changes are explained in one message', () => {
     '2 modifications ont été refusées et retirées de la page : Lecture seule. Une modification visait un élément supprimé entre-temps dans une autre session.',
   );
 });
+
+test('projects read back alone replace their previous version and keep the board order', async () => {
+  const { mergeProjects } = await import('../src/lib/use-workspace.js');
+  const base = [
+    { id: 'a', v: 1 },
+    { id: 'b', v: 1 },
+    { id: 'c', v: 1 },
+  ];
+  assert.deepEqual(mergeProjects(base, [{ id: 'b', v: 2 }], ['b']), [
+    { id: 'a', v: 1 },
+    { id: 'b', v: 2 },
+    { id: 'c', v: 1 },
+  ]);
+  // Projet devenu invisible ou supprimé : retiré.
+  assert.deepEqual(mergeProjects(base, [], ['c']), [
+    { id: 'a', v: 1 },
+    { id: 'b', v: 1 },
+  ]);
+  // Projet inconnu de la page : il faut tout relire.
+  assert.equal(mergeProjects(base, [{ id: 'z', v: 1 }], ['z']), null);
+});

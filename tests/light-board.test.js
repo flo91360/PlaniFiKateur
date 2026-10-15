@@ -184,3 +184,50 @@ test('an existing database fills the notification index from its history', async
     [['comment.created', 'Bob']],
   );
 });
+
+test('a save returns only the projects it touched, and a project can be read back alone', async t => {
+  const { call, project, card } = await fixture(t);
+  const board = await (await call('GET', '/workspace')).json();
+  const response = await call('PATCH', '/workspace', {
+    changes: [{ type: 'card.update', projectId: project.id, cardId: card.id, fields: { title: 'Seul projet' } }],
+    partial: true,
+    scope: 'changed',
+  });
+  const { data } = await response.json();
+  assert.deepEqual(data.projectIds, [project.id]);
+  assert.deepEqual(
+    data.projects.map(item => item.id),
+    [project.id],
+  );
+  assert.equal(data.fromRevision, board.revision);
+  assert.equal(data.revision, board.revision + 1);
+  assert.deepEqual(Object.keys(data.access).sort(), Object.keys(board.access).sort());
+  // Ajout de projet : la liste change, tout le tableau revient.
+  const created = await call('PATCH', '/workspace', {
+    changes: [
+      {
+        type: 'project.create',
+        project: {
+          id: 'nouveau',
+          name: 'Nouveau',
+          description: '',
+          emoji: '◈',
+          color: '#e1e7cd',
+          lists: [],
+          cards: [],
+        },
+      },
+    ],
+    scope: 'changed',
+  });
+  const all = (await created.json()).data;
+  assert.equal(all.projectIds, undefined);
+  assert.ok(all.projects.length > 1);
+  const partial = await (await call('GET', `/workspace?projects=${project.id}`)).json();
+  assert.deepEqual(
+    partial.projects.map(item => item.id),
+    [project.id],
+  );
+  assert.ok(Object.keys(partial.access).includes('nouveau'));
+  assert.equal((await call('PATCH', '/workspace', { changes: [], scope: 'tout' })).status, 400);
+});

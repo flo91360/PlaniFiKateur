@@ -77,7 +77,9 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
       setLoadError(error.message);
     }
   }, []);
-  const refresh = useCallback(async ({ whileEditing = false } = {}) => {
+  // `only` : relecture des seuls projets annoncés par le flux ({ projectIds, revision } attendue) ;
+  // à défaut, ou si le serveur a avancé entre-temps, tout le tableau est relu.
+  const refresh = useCallback(async ({ whileEditing = false, only = null } = {}) => {
     if (
       offlineMode ||
       !initialized.current ||
@@ -93,10 +95,10 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
     const baseRevision = revision.current;
     refreshing.current = true;
     try {
-      const remote = await request('workspace', {
-        headers: { 'If-None-Match': `"${baseRevision}"` },
-        signal: AbortSignal.timeout(10000),
-      });
+      const remote = await request(
+        only ? `workspace?projects=${only.projectIds.map(encodeURIComponent).join(',')}` : 'workspace',
+        { headers: { 'If-None-Match': `"${baseRevision}"` }, signal: AbortSignal.timeout(10000) },
+      );
       // A read may complete after the user begins editing or after a newer save.
       if (
         (!whileEditing && paused.current) ||
@@ -105,7 +107,19 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
         revision.current !== baseRevision
       )
         return;
-      if (remote && remote.revision > baseRevision) {
+      if (remote && only) {
+        const merged =
+          remote.revision === only.revision &&
+          mergeProjects(saved.current, validateWorkspace(remote.projects, SERVER_FORM), only.projectIds);
+        if (!merged) pending.current = true;
+        else {
+          current.current = merged;
+          saved.current = merged;
+          revision.current = remote.revision;
+          setState(merged);
+          setAccess(remote.access || {});
+        }
+      } else if (remote && remote.revision > baseRevision) {
         const clean = validateWorkspace(remote.projects, SERVER_FORM);
         current.current = clean;
         saved.current = clean;
@@ -134,7 +148,14 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
   // que de filet de sécurité, sauf si le flux est coupé ou si la dernière lecture a échoué.
   const live = useServerConnected();
   useServerEvent((type, data) => {
-    if (type === 'ready' || (type === 'workspace' && data.revision > revision.current)) void refresh();
+    if (type === 'ready') void refresh();
+    else if (type === 'workspace' && data.revision > revision.current)
+      // Changement limité à quelques projets, juste après notre révision : eux seuls sont relus.
+      void refresh(
+        data.projectIds && data.fromRevision === revision.current
+          ? { only: { projectIds: data.projectIds, revision: data.revision } }
+          : {},
+      );
   });
   useEffect(() => {
     if (offlineMode || !ready || pauseRefresh) return;
@@ -173,14 +194,21 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
           setState(saved.current);
           continue;
         }
+        const sentFrom = revision.current;
         const data = await apiData('workspace', {
           method: 'PATCH',
-          data: { changes, partial: true },
+          data: { changes, partial: true, scope: 'changed' },
           fallback: 'Le serveur ne répond pas.',
         });
         setSaveNotice(describeRefusals(data));
-        const canonical = validateWorkspace(data.projects, SERVER_FORM);
-        revision.current = data.revision;
+        // Le serveur ne renvoie que les projets visés par le lot (`projectIds`) : ils remplacent
+        // ceux de l’état enregistré. Si d’autres sessions ont écrit depuis la dernière lecture
+        // (`fromRevision` différente), la révision reste en arrière et tout le tableau sera relu.
+        const returned = validateWorkspace(data.projects, SERVER_FORM);
+        const canonical = data.projectIds ? mergeProjects(saved.current, returned, data.projectIds) : returned;
+        if (!canonical) throw new Error('Réponse du serveur incohérente. Rechargez la page.');
+        if (data.projectIds && data.fromRevision !== sentFrom) pending.current = true;
+        else revision.current = data.revision;
         saved.current = canonical;
         setAccess(data.access || {});
         // Les modifications faites pendant l’envoi sont rejouées sur l’état renvoyé par le serveur.
@@ -265,6 +293,17 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
     accept,
     logout,
   };
+}
+
+// Remplace dans `base` les projets `ids` par ceux de `projects` (absents : retirés, car supprimés ou
+// devenus invisibles). Renvoie null si un projet inconnu de `base` apparaît : il faut tout relire.
+export function mergeProjects(base, projects, ids) {
+  const fresh = new Map(projects.map(project => [project.id, project]));
+  if (projects.some(project => !base.some(item => item.id === project.id))) return null;
+  const wanted = new Set(ids);
+  return base.flatMap(project =>
+    wanted.has(project.id) ? (fresh.has(project.id) ? [fresh.get(project.id)] : []) : [project],
+  );
 }
 
 // Message pour les modifications refusées (droits, contenu) ou ignorées (élément supprimé ailleurs).

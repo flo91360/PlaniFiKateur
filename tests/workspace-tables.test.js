@@ -116,21 +116,24 @@ test('tables are read in canonical form and only changed rows are written', () =
   store.close();
   const db = new DatabaseSync(':memory:');
   db.exec(WORKSPACE_TABLES);
-  assert.ok(writeWorkspace(db, projects) > 0);
+  assert.ok(writeWorkspace(db, projects).written > 0);
   const read = readWorkspace(db);
   assert.equal(JSON.stringify(read), JSON.stringify(validateWorkspace(read)));
   assert.deepEqual(read, projects);
-  assert.equal(writeWorkspace(db, projects), 0);
+  assert.deepEqual(writeWorkspace(db, projects), { written: 0, projectIds: [], structural: false });
   const edited = structuredClone(projects);
   edited[0].cards[0].title = 'Titre modifié';
-  assert.equal(writeWorkspace(db, edited), 1);
+  assert.deepEqual(writeWorkspace(db, edited), { written: 1, projectIds: [projects[0].id], structural: false });
   const withoutCard = structuredClone(edited);
   const [removed] = withoutCard[0].cards.splice(0, 1);
   // La carte, ses commentaires et pièces jointes disparaissent ; les suivantes changent de position.
   assert.equal(
-    writeWorkspace(db, withoutCard),
+    writeWorkspace(db, withoutCard).written,
     1 + removed.comments.length + removed.attachments.length + withoutCard[0].cards.length,
   );
   assert.deepEqual(readWorkspace(db), withoutCard);
+  // Un projet réordonné ou supprimé change la liste des projets elle-même.
+  assert.equal(writeWorkspace(db, [...withoutCard].reverse()).structural, true);
+  assert.equal(writeWorkspace(db, withoutCard.slice(1)).structural, true);
   db.close();
 });

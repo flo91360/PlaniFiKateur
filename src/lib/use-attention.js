@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { apiData } from './api-client.js';
-import { useServerEvent } from './use-server-events.js';
+import { useServerConnected, useServerEvent } from './use-server-events.js';
 
 // Cartes qui attendent une personne (questions de l’agent, résultats à valider).
-// Relu à chaque changement du tableau ou d’une exécution, au retour sur l’onglet et toutes les 30 secondes.
-export function useAttention({ enabled, projects }) {
+// Relu à chaque événement d’exécution, au retour sur l’onglet, et toutes les 30 secondes seulement
+// sans flux d’événements (toutes les 5 minutes sinon, par sécurité).
+export function useAttention({ enabled }) {
   const [items, setItems] = useState([]);
+  const live = useServerConnected();
   const reload = useRef(() => {});
   useServerEvent(type => {
     if (type === 'work' || type === 'ready') reload.current();
@@ -23,7 +25,7 @@ export function useAttention({ enabled, projects }) {
     };
     reload.current = load;
     load();
-    const timer = setInterval(load, 30000);
+    const timer = setInterval(load, live ? 300000 : 30000);
     document.addEventListener('visibilitychange', load);
     return () => {
       reload.current = () => {};
@@ -31,6 +33,6 @@ export function useAttention({ enabled, projects }) {
       clearInterval(timer);
       document.removeEventListener('visibilitychange', load);
     };
-  }, [enabled, projects]);
+  }, [enabled, live]);
   return enabled ? items : [];
 }
