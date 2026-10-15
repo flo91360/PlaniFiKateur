@@ -1,4 +1,4 @@
-import { access, appendFile, mkdir, rm } from 'node:fs/promises';
+import { access, appendFile, mkdir, readFile, rm } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validId, validRepository } from './config.mjs';
@@ -12,11 +12,14 @@ import { validateAi, efforts, effortLabels } from './ai-settings.mjs';
 import { defaultExecutionProfile, installedProfile, resolveWorkerCommand } from './execution-profile.mjs';
 import { runtimeEnvironment, checkRuntime, projectDiagnostic } from './runtime.mjs';
 import { prepareDelivery } from './delivery.mjs';
+import { isolatedCommand } from './isolation.mjs';
+import { reviewedChanges } from './review.mjs';
 import { WorkerTimeoutError, createReservation } from './reservation.mjs';
 
 import { checkoutFingerprint, requestFingerprint } from './checkpoint.mjs';
 import {
   checkoutProblem,
+  gitGuard,
   concludeMerge,
   conflictInstructions,
   mergeInProgress,
@@ -24,6 +27,8 @@ import {
 } from './checkout-state.mjs';
 
 const workerDirectory = dirname(fileURLToPath(import.meta.url));
+// Seules ces commandes Git contactent GitHub et reçoivent le jeton.
+const REMOTE_GIT = new Set(['clone', 'fetch', 'ls-remote', 'push']);
 const MAX_ROUNDS = 3;
 const engineName = engine => (engine === 'codex' ? 'Codex' : 'Claude Code');
 
@@ -142,32 +147,47 @@ export function createWorker(config, dependencies = {}) {
       targetBranch = profile.branch;
     const cwd = join(config.stateRoot, 'jobs', job.id);
     const home = join(cwd, '.planifikateur', 'home');
+    const npmCache = join(config.stateRoot, 'npm-cache');
     const env = {
       ...runtimeEnvironment(profile, config),
       HOME: home,
-      npm_config_cache: join(config.stateRoot, 'npm-cache'),
+      npm_config_cache: npmCache,
       PLANIFIKATEUR_WORKER: '1',
       CI: '1',
     };
+    // Git ne lance ni hook ni surveillance du système de fichiers, même si l’agent en déclarait ;
+    // le jeton GitHub n’accompagne que les commandes qui contactent GitHub.
     const gitEnv = {
       ...env,
       GIT_TERMINAL_PROMPT: '0',
       GIT_CONFIG_NOSYSTEM: '1',
       GIT_CONFIG_GLOBAL: '/dev/null',
+      GIT_CONFIG_COUNT: '2',
+      GIT_CONFIG_KEY_0: 'core.hooksPath',
+      GIT_CONFIG_VALUE_0: '/dev/null',
+      GIT_CONFIG_KEY_1: 'core.fsmonitor',
+      GIT_CONFIG_VALUE_1: 'false',
+    };
+    const gitRemoteEnv = {
+      ...gitEnv,
       GIT_ASKPASS: fileURLToPath(new URL('./git-askpass.mjs', import.meta.url)),
       PLANIFIKATEUR_GIT_TOKEN: config.githubToken,
     };
+    const gitEnvFor = args => (REMOTE_GIT.has(args[1]) ? gitRemoteEnv : gitEnv);
     const command = async (args, extra = {}) => {
       const result = await execute(args, {
         cwd,
-        env: args[0] === 'git' ? gitEnv : env,
+        env: args[0] === 'git' ? gitEnvFor(args) : env,
         signal: reservation.signal,
         ...extra,
       });
       if (result.code !== 0) throw new Error(`Échec de ${args.slice(0, 3).join(' ')} : ${clean(result.output)}`);
       return result.output.trim();
     };
-    const git = args => execute(['git', ...args], { cwd, env: gitEnv, signal });
+    // Commande du projet (installation, tests) : code de la branche, exécuté isolé du worker.
+    const project = args =>
+      isolatedCommand(resolveWorkerCommand(args, workerDirectory), { config, cwd, writable: [npmCache] });
+    const git = args => execute(['git', ...args], { cwd, env: gitEnvFor(['git', ...args]), signal });
     const url = `https://github.com/${job.repository}.git`;
     await mkdir(config.stateRoot, { recursive: true });
     await checkRuntime(profile, config, execute, signal);
@@ -181,7 +201,12 @@ export function createWorker(config, dependencies = {}) {
     if (cloned) {
       // Un checkout que le worker ne sait pas remettre en état est recréé depuis GitHub :
       // la branche publiée est reprise, seul le travail jamais poussé est perdu.
-      const problem = await checkoutProblem(cwd, git, job.branch);
+      // Configuration Git, attributs ou hooks changés depuis la dernière préparation : posés par
+      // l’agent pendant un tour interrompu, ils ne doivent jamais servir aux commandes du worker.
+      const problem =
+        job.gitGuard && job.gitGuard !== (await gitGuard(cwd))
+          ? 'configuration Git locale modifiée hors du worker'
+          : await checkoutProblem(cwd, git, job.branch);
       if (problem) {
         log(`Exécution ${job.id} : checkout local recréé (${problem}).`);
         await reservation.action('progress', { message: `Checkout local recréé depuis GitHub : ${problem}.` });
@@ -196,7 +221,10 @@ export function createWorker(config, dependencies = {}) {
       });
     }
     await mkdir(home, { recursive: true });
-    await appendFile(join(cwd, '.git', 'info', 'exclude'), '\n.planifikateur/\n');
+    await mkdir(npmCache, { recursive: true });
+    const exclude = join(cwd, '.git', 'info', 'exclude');
+    if (!(await readFile(exclude, 'utf8').catch(() => '')).split('\n').includes('.planifikateur/'))
+      await appendFile(exclude, '\n.planifikateur/\n');
     await command(['git', 'config', 'user.name', 'PlaniFiKateur IA']);
     await command(['git', 'config', 'user.email', 'agent@planifikateur.invalid']);
     if ((await command(['git', 'config', '--get', 'remote.origin.url'])) !== url)
@@ -232,15 +260,18 @@ export function createWorker(config, dependencies = {}) {
     }
     await reservation.action('progress', { message: `Préparation des dépendances du profil ${profile.preset}.` });
     const legacy = reservation.run.legacyExecutionProfile;
-    for (const install of legacy ? config.installCommands : profile.installCommands)
-      await command(resolveWorkerCommand(install, workerDirectory));
+    for (const install of legacy ? config.installCommands : profile.installCommands) await command(project(install));
     await reservation.action('progress', {
       message: 'Le dépôt est prêt. L’agent réalise la demande avant les vérifications locales.',
     });
+    job.gitGuard = await gitGuard(cwd);
+    await state.put(job);
     return {
       cwd,
       env,
       gitEnv,
+      gitRemoteEnv,
+      project,
       command,
       url,
       targetBranch,
@@ -298,7 +329,7 @@ export function createWorker(config, dependencies = {}) {
         continue;
       }
       await task.reservation.action('progress', { message: `Vérification locale : ${test.join(' ')}.` });
-      const outcome = await execute(resolveWorkerCommand(test, workerDirectory), {
+      const outcome = await execute(checkout.project(test), {
         cwd: checkout.cwd,
         env: checkout.env,
         signal: task.reservation.signal,
@@ -384,6 +415,14 @@ export function createWorker(config, dependencies = {}) {
             },
           }),
         );
+        // Le modèle ne doit rien poser dans .git qui ferait exécuter du code aux commandes Git du
+        // worker : le checkout est alors supprimé, et recréé depuis GitHub à la reprise.
+        if ((await gitGuard(checkout.cwd)) !== job.gitGuard) {
+          await rm(checkout.cwd, { recursive: true, force: true });
+          throw new Error(
+            'Le travail de l’agent a modifié la configuration Git locale (hooks, filtres ou attributs) : le checkout est supprimé et sera recréé depuis GitHub.',
+          );
+        }
         if (result.status === 'question') return { status: 'question', question: result.question };
         // Only persist the structured result, never runner credentials or output payloads.
         result = { status: 'result', summary: clean(result.summary), question: '', files: result.files || [] };
@@ -467,7 +506,7 @@ export function createWorker(config, dependencies = {}) {
     });
     const pushed = await execute(['git', 'push', 'origin', `HEAD:refs/heads/${job.branch}`], {
       cwd: checkout.cwd,
-      env: checkout.gitEnv,
+      env: checkout.gitRemoteEnv,
       signal,
     });
     if (pushed.code !== 0) {
@@ -482,12 +521,16 @@ export function createWorker(config, dependencies = {}) {
       log(`Exécution ${run.id} : publication refusée, le token GitHub ne peut pas modifier les workflows.`);
       return waiting;
     }
+    const reviewRequired = await reviewedChanges(job.executionProfile, command, `origin/${targetBranch}`);
+    const review = reviewRequired.length
+      ? `\n\nContrôles modifiés : approbation d’un responsable requise avant la fusion.\n${reviewRequired.map(item => `- ${item}`).join('\n')}`
+      : '';
     // PR starts unlabeled. Only enable merging after the site has bound this SHA.
     const pr = await github.ensurePullRequest(
       job.repository,
       job.branch,
       run.cardSnapshot.title.slice(0, 140),
-      `${result.summary}\n\nCarte PlaniFiKateur : ${run.cardId}\nExécution : ${run.id}\n\nVérifications locales :\n${checks.map(c => `- ${c}`).join('\n')}`,
+      `${result.summary}\n\nCarte PlaniFiKateur : ${run.cardId}\nExécution : ${run.id}\n\nVérifications locales :\n${checks.map(c => `- ${c}`).join('\n')}${review}`,
       signal,
       sha,
       targetBranch,
@@ -502,6 +545,7 @@ export function createWorker(config, dependencies = {}) {
       links: [pr.html_url],
       pullRequest: { url: pr.html_url, headSha: sha },
       files,
+      ...(reviewRequired.length ? { reviewRequired } : {}),
     });
     job.phase = 'merging';
     job.attempts = 0;

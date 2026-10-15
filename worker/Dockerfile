@@ -11,13 +11,15 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /opt/node22/bin/npm \
     && ln -s ../lib/node_modules/npm/bin/npx-cli.js /opt/node22/bin/npx
 COPY worker/install-godot.py /tmp/install-godot.py
 RUN python3 /tmp/install-godot.py && rm /tmp/install-godot.py
-COPY --chown=node:node worker/package.json worker/package-lock.json ./
+# Le code du worker appartient à root : ni l'agent ni les tests du projet ne peuvent le modifier.
+COPY worker/package.json worker/package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
-COPY --chown=node:node worker/ ./
+COPY worker/ ./
 # Windows checkouts may contain CRLF even before .gitattributes is applied.
 RUN sed -i 's/\r$//' git-askpass.mjs entrypoint.sh \
     && chmod +x git-askpass.mjs entrypoint.sh
 ENV PLANIFIKATEUR_WORKER_STATE_DIR=/data \
+    PLANIFIKATEUR_WORKER_ISOLATION=bwrap \
     CODEX_HOME=/data/codex \
     PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium
 ENTRYPOINT ["/opt/worker/entrypoint.sh"]

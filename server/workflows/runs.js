@@ -9,12 +9,26 @@ import { usageSummary } from './usage.js';
 export function createRuns(
   db,
   { transaction, findCard, readProjects, writeProjects, canLaunch, requiresApproval },
-  { rows, unpack, compact, questionComments, save, expire, scoped, checkVersion, checkAgent, checkSource },
+  {
+    rows,
+    unpack,
+    compact,
+    questionComments,
+    save,
+    expire,
+    scoped,
+    checkVersion,
+    checkAgent,
+    checkSource,
+    approvalNeeded,
+  },
   { githubProject, executionProfile },
 ) {
   // PR en cours de fusion qui attend encore l’approbation d’un responsable.
-  const awaitingApproval = (run, required = requiresApproval(run.projectId)) =>
-    run.state === 'merging' && required && run.approval?.headSha !== run.submissions.at(-1)?.pullRequest?.headSha;
+  const awaitingApproval = (run, required) =>
+    run.state === 'merging' &&
+    approvalNeeded(run, required) &&
+    run.approval?.headSha !== run.submissions.at(-1)?.pullRequest?.headSha;
   const prepare = (projectId, cardId, data, actor) => {
     const { card } = findCard(projectId, cardId);
     if (db.prepare(`SELECT id FROM executions WHERE card_id=? AND ${OPEN}`).get(cardId))
@@ -147,7 +161,7 @@ export function createRuns(
         const approvalRequired = requiresApproval(projectId);
         return rows('project_id = ? AND card_id = ?', projectId, cardId)
           .map(unpack)
-          .map(run => ({ ...run, approvalRequired, usage: usageSummary(run) }));
+          .map(run => ({ ...run, approvalRequired: approvalNeeded(run, approvalRequired), usage: usageSummary(run) }));
       });
     },
     // État de l’agent pour chaque carte d’un projet ayant une exécution en cours, affiché en badge

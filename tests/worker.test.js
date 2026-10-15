@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
-import { access, mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
+import { access, mkdtemp, mkdir, readFile, stat, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -333,6 +333,27 @@ test('worker merges only after GitHub CI and site eligibility, without Actions s
   await f.worker.tick();
   assert.equal(f.current().state, 'done');
   assert.equal(f.merges, 1);
+});
+
+test('only GitHub network commands receive the token and no Git command runs hooks or a file monitor', async t => {
+  const f = await fixture(t);
+  f.prepare();
+  await f.worker.tick();
+  const gitCalls = f.calls.filter(call => call.command[0] === 'git');
+  const remote = ['clone', 'fetch', 'ls-remote', 'push'];
+  assert.ok(gitCalls.some(call => call.command[1] === 'push'));
+  assert.ok(gitCalls.some(call => ['commit', 'merge', 'add', 'status'].includes(call.command[1])));
+  for (const { command, env } of gitCalls) {
+    assert.equal(!!env.PLANIFIKATEUR_GIT_TOKEN, remote.includes(command[1]), command.join(' '));
+    assert.equal(!!env.GIT_ASKPASS, remote.includes(command[1]), command.join(' '));
+    assert.deepEqual(
+      [env.GIT_CONFIG_KEY_0, env.GIT_CONFIG_VALUE_0, env.GIT_CONFIG_KEY_1, env.GIT_CONFIG_VALUE_1],
+      ['core.hooksPath', '/dev/null', 'core.fsmonitor', 'false'],
+    );
+  }
+  // Les commandes du projet ne reçoivent aucune clé.
+  for (const { command, env } of f.calls.filter(call => call.command[0] !== 'git'))
+    assert.ok(!Object.keys(env || {}).some(name => /TOKEN|API_KEY/.test(name)), command.join(' '));
 });
 
 test('a push refused for a missing workflow permission asks for the token change instead of retrying', async t => {
@@ -785,6 +806,26 @@ test('shutdown interrupts the card and a restart reclaims it without losing conv
   assert.equal(f.pr, undefined);
   assert.equal((await f.worker.processTask(f.current())).status, 'merging');
   assert.equal(f.modelCalls[1].job.threadId, 'fixture-thread');
+});
+
+test('a Git hook or filter planted by the model removes the checkout before any worker Git command', async t => {
+  const f = await fixture(t, {
+    model: async (input, number) => {
+      if (number === 1) {
+        await writeFile(join(input.cwd, '.git', 'hooks', 'pre-commit'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+        await writeFile(join(input.cwd, '.git', 'config'), '[filter "x"]\n\tclean = sh -c leak\n', { flag: 'a' });
+      }
+      await writeFile(join(input.cwd, 'greet.mjs'), "export const greet = () => 'bonjour';\n");
+      return { status: 'result', summary: 'Greeting', question: '' };
+    },
+  });
+  const first = await f.worker.processTask(f.prepare());
+  assert.equal(first.status, 'interrupted');
+  assert.match(f.current().interruption, /configuration Git locale/);
+  assert.equal(f.pr, undefined);
+  await assert.rejects(stat(join(f.config.stateRoot, 'jobs', f.current().id)), { code: 'ENOENT' });
+  // La reprise recrée le checkout depuis GitHub, sans le hook, et livre normalement.
+  assert.equal((await f.worker.processTask(f.current())).status, 'merging');
 });
 
 test('failed mandatory tests are corrected at most three times and never publish a PR', async t => {

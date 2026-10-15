@@ -54,7 +54,9 @@ le choisissent par défaut (`repositories`), son fichier de version
 (`versioning.format` : `npm` pour `package.json` et son lockfile, `godot` pour
 `project.godot`, `qmake` pour l’unique `.pro`, avec les documents dont le numéro
 suit la version), ses consignes au modèle (`instructions`, par exemple le format
-Qt Designer pour TrameErgo seulement) et ses variables d’environnement. Ajouter un
+Qt Designer pour TrameErgo seulement), ses variables d’environnement et les
+fichiers qui règlent ses tests (`reviewPaths`) : une PR qui les modifie, comme les
+workflows GitHub ou les scripts npm, attend l’approbation d’un responsable. Ajouter un
 projet revient à ajouter une entrée : le reste du worker s’en déduit sans tester
 les noms de profils.
 

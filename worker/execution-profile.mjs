@@ -5,6 +5,8 @@
 // - versioning : fichier de version (npm : package.json et son lockfile, godot : project.godot,
 //   qmake : l’unique fichier .pro) et documents dont le numéro suit la version ;
 // - instructions : consignes propres au projet ajoutées à la demande envoyée au modèle ;
+// - reviewPaths : fichiers qui règlent les tests ; une PR qui les modifie (comme les workflows
+//   GitHub ou les scripts npm) attend l’approbation d’un responsable avant la fusion ;
 // - environment : variables ajoutées aux commandes (hors du profil validé, qui reste comparable).
 export const executionPresets = {
   planifikateur: {
@@ -21,6 +23,7 @@ export const executionPresets = {
     workflow: { file: 'ci.yml', name: 'Tests', jobs: ['Tests serveur', 'Tests navigateur'] },
     repositories: ['planifikateur'],
     versioning: { format: 'npm', documents: ['README.md', 'docs/agents.md', 'docs/github.md'] },
+    reviewPaths: ['playwright.config.*', 'eslint.config.*', '.prettierrc*', '.prettierignore'],
   },
   defilordi: {
     label: 'DefilOrdi — Electron',
@@ -37,6 +40,7 @@ export const executionPresets = {
     workflow: { file: 'build-windows.yml', name: 'Windows .exe', jobs: ['build'] },
     repositories: ['defilordi'],
     versioning: { format: 'npm' },
+    reviewPaths: ['vitest.config.*', 'tsconfig*.json'],
     environment: { ELECTRON_SKIP_BINARY_DOWNLOAD: '1' },
   },
   trameergo: {
@@ -67,6 +71,7 @@ export const executionPresets = {
     workflow: { file: 'build.yml', name: 'Construire le jeu', jobs: ['export'] },
     repositories: ['funkart'],
     versioning: { format: 'godot' },
+    reviewPaths: ['tests/test_profiles.gd', 'tests/autoplay.gd'],
   },
 };
 // Profil par défaut d’un dépôt : celui qui le déclare dans `repositories`, sinon PlaniFiKateur.

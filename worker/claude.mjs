@@ -1,5 +1,6 @@
 import { mkdir } from 'node:fs/promises';
-import { join, resolve, relative, sep } from 'node:path';
+import { join } from 'node:path';
+import { confineTool } from './confine.mjs';
 import { commandEnvironment } from './commands.mjs';
 import { resultSchema, taskPrompt, prepareAttachments } from './codex.mjs';
 import { parseModelResult } from './model-result.mjs';
@@ -53,7 +54,11 @@ export function createClaudeRunner(config, dependencies = {}) {
           failIfUnavailable: true,
           autoAllowBashIfSandboxed: true,
           allowUnsandboxedCommands: false,
-          filesystem: { allowWrite: [cwd], denyRead: [config.codexHome, config.claudeHome] },
+          filesystem: {
+            allowWrite: [cwd],
+            denyWrite: [join(cwd, '.git')],
+            denyRead: [config.codexHome, config.claudeHome],
+          },
           credentials: {
             envVars: [
               { name: 'ANTHROPIC_API_KEY', mode: 'deny' },
@@ -79,12 +84,8 @@ export function createClaudeRunner(config, dependencies = {}) {
             return { behavior: 'deny', message: 'Question transmise à la discussion de la carte.' };
           }
           if (!options.tools.includes(name)) return { behavior: 'deny', message: 'Outil non autorisé.' };
-          if (input.file_path) {
-            const path = resolve(cwd, input.file_path),
-              outside = relative(cwd, path);
-            if (outside === '..' || outside.startsWith('..' + sep))
-              return { behavior: 'deny', message: 'Le fichier doit rester dans le dépôt.' };
-          }
+          const refused = await confineTool(cwd, name, input);
+          if (refused) return { behavior: 'deny', message: refused };
           return { behavior: 'allow', updatedInput: input };
         },
       };

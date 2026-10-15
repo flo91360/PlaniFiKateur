@@ -3,11 +3,15 @@ import { readWorkerConfig } from './config.mjs';
 import { createWorker } from './worker.mjs';
 import { checkClaudeSandbox, checkSandbox } from './sandbox-check.mjs';
 import { connectionDiagnostic } from './clients.mjs';
+import { checkIsolation } from './isolation.mjs';
+import { withSecrets } from './secrets.mjs';
 
 try {
   if (process.argv.slice(2).some(arg => arg !== '--once')) throw new Error('Usage : node worker/index.mjs [--once]');
-  const config = readWorkerConfig();
+  const config = readWorkerConfig(await withSecrets());
   await checkSandbox(config.stateRoot);
+  // Bloquant : sans isolation, les tests du projet liraient l’état et les connexions du worker.
+  console.log(`Isolation des commandes du projet : ${await checkIsolation(config)}.`);
   // Non bloquant : Claude Code peut encore modifier les fichiers, le worker lance les tests.
   await checkClaudeSandbox().catch(error => console.warn(`Avertissement : ${error.message}`));
   const stop = new AbortController();
