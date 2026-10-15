@@ -54,7 +54,13 @@ export default function Sidebar({ projects, currentId, user, offline, open, onCl
           PlaniFiKateur<span className="brand-dot">.</span>
         </a>
         <div className="workspace-label">VOTRE ESPACE DE TRAVAIL</div>
-        <button className="workspace-button" onClick={() => onOpenModal('overview')}>
+        <button
+          className="workspace-button"
+          onClick={() => {
+            onClose();
+            onOpenModal('overview');
+          }}
+        >
           <span className="workspace-avatar">P</span>
           <span>
             Espace personnel<small>Un peu d’ordre, plein d’idées</small>

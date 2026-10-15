@@ -238,7 +238,7 @@ Depuis la racine du dépôt, lancer le worker avec le profil seccomp fourni :
 
 ```powershell
 docker build -f worker/Dockerfile -t planifikateur-worker .
-docker run --rm --name planifikateur-worker --security-opt seccomp=worker/seccomp.json --env-file ..\planifikateur-worker.env --mount source=planifikateur-worker-data,target=/data planifikateur-worker
+docker run --rm --name planifikateur-worker --security-opt seccomp=worker/seccomp.json --security-opt systempaths=unconfined --env-file ..\planifikateur-worker.env --mount source=planifikateur-worker-data,target=/data planifikateur-worker
 ```
 
 Codex utilise bubblewrap pour isoler les commandes. Le profil Docker par défaut
@@ -250,12 +250,26 @@ cette isolation. Les capacités Docker restent inchangées et Codex conserve
 `workspace-write` : les commandes peuvent modifier le dépôt, tandis que les
 écritures en dehors du dépôt restent bloquées.
 
+Claude Code isole aussi chaque commande de l’agent avec bubblewrap, dans de
+nouveaux espaces de noms utilisateur et PID avec un `/proc` neuf. Docker masque
+par défaut plusieurs chemins de `/proc` (`/proc/kcore`, `/proc/keys`…), et le
+noyau refuse alors ce montage : toute commande échoue avec
+`bwrap: Can't mount proc on /newroot/proc: Operation not permitted`.
+L’option `--security-opt systempaths=unconfined` retire ce masquage ; le `/proc`
+vu par l’agent reste celui de son propre espace PID, sans les processus du
+worker ni leurs variables d’environnement. Le service de mise à jour automatique
+(`worker/deploy/update.py`) ajoute cette option et recrée, avec la même image,
+un conteneur lancé sans elle dès qu’aucune tâche n’est en cours.
+
 Le worker vérifie ces deux propriétés au démarrage, avant de réserver une carte.
-En cas d’échec, il affiche une erreur de configuration puis s’arrête. Le même
-contrôle peut être exécuté sans clé API ni connexion au site :
+En cas d’échec, il affiche une erreur de configuration puis s’arrête. Il contrôle
+ensuite le sandbox Claude Code : en cas d’échec, il affiche seulement un
+avertissement, car l’agent peut encore modifier les fichiers et le worker lance
+lui-même les tests. Le même contrôle peut être exécuté sans clé API ni
+connexion au site :
 
 ```powershell
-docker run --rm --security-opt seccomp=worker/seccomp.json planifikateur-worker node sandbox-check.mjs
+docker run --rm --security-opt seccomp=worker/seccomp.json --security-opt systempaths=unconfined planifikateur-worker node sandbox-check.mjs
 ```
 
 La configuration Codex doit être stockée dans le volume Linux `/data/codex`,
@@ -432,6 +446,18 @@ non encore synchronisée interrompt temporairement la tâche et provoque une
 reprise automatique ; elle ne consomme pas les tentatives de correction du
 modèle. Une soumission réussie remet ce compteur à zéro, y compris avant une
 nouvelle résolution de conflit avec `main`.
+
+L’agent ne lance aucune commande Git. Quand l’intégration de `main` produit des
+conflits, le worker reprend `CHANGELOG.md` de `main` (il y réécrit ensuite la
+section de l’exécution), puis demande à l’agent de corriger les autres fichiers
+en conflit directement. Après le passage de l’agent, ou au tour suivant si la
+fusion est restée en cours, le worker indexe les fichiers sans marqueur de
+conflit et valide lui-même la fusion, intègre le `main` à jour, prépare de
+nouveau la version et relance les tests. Le travail non validé d’un tour
+précédent est conservé dans un commit avant chaque intégration. Un checkout
+bloqué dans une opération que le worker ne reprend pas (rebase, cherry-pick…),
+illisible ou sur une autre branche est supprimé puis recréé depuis la branche
+publiée sur GitHub.
 
 Pour les tâches bloquées par l’ancienne erreur **« La PR ne pointe pas sur le
 commit testé. »**, l’agent initial peut reprendre automatiquement la publication

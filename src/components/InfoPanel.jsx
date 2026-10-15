@@ -94,7 +94,8 @@ function About({ offline }) {
   );
 }
 
-// Fenêtre d’information (view : 'info', 'overview' ou 'reload') avec export et import JSON.
+// Fenêtre d’information (view : 'info', 'overview' ou 'reload') avec export et import JSON ;
+// la vue 'overview' (Espace personnel) regroupe aussi les sauvegardes serveur de l’administrateur.
 export default function InfoPanel({ view, projects, offline, isAdmin, onImport, onReload, onClose }) {
   const [importError, setImportError] = useState('');
   return (
@@ -106,7 +107,8 @@ export default function InfoPanel({ view, projects, offline, isAdmin, onImport, 
       ) : (
         <About offline={offline} />
       )}
-      {!offline && isAdmin && view !== 'reload' && <BackupsPanel />}
+      {/* Seul accès aux sauvegardes serveur : elles concernent les données de l’espace, pas l’aide « À propos ». */}
+      {!offline && isAdmin && view === 'overview' && <BackupsPanel />}
       <div className="transfer-actions">
         <button className="secondary-button" onClick={() => exportWithAlert(projects)}>
           Exporter les projets (JSON)
