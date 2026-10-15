@@ -15,6 +15,13 @@ import { prepareDelivery } from './delivery.mjs';
 import { WorkerTimeoutError, createReservation } from './reservation.mjs';
 
 import { checkoutFingerprint, requestFingerprint } from './checkpoint.mjs';
+import {
+  checkoutProblem,
+  concludeMerge,
+  conflictInstructions,
+  mergeInProgress,
+  resolveWorkerOwned,
+} from './checkout-state.mjs';
 
 const workerDirectory = dirname(fileURLToPath(import.meta.url));
 const MAX_ROUNDS = 3;
@@ -160,6 +167,7 @@ export function createWorker(config, dependencies = {}) {
       if (result.code !== 0) throw new Error(`Échec de ${args.slice(0, 3).join(' ')} : ${clean(result.output)}`);
       return result.output.trim();
     };
+    const git = args => execute(['git', ...args], { cwd, env: gitEnv, signal });
     const url = `https://github.com/${job.repository}.git`;
     await mkdir(config.stateRoot, { recursive: true });
     await checkRuntime(profile, config, execute, signal);
@@ -169,6 +177,17 @@ export function createWorker(config, dependencies = {}) {
       await access(join(cwd, '.git'));
     } catch {
       cloned = false;
+    }
+    if (cloned) {
+      // Un checkout que le worker ne sait pas remettre en état est recréé depuis GitHub :
+      // la branche publiée est reprise, seul le travail jamais poussé est perdu.
+      const problem = await checkoutProblem(cwd, git, job.branch);
+      if (problem) {
+        log(`Exécution ${job.id} : checkout local recréé (${problem}).`);
+        await reservation.action('progress', { message: `Checkout local recréé depuis GitHub : ${problem}.` });
+        await rm(cwd, { recursive: true, force: true });
+        cloned = false;
+      }
     }
     if (!cloned) {
       // Recover the same branch after losing the checkout; never force-push.
@@ -189,14 +208,28 @@ export function createWorker(config, dependencies = {}) {
         await command(['git', 'fetch', 'origin', `${job.branch}:refs/remotes/origin/${job.branch}`]);
         await command(['git', 'checkout', '-b', job.branch, `origin/${job.branch}`]);
       } else await command(['git', 'checkout', '-b', job.branch, `origin/${targetBranch}`]);
-    } else if ((await command(['git', 'branch', '--show-current'])) !== job.branch)
-      throw new Error('Le checkout ne correspond plus à la branche de la tâche.');
-    // Preserve partial work and let Codex resolve any conflicts with current main.
-    const merged = await execute(['git', 'merge', '--no-edit', `origin/${targetBranch}`], {
-      cwd,
-      env: gitEnv,
-      signal,
-    });
+    }
+    // L’agent ne lance aucune commande Git : le worker termine la fusion d’un tour précédent
+    // dont l’agent a résolu les conflits, puis intègre la branche cible actuelle.
+    let conflicts = [];
+    if (await mergeInProgress(cwd)) {
+      conflicts = await concludeMerge(cwd, git);
+      if (!conflicts.length) log(`Exécution ${job.id} : fusion précédente avec ${targetBranch} validée par le worker.`);
+    }
+    if (!conflicts.length) {
+      // Le travail non validé d’un tour précédent est conservé dans un commit avant la fusion.
+      if (await command(['git', 'status', '--porcelain'])) {
+        await command(['git', 'add', '--all']);
+        await command(['git', 'commit', '--no-verify', '-m', `Travail en cours (${job.id})`]);
+      }
+      const merged = await git(['merge', '--no-edit', `origin/${targetBranch}`]);
+      if (merged.code !== 0) {
+        if (!(await mergeInProgress(cwd)))
+          throw new Error(`Échec de git merge origin/${targetBranch} : ${clean(merged.output)}`);
+        conflicts = await resolveWorkerOwned(git);
+        if (!conflicts.length) await command(['git', 'commit', '--no-edit', '--no-verify']);
+      }
+    }
     await reservation.action('progress', { message: `Préparation des dépendances du profil ${profile.preset}.` });
     const legacy = reservation.run.legacyExecutionProfile;
     for (const install of legacy ? config.installCommands : profile.installCommands)
@@ -212,9 +245,8 @@ export function createWorker(config, dependencies = {}) {
       url,
       targetBranch,
       testCommands: legacy ? config.testCommands : profile.testCommands,
-      conflicts: merged.code
-        ? `Résous les conflits avec ${targetBranch} avant de terminer : ${clean(merged.output)}`
-        : '',
+      git,
+      conflicts: conflicts.length ? conflictInstructions(targetBranch, conflicts) : '',
     };
   }
 
@@ -229,6 +261,12 @@ export function createWorker(config, dependencies = {}) {
       [...retained, ...outputs].reduce((sum, file) => sum + file.size, 0) > 2 * 1024 * 1024
     )
       throw new Error('La carte manque de place pour ces fichiers : dix pièces jointes maximum et 2 Mo au total.');
+    // Fusion avec la branche cible restée en cours : le worker la valide si l’agent a tout résolu.
+    const unresolved = await concludeMerge(checkout.cwd, checkout.git);
+    if (unresolved.length)
+      throw new Error(
+        `Conflits encore présents dans ${unresolved.join(', ')} : supprime tous les marqueurs de conflit en modifiant ces fichiers, sans commande Git.`,
+      );
     const checks = [];
     for (const file of outputs) checks.push(await checkGeneratedFile(file, checkout.command));
     const repositoryChanged =

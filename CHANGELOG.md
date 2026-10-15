@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.41 — 2026-10-15
+<!-- planifikateur:worker-fusion-en-attente -->
+
+- **Worker : fusion en attente et sandbox Claude** : Le worker termine les fusions résolues, intègre main et reprend les vérifications. Les conteneurs autorisent le montage isolé de /proc par bubblewrap et les anciennes configurations sont actualisées automatiquement.
+
 ## 0.1.40 — 2026-10-15
 <!-- planifikateur:4237a24c-578c-4b1a-8c75-d3ba5de92cc8 -->
 

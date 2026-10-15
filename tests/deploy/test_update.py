@@ -59,8 +59,8 @@ class Commands:
         self.image_rm_fails = False
 
     @staticmethod
-    def container(revision, running=False):
-        return {"revision": revision, "running": running, "image": "image-" + revision,
+    def container(revision, running=False, masked=None):
+        return {"revision": revision, "running": running, "image": "image-" + revision, "masked": masked,
                 "logs": updater.READY, "mounts": [{"Name": "planifikateur-worker-data", "Destination": "/data"}]}
 
     def __call__(self, args, cwd=None, timeout=1800, optional=False):
@@ -79,7 +79,7 @@ class Commands:
             c = self.containers[name]
             values = {".State": {"Running": c["running"]}, ".Image": c["image"],
                       ".Config.Labels": {updater.REVISION_LABEL: c["revision"]}, ".RestartCount": 0,
-                      ".Mounts": c["mounts"]}
+                      ".Mounts": c["mounts"], ".HostConfig.MaskedPaths": c["masked"]}
             return 0, json.dumps(values[args[3][7:-2]])
         if self.fail == action and not (action == "run" and "--entrypoint" in args):
             raise updater.UpdateError("Échec simulé : " + action)
@@ -108,7 +108,9 @@ class Commands:
         if action == "create":
             name = args[args.index("--name") + 1]
             revision = args[args.index("--label") + 1].split("=", 1)[1]
-            self.containers[name] = self.container(revision)
+            self.containers[name] = self.container(
+                revision, masked=[] if "systempaths=unconfined" in args else ["/proc/kcore"])
+            self.containers[name]["image"] = args[-1] if args[-1].startswith("image-") else "image-" + revision
             return 0, name
         if action == "stop":
             self.containers[args[-1]]["running"] = False
@@ -305,6 +307,27 @@ class DeploymentTests(unittest.TestCase):
         self.make().update()
         self.assert_old()
         self.assertFalse(any(args[:2] == ["docker", "build"] for args in self.commands.calls))
+
+    def test_worker_created_without_unmasked_proc_is_recreated_from_the_same_image(self):
+        self.commands.containers["planifikateur-worker"] = self.commands.container(SHA, running=True, masked=["/proc/kcore"])
+        self.make().update()
+        c = self.commands.containers["planifikateur-worker"]
+        self.assertEqual((c["revision"], c["image"], c["masked"]), (SHA, "image-" + SHA, []))
+        self.assertTrue(c["running"])
+        self.assertFalse(any(args[:2] == ["docker", "build"] for args in self.commands.calls))
+        create = next(args for args in self.commands.calls if args[:2] == ["docker", "create"])
+        self.assertIn("systempaths=unconfined", create)
+        self.assertEqual(create[-1], "image-" + SHA)
+        self.commands.calls.clear()
+        self.make().update()
+        self.assertFalse(any(args[:2] == ["docker", "create"] for args in self.commands.calls))
+
+    def test_security_update_waits_for_a_running_task(self):
+        self.commands.containers["planifikateur-worker"] = self.commands.container(SHA, running=True, masked=["/proc/kcore"])
+        self.commands.busy = [True]
+        self.make().update()
+        self.assertEqual(self.commands.containers["planifikateur-worker"]["masked"], ["/proc/kcore"])
+        self.assertFalse(any(args[:2] == ["docker", "create"] for args in self.commands.calls))
 
     def test_retry_is_explicit_for_rejected_revision(self):
         (self.root / "deployment.json").write_text(json.dumps({"failed_sha": SHA}))

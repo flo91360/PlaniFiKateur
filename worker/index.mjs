@@ -1,13 +1,15 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { readWorkerConfig } from './config.mjs';
 import { createWorker } from './worker.mjs';
-import { checkSandbox } from './sandbox-check.mjs';
+import { checkClaudeSandbox, checkSandbox } from './sandbox-check.mjs';
 import { connectionDiagnostic } from './clients.mjs';
 
 try {
   if (process.argv.slice(2).some(arg => arg !== '--once')) throw new Error('Usage : node worker/index.mjs [--once]');
   const config = readWorkerConfig();
   await checkSandbox(config.stateRoot);
+  // Non bloquant : Claude Code peut encore modifier les fichiers, le worker lance les tests.
+  await checkClaudeSandbox().catch(error => console.warn(`Avertissement : ${error.message}`));
   const stop = new AbortController();
   process.on('SIGTERM', () => stop.abort(new Error('Arrêt du worker.')));
   process.on('SIGINT', () => stop.abort(new Error('Arrêt du worker.')));
