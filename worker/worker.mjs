@@ -377,6 +377,7 @@ export function createWorker(config, dependencies = {}) {
             feedback,
             environment: checkout.env,
             onRuntime,
+            onUsage: usage => reservation.addUsage(usage),
             onThread: async id => {
               job.threadId = id;
               await state.put(job);
@@ -586,6 +587,7 @@ export function createWorker(config, dependencies = {}) {
       current = await site
         .action({ ...current, leaseToken: reservation.token }, exhausted ? 'question' : 'interrupt', {
           message: clean(message).slice(0, 10000),
+          ...(reservation.usage ? { usage: reservation.usage } : {}),
         })
         .catch(() => current);
     }

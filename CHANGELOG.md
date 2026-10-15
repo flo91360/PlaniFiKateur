@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.44 — 2026-10-15
+<!-- planifikateur:etape-10a-lisibilite-serveur -->
+
+- **Lisibilité du serveur et suivi de la consommation** : Le parcours des exécutions est découpé en modules par domaine, les profils d’exécution forment un registre déclaratif (dépôts, version, consignes), l’archivage Drive distingue ses erreurs par code, et chaque exécution affiche sa consommation : tentatives, durée, tokens et coût estimé.
+
 ## 0.1.43 — 2026-10-15
 <!-- planifikateur:etape-9-suivi-agent -->
 

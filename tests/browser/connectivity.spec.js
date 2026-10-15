@@ -1102,12 +1102,20 @@ test.describe('project task execution', () => {
     });
     const question = await request.post(`${base}/${run.id}/question`, {
       headers,
-      data: { version: run.version, leaseToken: run.leaseToken, message: 'Quelle fenêtre ?' },
+      data: {
+        version: run.version,
+        leaseToken: run.leaseToken,
+        message: 'Quelle fenêtre ?',
+        usage: { inputTokens: 1200, outputTokens: 80, costUsd: 0.25 },
+      },
     });
     expect(question.status()).toBe(200);
     await page.reload();
     await page.getByRole('heading', { name: card.title, exact: true }).click();
     await expect(page.getByLabel('Effort IA', { exact: true })).toBeDisabled();
+    await expect(page.locator('.execution-usage')).toHaveText(
+      /^Consommation : 1 tentative · moins d’une minute · 1\s200 tokens en entrée · 80 en sortie · coût estimé 0,25\s/,
+    );
     await expect(
       page.getByText('Exécution : Claude Code · modèle claude-sonnet-5-5 · effort Élevé.', { exact: true }),
     ).toBeVisible();

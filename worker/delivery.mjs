@@ -2,15 +2,17 @@ import { readFile, lstat, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { bumpProjectVersion, parseProjectVersion } from './project-version.mjs';
 import { recordChangelog } from './changelog.mjs';
+import { presetRules } from './execution-profile.mjs';
 
 const regularText = async (cwd, file) => {
   if (!(await lstat(join(cwd, file))).isFile()) throw new Error(`${file} doit être un fichier ordinaire.`);
   return readFile(join(cwd, file), 'utf8');
 };
 async function versionFile(cwd, profile) {
-  if (['planifikateur', 'defilordi'].includes(profile.preset)) return 'package.json';
-  if (profile.preset === 'funkart') return 'project.godot';
-  if (profile.preset === 'trameergo') {
+  const format = presetRules(profile).versioning?.format;
+  if (format === 'npm') return 'package.json';
+  if (format === 'godot') return 'project.godot';
+  if (format === 'qmake') {
     const names = (await readdir(cwd)).filter(name => name.endsWith('.pro'));
     if (names.length === 1) return names[0];
   }

@@ -3,6 +3,7 @@ import { Bot, ExternalLink } from 'lucide-react';
 import { apiData } from '../lib/api-client.js';
 import { unfinished } from '../lib/use-card-executions.js';
 import { effortLabels } from '../../worker/ai-settings.mjs';
+import { usageText } from '../lib/execution-usage.js';
 
 const STEPS = ['Prête', 'Réalisation', 'PR et tests', 'Terminée'];
 const stepOf = { ready: 0, running: 1, waiting: 1, interrupted: 1, review: 2, merging: 2, done: 3 };
@@ -249,6 +250,7 @@ export default function ExecutionPanel({
           {execution.ai.model || 'par défaut'} · effort {effortLabels[execution.ai.effort || '']}.
         </p>
       )}
+      {run?.usage && <p className="muted execution-usage">{usageText(run.usage)}</p>}
       {form === 'cancel' ? (
         <MessageForm
           label="Motif de l’annulation"

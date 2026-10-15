@@ -6,7 +6,7 @@ import { parseModelResult } from './model-result.mjs';
 
 export function createClaudeRunner(config, dependencies = {}) {
   return {
-    async run({ run, job, cwd, signal, onThread, onRuntime, feedback, environment }) {
+    async run({ run, job, cwd, signal, onThread, onRuntime, onUsage, feedback, environment }) {
       if (!config.claudeApiKey && !config.claudeOauthToken)
         return {
           status: 'question',
@@ -93,6 +93,19 @@ export function createClaudeRunner(config, dependencies = {}) {
           if (event.type === 'system' && event.subtype === 'init') {
             await onThread(event.session_id);
             if (event.model) await onRuntime?.({ engine: 'claude-code', model: event.model, effort: ai.effort || '' });
+          }
+          if (event.type === 'result' && event.usage) {
+            const usage = event.usage;
+            onUsage?.({
+              inputTokens:
+                (usage.input_tokens || 0) +
+                (usage.cache_read_input_tokens || 0) +
+                (usage.cache_creation_input_tokens || 0),
+              cachedInputTokens: usage.cache_read_input_tokens || 0,
+              outputTokens: usage.output_tokens || 0,
+              costUsd: event.total_cost_usd,
+              durationMs: event.duration_ms,
+            });
           }
           if (event.type === 'result') {
             if (event.subtype !== 'success' || event.is_error)

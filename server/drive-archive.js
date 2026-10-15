@@ -133,7 +133,9 @@ export function createDriveArchive(
         sha256.update(chunk);
         done(
           size > asset.size || size > maxBytes
-            ? new Error(`${asset.name} dépasse la taille annoncée par GitHub.`)
+            ? Object.assign(new Error(`${asset.name} dépasse la taille annoncée par GitHub.`), {
+                code: 'asset_too_large',
+              })
             : null,
           chunk,
         );
@@ -142,7 +144,7 @@ export function createDriveArchive(
     try {
       await pipeline(Readable.fromWeb(response.body), meter, createWriteStream(target, { flags: 'wx', mode: 0o600 }));
     } catch (error) {
-      if (error.message.includes('taille annoncée')) throw error;
+      if (error.code === 'asset_too_large') throw error;
       throw Object.assign(
         new Error(
           `Téléchargement de ${asset.name} interrompu (${[error.cause?.code, error.cause?.message || error.message].filter(Boolean).join(' : ')}). Nouvel essai à la prochaine vérification.`,
@@ -235,17 +237,14 @@ export function createDriveArchive(
           store.recordDriveRelease(repository, result);
           log(`Archivage Drive : ${repository} ${release.tag_name} (${result.files.length} exécutable(s)).`);
         } catch (error) {
-          if (
-            error.network ||
-            /Authentification Google|GOOGLE_DRIVE_CREDENTIALS|dossier fourni est absent/.test(error.message)
-          ) {
+          if (error.network || error.code === 'drive_unavailable') {
             // A global Drive failure would fail every release; report it once and retry later.
             state.error = error.message;
             return;
           }
           const attempts = (previous?.signature === signature ? previous.attempts || 0 : 0) + 1;
           // A version already archived from other files is never overwritten; only new assets retry it.
-          const conflict = /autre commit|fichier différent existe/.test(error.message);
+          const conflict = error.code === 'drive_conflict';
           store.recordDriveArchive(repository, release.tag_name, {
             signature,
             state: conflict ? 'conflict' : 'error',
