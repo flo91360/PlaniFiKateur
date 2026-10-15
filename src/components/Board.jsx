@@ -16,6 +16,7 @@ import {
 import Avatar from './Avatar.jsx';
 import Status, { StatusOptions, priorities } from './Status.jsx';
 import { cardLinks } from '../lib/infos.js';
+import { workBadge } from '../lib/use-work-status.js';
 import { version as appVersion } from '../../package.json';
 
 export const cardMatches = (card, { query, statusFilter }) =>
@@ -76,8 +77,9 @@ function Priority({ value }) {
   );
 }
 
-function CardPreview({ card, color, followers, dragging, readOnly, onDragStart, onDragEnd, onOpen }) {
+function CardPreview({ card, color, followers, work, dragging, readOnly, onDragStart, onDragEnd, onOpen }) {
   const links = cardLinks(card);
+  const badge = workBadge(work);
   const preview = (
     <button
       draggable={!readOnly}
@@ -101,6 +103,7 @@ function CardPreview({ card, color, followers, dragging, readOnly, onDragStart, 
       <h3>{card.title}</h3>
       <p>{card.description || 'Ajoutez un peu de contexte à cette idée…'}</p>
       <Status value={card.status} />
+      {badge && <span className={`work-badge ${badge.tone}`}>{badge.label}</span>}
       <footer>
         <Priority value={card.priority} />
         <div className="card-meta">
@@ -137,6 +140,7 @@ function CardPreview({ card, color, followers, dragging, readOnly, onDragStart, 
 export default function Board({
   project,
   followers,
+  work = {},
   filters,
   onFilters,
   dragging,
@@ -229,6 +233,7 @@ export default function Board({
                     card={card}
                     color={list.color}
                     followers={followers[card.id] || []}
+                    work={work[card.id]}
                     dragging={dragging === card.id}
                     readOnly={readOnly}
                     onDragStart={onDragging}

@@ -653,6 +653,22 @@ export function createWorkflows(
     },
     // Exécutions qui attendent une personne : question de l’agent ou résultat sans PR à valider.
     // La question technique d’un ancien worker se résout seule et n’est pas listée.
+    // État de l’agent pour chaque carte d’un projet ayant une exécution en cours, affiché en badge
+    // sur le tableau : { cardId: { state, awaitingApproval, checks } }.
+    projectStatus(projectId) {
+      const approval = requiresApproval(projectId);
+      const status = {};
+      for (const run of rows("project_id = ? AND state NOT IN ('done','cancelled')", projectId).map(unpack)) {
+        if (status[run.cardId] || legacyPublicationQuestion(run)) continue;
+        const head = run.submissions.at(-1)?.pullRequest?.headSha;
+        status[run.cardId] = {
+          state: run.state,
+          awaitingApproval: run.state === 'merging' && approval && run.approval?.headSha !== head,
+          checks: run.githubChecks?.conclusion || null,
+        };
+      }
+      return status;
+    },
     attention() {
       const projects = readProjects();
       return db

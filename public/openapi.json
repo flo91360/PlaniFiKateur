@@ -1531,6 +1531,98 @@
         }
       }
     },
+    "/api/v1/projects/{projectId}/work-status": {
+      "get": {
+        "summary": "État de l’agent sur les cartes d’un projet",
+        "description": "Pour chaque carte ayant une exécution en cours : `state`, `awaitingApproval` (PR qui attend l’approbation d’un responsable) et `checks` (dernier résultat des tests GitHub, ou null). Alimente les badges du tableau.",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "État par carte.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "state",
+                          "awaitingApproval",
+                          "checks"
+                        ],
+                        "properties": {
+                          "state": {
+                            "type": "string",
+                            "enum": [
+                              "ready",
+                              "running",
+                              "waiting",
+                              "review",
+                              "merging",
+                              "interrupted"
+                            ]
+                          },
+                          "awaitingApproval": {
+                            "type": "boolean"
+                          },
+                          "checks": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session requise.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Projet introuvable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{projectId}/work": {
       "get": {
         "summary": "File des tâches prêtes ou interrompues",

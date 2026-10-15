@@ -58,6 +58,12 @@ export function workRoutes({ store, config, auth, guards }) {
       },
     },
     {
+      // Badges d’exécution des cartes d’un projet (session d’un compte qui voit le projet).
+      path: '/api/v1/projects/:projectId/work-status',
+      guard: guards.project,
+      methods: { GET: ctx => ctx.send(200, { data: workflows.projectStatus(ctx.params.projectId) }) },
+    },
+    {
       path: '/api/v1/projects/:projectId/work',
       methods: {
         GET: ctx =>

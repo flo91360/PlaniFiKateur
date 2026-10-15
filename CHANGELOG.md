@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.43 — 2026-10-15
+<!-- planifikateur:etape-9-suivi-agent -->
+
+- **Suivi de l’agent sur le tableau** : Les cartes du tableau affichent ce que fait l’agent (badge), chaque projet et chaque carte ont leur adresse partageable, et les paramètres du projet sont rangés en onglets qui résument leur état.
+
 ## 0.1.42 — 2026-10-15
 <!-- planifikateur:etape-9a-organiser-sans-glisser -->
 

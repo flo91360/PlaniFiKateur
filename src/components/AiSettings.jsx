@@ -29,7 +29,7 @@ export function EffortSelect({ engine = 'codex', value = 'medium', onChange, dis
   );
 }
 
-export default function AiSettings({ projectId, user, onConfigured }) {
+export default function AiSettings({ projectId, user, onConfigured, onState }) {
   const [ai, setAi] = useState(null),
     [message, setMessage] = useState(''),
     [error, setError] = useState(''),
@@ -38,12 +38,15 @@ export default function AiSettings({ projectId, user, onConfigured }) {
   useEffect(() => {
     const controller = new AbortController();
     apiData(`projects/${projectId}/ai`, { signal: controller.signal })
-      .then(setAi)
+      .then(data => {
+        setAi(data);
+        onState?.(data);
+      })
       .catch(cause => {
         if (!controller.signal.aborted) setError(cause.message);
       });
     return () => controller.abort();
-  }, [projectId]);
+  }, [projectId, onState]);
   const save = async () => {
     setBusy(true);
     setError('');
@@ -51,6 +54,7 @@ export default function AiSettings({ projectId, user, onConfigured }) {
     try {
       const saved = await apiData(`projects/${projectId}/ai`, { method: 'PUT', data: ai });
       setAi(saved);
+      onState?.(saved);
       onConfigured?.(saved);
       setMessage('Moteur et modèle enregistrés pour ce projet.');
     } catch (cause) {

@@ -395,6 +395,32 @@ test('cards, lists and the project are rearranged and edited without drag and dr
   expect(names).not.toContain('Liste éphémère');
 });
 
+test('each project and card has its own address, kept on reload and closed by going back', async ({
+  page,
+  appServer,
+}) => {
+  await login(page, appServer);
+  const project = seed[1],
+    card = project.cards[0];
+  await page.goto(`${appServer}/#/projets/${project.id}/cartes/${card.id}`);
+  await expect(page.getByLabel('Titre de la carte', { exact: true })).toHaveValue(card.title);
+  await expect(page.locator('.project-heading h1')).toHaveText(project.name);
+  await expect(page).toHaveTitle(`${card.title} · ${project.name} · PlaniFiKateur`);
+  await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`#/projets/${project.id}$`));
+  // Ouvrir une carte ajoute une entrée d’historique : « Précédent » la referme.
+  await page.getByRole('heading', { name: card.title, exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`#/projets/${project.id}/cartes/${card.id}$`));
+  await page.goBack();
+  await expect(page.getByLabel('Titre de la carte', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.project-heading h1')).toHaveText(project.name);
+  // Adresse d’une carte inconnue : le projet s’ouvre, sans carte.
+  await page.goto(`${appServer}/#/projets/${project.id}/cartes/absente`);
+  await page.reload();
+  await expect(page.locator('.project-heading h1')).toHaveText(project.name);
+  await expect(page).toHaveURL(new RegExp(`#/projets/${project.id}$`));
+});
+
 test('JSON import adds local cards to the API without replacing existing projects', async ({
   page,
   request,
@@ -783,6 +809,7 @@ test(
       .getByRole('button', { name: /Site vitrine/ })
       .click();
     await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
+    await page.getByRole('tab', { name: /^Accès/ }).click();
     await page.getByText('Membres et droits', { exact: true }).click();
     await page.getByLabel('Rôle des autres membres', { exact: true }).selectOption('none');
     await page.getByLabel('Rôle de Bob', { exact: true }).selectOption('viewer');
@@ -940,6 +967,32 @@ test('follows an existing card without being its author and keeps the setting af
 
 test.describe('project task execution', () => {
   test.use({ githubEnabled: true });
+  test('board cards show what the agent is doing on them', async ({ page, request, appServer }) => {
+    await login(page, appServer);
+    const project = seed[0],
+      card = project.cards[0];
+    await page.request.put(`${appServer}/api/v1/projects/${project.id}/github`, {
+      data: { repository: 'owner/badges' },
+    });
+    const preview = page.locator('.card', { has: page.getByRole('heading', { name: card.title, exact: true }) });
+    await expect(preview).toBeVisible();
+    await expect(preview.locator('.work-badge')).toHaveCount(0);
+    const credentials = await page.request.post(`${appServer}/api/v1/agents`, {
+      data: { name: 'Badge agent', projectIds: [project.id] },
+    });
+    const headers = { Authorization: `Bearer ${(await credentials.json()).data.token}` };
+    const base = `${appServer}/api/v1/projects/${project.id}/cards/${card.id}/work`;
+    let run = (await (await page.request.post(base, { data: { delivery: 'github' } })).json()).data;
+    await expect(preview.locator('.work-badge')).toHaveText('En attente de l’agent');
+    run = (await (await request.post(`${base}/${run.id}/claim`, { headers, data: { version: run.version } })).json())
+      .data;
+    await expect(preview.locator('.work-badge')).toHaveText('Agent au travail');
+    await request.post(`${base}/${run.id}/question`, {
+      headers,
+      data: { version: run.version, leaseToken: run.leaseToken, message: 'Quelle couleur ?' },
+    });
+    await expect(preview.locator('.work-badge')).toHaveText('Question de l’agent');
+  });
   test('project execution profiles survive reload and worker diagnostics appear without configuration files', async ({
     page,
     request,
@@ -951,6 +1004,7 @@ test.describe('project task execution', () => {
       data: { repository: 'flo91360/DefilOrdi' },
     });
     await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
+    await page.getByRole('tab', { name: /^Agent IA/ }).click();
     await page.getByText('Exécution et connexion du projet', { exact: true }).click();
     await expect(page.getByLabel('Profil d’exécution', { exact: true })).toHaveValue('defilordi');
     await page.getByLabel('Profil d’exécution', { exact: true }).selectOption('funkart');
@@ -958,6 +1012,7 @@ test.describe('project task execution', () => {
     await expect(page.getByRole('status')).toHaveText('Profil enregistré pour les prochaines tâches.');
     await page.reload();
     await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
+    await page.getByRole('tab', { name: /^Agent IA/ }).click();
     await page.getByText('Exécution et connexion du projet', { exact: true }).click();
     await expect(page.getByLabel('Profil d’exécution', { exact: true })).toHaveValue('funkart');
     await expect(
@@ -977,6 +1032,7 @@ test.describe('project task execution', () => {
     expect(report.status()).toBe(200);
     await page.reload();
     await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
+    await page.getByRole('tab', { name: /^Agent IA/ }).click();
     await page.getByText('Exécution et connexion du projet', { exact: true }).click();
     await expect(page.getByText('Godot 4.4.1 doit être installé sur le worker.', { exact: false })).toBeVisible();
   });
@@ -989,6 +1045,7 @@ test.describe('project task execution', () => {
     const project = seed[0],
       card = project.cards[0];
     await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
+    await page.getByRole('tab', { name: /^Agent IA/ }).click();
     await page.getByText('Moteur et modèle IA', { exact: true }).click();
     const models = page.getByLabel('Modèle IA', { exact: true });
     await expect(models).toHaveValue('');
@@ -1056,6 +1113,7 @@ test.describe('project task execution', () => {
     ).toBeVisible();
     await page.getByRole('button', { name: 'Terminé', exact: true }).click();
     await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
+    await page.getByRole('tab', { name: /^Agent IA/ }).click();
     await page.getByText('Moteur et modèle IA', { exact: true }).click();
     await expect(models).toHaveValue('another-model');
     await expect(models.locator('option[value="another-model"]')).toHaveText('another-model (modèle enregistré)');
@@ -1160,6 +1218,7 @@ test.describe('project task execution', () => {
       card = project.cards[0];
     await expect(page.getByRole('button', { name: 'Tâches du projet', exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
+    await page.getByRole('tab', { name: /^Dépôt/ }).click();
     await page.getByText('Dépôt GitHub et fusion automatique', { exact: true }).click();
     await page.getByLabel('Dépôt du projet', { exact: true }).fill('flo91360/PlaniFiKateur');
     await page.getByRole('button', { name: 'Enregistrer le dépôt', exact: true }).click();
@@ -1522,6 +1581,7 @@ test.describe('project task execution', () => {
       card = project.cards[0];
     const headers = await agentFor(page, appServer, project, 'Agent relu');
     await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
+    await page.getByRole('tab', { name: /^Accès/ }).click();
     await page.getByText('Validation avant fusion', { exact: true }).click();
     await page.getByLabel('Approuver chaque PR avant sa fusion', { exact: true }).check();
     await page.getByRole('button', { name: 'Enregistrer la validation', exact: true }).click();
@@ -1757,6 +1817,7 @@ test.describe('automatic GitHub delivery', () => {
       await login(page, appServer);
       const configure = async repository => {
         await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
+        await page.getByRole('tab', { name: /^Dépôt/ }).click();
         await page.getByText('Dépôt GitHub et fusion automatique', { exact: true }).click();
         await page.getByLabel('Dépôt du projet', { exact: true }).fill(repository);
         await page.getByRole('button', { name: 'Enregistrer le dépôt', exact: true }).click();
@@ -1772,6 +1833,7 @@ test.describe('automatic GitHub delivery', () => {
       await page.getByRole('button', { name: 'Créer la carte', exact: true }).click();
       await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
       await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
+      await page.getByRole('tab', { name: /^Dépôt/ }).click();
       await page.getByText('Dépôt GitHub et fusion automatique', { exact: true }).click();
       await expect(page.getByLabel('Dépôt du projet', { exact: true })).toHaveValue('');
       await page.getByRole('button', { name: 'Fermer', exact: true }).click();
@@ -1786,6 +1848,7 @@ test.describe('automatic GitHub delivery', () => {
         .getByRole('button', { name: /Klaviflo/ })
         .click();
       await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
+      await page.getByRole('tab', { name: /^Dépôt/ }).click();
       await page.getByText('Dépôt GitHub et fusion automatique', { exact: true }).click();
       await expect(page.getByLabel('Dépôt du projet', { exact: true })).toHaveValue('flo91360/Klaviflo');
       await page.getByRole('button', { name: 'Fermer', exact: true }).click();
@@ -1796,6 +1859,7 @@ test.describe('automatic GitHub delivery', () => {
         .getByRole('button', { name: /PlaniFiKateur/ })
         .click();
       await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
+      await page.getByRole('tab', { name: /^Dépôt/ }).click();
       await page.getByText('Dépôt GitHub et fusion automatique', { exact: true }).click();
       await expect(page.getByLabel('Dépôt du projet', { exact: true })).toHaveValue('flo91360/PlaniFiKateur');
     },
@@ -1811,6 +1875,7 @@ test.describe('automatic GitHub delivery', () => {
     await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
     const settings = page.getByRole('dialog');
     const discussion = page.locator('.comments-section');
+    await settings.getByRole('tab', { name: /^Dépôt/ }).click();
     await settings.getByText('Dépôt GitHub et fusion automatique', { exact: true }).click();
     await settings.getByLabel('Dépôt du projet', { exact: true }).fill('flo91360/PlaniFiKateur');
     await settings.getByRole('button', { name: 'Enregistrer le dépôt', exact: true }).click();
@@ -1937,6 +2002,7 @@ test.describe('Google Drive archive', () => {
     await login(page, appServer);
     const project = seed[0];
     await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
+    await page.getByRole('tab', { name: /^Dépôt/ }).click();
     await page.getByText('Archivage des .exe sur Google Drive', { exact: true }).click();
     await expect(page.getByText('Associez un dépôt GitHub au projet : ses Releases', { exact: false })).toBeVisible();
     await page.getByRole('button', { name: 'Fermer', exact: true }).click();
@@ -1944,6 +2010,7 @@ test.describe('Google Drive archive', () => {
       data: { repository: 'flo91360/DefilOrdi' },
     });
     await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
+    await page.getByRole('tab', { name: /^Dépôt/ }).click();
     await page.getByText('Archivage des .exe sur Google Drive', { exact: true }).click();
     await expect(page.getByText('DefilOrdi/<version>/', { exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Ouvrir le dossier', exact: true })).toHaveAttribute(
