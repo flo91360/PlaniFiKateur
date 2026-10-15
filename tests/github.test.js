@@ -144,6 +144,7 @@ test('superseded CI does not requeue the agent and later successful tests allow 
   assert.equal(f.store.workflows.queue(f.project.id, f.agent, { autoPrepare: false }).length, 0);
   assert.equal(f.store.read().projects[0].cards[0].status, 'review');
   assert.equal(current.submissions.length, 1);
+  assert.ok(!current.updates.some(update => /annulée/.test(update.text)));
   const success = f.check('success');
   success.workflow_run.id++;
   await f.webhook('workflow_run', success);
