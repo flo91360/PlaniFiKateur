@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.36 — 2026-10-15
+<!-- planifikateur:e036cf0d-da0b-451a-9e2d-557226d2f8ed -->
+
+- **Bandeau** : Le bandeau « Exécution IA » apparaît dès la création d’une carte, avec « Créer et confier à l’agent ». Dans la création comme dans le détail, le bouton est actif dès que la description n’est pas vide : un clic enregistre la carte, attend la confirmation du serveur puis la confie à l’agent ; si l’enregistrement échoue, un message s’affiche et rien n’est lancé. L’avancement, le résultat, les contrôles GitHub, la fusion et les interruptions ne sont plus publiés comme commentaires : la discussion ne reçoit plus que les questions de l’agent et les réponses, et le bandeau affiche les vérifications, les livrables, les fichiers joints et un « Journal de l’agent » repliable et daté.
+
 ## 0.1.35 — 2026-10-15
 <!-- planifikateur:etape-8b-actualisation-par-projet -->
 

@@ -45,8 +45,9 @@ function headline(run) {
   }
 }
 
+// La question en attente figure dans la discussion de la carte : le bandeau ne la répète pas.
 function detail(run) {
-  if (run.state === 'waiting') return run.exchanges.at(-1)?.question;
+  if (run.state === 'waiting') return '';
   if (run.state === 'interrupted') return run.interruption;
   if (run.state === 'cancelled') return run.cancellation;
   if (['review', 'done'].includes(run.state)) return run.submissions.at(-1)?.summary;
@@ -67,6 +68,61 @@ function Steps({ state }) {
         </li>
       ))}
     </ol>
+  );
+}
+
+const timeOf = date =>
+  new Date(date).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+// Détail du dernier résultat soumis : vérifications, livrables et fichiers joints à la carte.
+function Result({ submission }) {
+  const links = submission.links || [];
+  const files = submission.files || [];
+  return (
+    <>
+      {submission.checks && <p className="execution-detail">Vérifications : {submission.checks}</p>}
+      {links.length > 0 && (
+        <ul className="execution-deliverables" aria-label="Livrables">
+          {links.map(link => (
+            <li key={link}>
+              <a href={link} target="_blank" rel="noreferrer">
+                {link}
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+      {files.length > 0 && (
+        <p className="execution-detail">Fichiers joints à la carte : {files.map(file => file.name).join(', ')}</p>
+      )}
+    </>
+  );
+}
+
+// Historique de l’activité de l’agent sur l’exécution affichée (avancement, résultats, contrôles,
+// interruption) : ces informations ne sont pas publiées dans la discussion.
+function Journal({ run }) {
+  const entries = [
+    ...run.updates.map((update, index) => ({ key: `update-${index}`, date: update.date, text: update.text })),
+    ...run.submissions.map((submission, index) => ({
+      key: `submission-${index}`,
+      date: submission.date,
+      text: `Résultat soumis${submission.pullRequest ? ` (PR #${submission.pullRequest.number})` : ''} : ${submission.summary}`,
+    })),
+  ].sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  if (!entries.length) return null;
+  return (
+    <details className="execution-journal">
+      <summary>Journal de l’agent ({entries.length})</summary>
+      <ol>
+        {entries.map(entry => (
+          <li key={entry.key}>
+            {entry.date && <time dateTime={entry.date}>{timeOf(entry.date)}</time>}
+            <span>{entry.text}</span>
+          </li>
+        ))}
+      </ol>
+    </details>
   );
 }
 
@@ -97,14 +153,18 @@ function MessageForm({ label, initial, submit, cancel, danger = false, busy, onS
 
 // Suivi de l’exécution IA d’une carte et actions humaines (confier, annuler, valider, corriger).
 // `canLaunch` : responsable du projet (confier, valider, faire corriger) ; `canCancel` : contributeur.
+// `beforeStart` enregistre la carte avant de la confier à l’agent (le bouton est actif dès que la
+// description est renseignée, même si elle n’est pas encore enregistrée).
 export default function ExecutionPanel({
   projectId,
   cardId,
+  cardStatus,
   execution,
   canStart,
   startHint,
   canLaunch = true,
   canCancel = true,
+  beforeStart = async () => {},
   onChanged,
 }) {
   const run = execution.current;
@@ -128,9 +188,14 @@ export default function ExecutionPanel({
   };
   const transition = (action, message) =>
     act(() => apiData(`${base}/${run.id}/${action}`, { method: 'POST', data: { version: run.version, message } }));
-  const start = () => act(() => apiData(base, { method: 'POST', data: {} }));
+  const start = () =>
+    act(async () => {
+      await beforeStart();
+      await apiData(base, { method: 'POST', data: {} });
+    });
   const active = unfinished(run);
-  const pr = run?.submissions.at(-1)?.pullRequest;
+  const submission = run?.submissions.at(-1);
+  const pr = submission?.pullRequest;
   const checks = run?.githubChecks;
   const text = run && detail(run);
   return (
@@ -145,6 +210,7 @@ export default function ExecutionPanel({
           <Steps state={run.state} />
           <p className={`execution-headline ${run.state}`}>{headline(run)}</p>
           {text && <p className="execution-detail">{text}</p>}
+          {submission && ['review', 'merging', 'done'].includes(run.state) && <Result submission={submission} />}
           {(pr || checks) && (
             <p className="execution-links">
               {pr && (
@@ -161,10 +227,15 @@ export default function ExecutionPanel({
               )}
             </p>
           )}
+          <Journal run={run} />
         </>
       ) : !execution.loaded ? (
         <p className="execution-detail" aria-busy="true">
           Chargement de l’exécution IA…
+        </p>
+      ) : cardStatus === 'ready' ? (
+        <p className="execution-detail">
+          Carte prête à démarrer : le worker la prendra en charge à sa prochaine consultation.
         </p>
       ) : (
         <p className="execution-detail">

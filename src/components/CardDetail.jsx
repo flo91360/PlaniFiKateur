@@ -69,7 +69,9 @@ function CardResources({ card }) {
   );
 }
 
-function Discussion({ card, user, readOnly, onUpdate }) {
+// Discussion entre l’agent et les personnes : questions de l’agent et réponses. L’activité de l’agent
+// figure dans le bandeau « Exécution IA » ; `statusHint` rappelle l’attente quand ce bandeau est absent.
+function Discussion({ card, user, readOnly, statusHint, onUpdate }) {
   const [comment, setComment] = useState('');
   const publish = () => {
     if (!comment.trim()) return;
@@ -87,7 +89,7 @@ function Discussion({ card, user, readOnly, onUpdate }) {
         <MessageSquare size={17} />
         Discussion<span>{card.comments.length}</span>
       </h3>
-      {card.status === 'clarify' && (
+      {statusHint && card.status === 'clarify' && (
         <p role="status">L’agent attend votre réponse. Publiez un commentaire pour reprendre la tâche.</p>
       )}
       {card.comments.map(c => (
@@ -152,6 +154,7 @@ function DeleteCard({ onDelete, cancelsExecution }) {
 }
 
 const saveLabels = { saved: 'Modifications enregistrées', saving: 'Enregistrement en cours…' };
+const notSaved = 'La carte n’a pas pu être enregistrée : elle n’a pas été confiée à l’agent.';
 
 // Champs qui forment la demande : les modifier annule l’exécution en cours (server/workflows.js, source).
 const requestFields = {
@@ -224,9 +227,10 @@ export default function CardDetail({
     setTags(value => (value === before.tags ? tagsText : value));
     previousFields.current = { title: card.title, description: card.description, tags: tagsText };
   }, [card.title, card.description, tagsText]);
+  // Comparaison sur les valeurs enregistrées (titre vide conservé, description sans espaces de bord).
   const fieldsSaved =
-    title === card.title &&
-    description === card.description &&
+    (title.trim() || card.title) === card.title &&
+    description.trim() === card.description &&
     JSON.stringify(parseTags(tags)) === JSON.stringify(card.tags);
   const execution = useCardExecutions({
     projectId,
@@ -271,11 +275,28 @@ export default function CardDetail({
     setPending(null);
     if (pending.close) onClose();
   };
-  const startHint = !card.description.trim()
-    ? 'Rédigez la description : c’est la demande transmise à l’agent.'
-    : !fieldsSaved || saveStatus !== 'saved'
-      ? 'Enregistrez la carte avant de la confier à l’agent.'
-      : '';
+  // Le bouton du bandeau est actif dès que la description saisie n’est pas vide : la carte est
+  // enregistrée sur le serveur juste avant d’être confiée à l’agent.
+  const startHint = description.trim() ? '' : 'Rédigez la description : c’est la demande transmise à l’agent.';
+  const stored = fieldsSaved && saveStatus === 'saved';
+  const executionShown = !offline && !systemCards(projectId).includes(card.id);
+  const saveFailed = ['error', 'conflict'].includes(saveStatus);
+  // Demandes « Confier à l’agent » en attente de l’enregistrement de la carte.
+  const saveWaiters = useRef([]);
+  useEffect(() => {
+    if (!stored && !saveFailed) return;
+    for (const waiter of saveWaiters.current.splice(0)) {
+      if (stored) waiter.resolve();
+      else waiter.reject(new Error(notSaved));
+    }
+  }, [stored, saveFailed]);
+  const saveBeforeStart = () => {
+    if (stored) return Promise.resolve();
+    if (fieldsSaved && saveFailed) return Promise.reject(new Error(notSaved));
+    const waiting = new Promise((resolve, reject) => saveWaiters.current.push({ resolve, reject }));
+    saveFields(description, {});
+    return waiting;
+  };
   return (
     <Dialog title="Détail de la carte" wide onClose={close}>
       {pending && <CancelConfirm onConfirm={confirmPending} onRevert={revertPending} />}
@@ -334,15 +355,17 @@ export default function CardDetail({
               ? 'Carte confiée à l’agent : seul un responsable peut encore modifier la demande. Repassez-la en « À explorer » pour la retravailler.'
               : 'Cette description est l’objectif transmis à l’agent.'}
           </p>
-          {!offline && !systemCards(projectId).includes(card.id) && (
+          {executionShown && (
             <ExecutionPanel
               projectId={projectId}
               cardId={card.id}
+              cardStatus={card.status}
               execution={execution}
               canStart={canLaunch && !startHint}
               startHint={canLaunch ? startHint : ''}
               canLaunch={canLaunch}
               canCancel={!readOnly}
+              beforeStart={saveBeforeStart}
               onChanged={onWorkflowRefresh}
             />
           )}
@@ -364,7 +387,7 @@ export default function CardDetail({
             readOnly={requestLocked}
             onChange={attachments => update({ attachments })}
           />
-          <Discussion card={card} user={user} readOnly={readOnly} onUpdate={onUpdate} />
+          <Discussion card={card} user={user} readOnly={readOnly} statusHint={!executionShown} onUpdate={onUpdate} />
           {!offline && <ActivityPanel projectId={projectId} cardId={card.id} />}
         </div>
         <aside className="detail-side">
