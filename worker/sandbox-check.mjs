@@ -82,6 +82,26 @@ catch (error) { if (!['EROFS', 'EACCES', 'EPERM'].includes(error.code)) throw er
   }
 }
 
+// Claude Code isole chaque commande avec bubblewrap : nouveaux espaces de noms utilisateur et
+// PID, et /proc neuf. Docker masque des chemins de /proc par défaut, ce qui interdit ce montage
+// (« bwrap: Can't mount proc on /newroot/proc ») : le conteneur doit être lancé avec
+// --security-opt systempaths=unconfined. Sans cela, l’agent ne peut lancer aucune commande.
+export async function checkClaudeSandbox() {
+  let result;
+  try {
+    result = await runCommand(
+      ['bwrap', '--unshare-user', '--unshare-pid', '--ro-bind', '/', '/', '--dev', '/dev', '--proc', '/proc', 'true'],
+      { env: commandEnvironment(), signal: AbortSignal.timeout(30000) },
+    );
+  } catch (error) {
+    result = { code: -1, output: error.message };
+  }
+  if (result.code !== 0)
+    throw new Error(
+      `Le sandbox Claude Code ne peut pas exécuter de commande : l’agent pourra modifier les fichiers mais pas lancer de commande shell. Dans Docker, ajoutez --security-opt systempaths=unconfined au lancement du conteneur (voir docs/worker.md).\nDiagnostic : ${diagnostic(result.output)}`,
+    );
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     await checkSandbox(process.env.PLANIFIKATEUR_WORKER_STATE_DIR || '.data/worker');
@@ -89,5 +109,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   } catch (error) {
     console.error(error.message);
     process.exitCode = 1;
+  }
+  // Avertissement seulement : un hôte pas encore reconfiguré doit pouvoir recevoir cette version.
+  try {
+    await checkClaudeSandbox();
+    console.log('Sandbox Claude Code OK : commandes exécutables.');
+  } catch (error) {
+    console.warn(`Avertissement : ${error.message}`);
   }
 }

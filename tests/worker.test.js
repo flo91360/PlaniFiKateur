@@ -841,6 +841,118 @@ test('a pending PR is revised against new main and only its new tested SHA can m
   );
 });
 
+const answer = f => {
+  const waiting = f.current();
+  f.store.workflows.human(
+    f.project.id,
+    f.card.id,
+    waiting.id,
+    'answer',
+    { version: waiting.version, message: 'Continue.' },
+    f.user,
+  );
+};
+const exists = path =>
+  access(path).then(
+    () => true,
+    () => false,
+  );
+
+test('the worker itself concludes a merge whose conflicts the agent resolved without Git, then merges current main', async t => {
+  let checkout;
+  const f = await fixture(t, {
+    model: async (input, count) => {
+      checkout = input.cwd;
+      if (count === 1) {
+        await writeFile(join(input.cwd, 'greet.mjs'), "export const greet = () => 'bonjour';\n");
+        return { status: 'question', summary: '', question: 'Faut-il aussi traduire le titre ?' };
+      }
+      if (count === 2) {
+        // Conflit avec main : l’agent corrige le fichier mais, sans shell, laisse la fusion en cours.
+        assert.match(input.feedback, /greet\.mjs/);
+        assert.match(input.feedback, /Ne lance aucune commande Git/);
+        assert.ok(await exists(join(input.cwd, '.git', 'MERGE_HEAD')));
+        await writeFile(join(input.cwd, 'greet.mjs'), "export const greet = () => 'bonjour';\n");
+        return { status: 'question', summary: '', question: 'Il faut valider la fusion en cours.' };
+      }
+      assert.doesNotMatch(input.feedback || '', /conflit/i);
+      assert.equal(await exists(join(input.cwd, '.git', 'MERGE_HEAD')), false);
+      return { status: 'result', summary: 'Greeting translated', question: '' };
+    },
+  });
+  f.prepare();
+  assert.equal((await f.worker.tick()).status, 'waiting');
+  await writeFile(join(f.source, 'greet.mjs'), "export const greet = () => 'salut';\n");
+  await f.git(['commit', '-am', 'Conflicting main']);
+  await f.git(['push', 'origin', 'main']);
+  answer(f);
+  assert.equal((await f.worker.tick()).status, 'waiting', f.logs.join('\n'));
+  // main avance encore pendant que la fusion attend.
+  await writeFile(join(f.source, 'readme.md'), 'Later main');
+  await f.git(['add', '.']);
+  await f.git(['commit', '-m', 'Later main']);
+  await f.git(['push', 'origin', 'main']);
+  answer(f);
+  assert.equal((await f.worker.tick()).status, 'merging', f.logs.join('\n'));
+  assert.equal(f.modelCalls.length, 3);
+  assert.ok(f.logs.some(line => line.includes('fusion précédente avec main validée par le worker')));
+  const branch = `refs/heads/planifikateur/${f.current().id}`;
+  assert.equal(await f.git(['show', `${branch}:greet.mjs`], f.bare), "export const greet = () => 'bonjour';");
+  assert.equal(await f.git(['show', `${branch}:readme.md`], f.bare), 'Later main');
+  assert.equal(JSON.parse(await f.git(['show', `${branch}:package.json`], f.bare)).version, '1.0.1');
+  assert.equal(await exists(join(checkout, '.git', 'MERGE_HEAD')), false);
+});
+
+test('a changelog conflict with main is resolved by the worker, which rewrites its own entry', async t => {
+  const f = await fixture(t);
+  f.prepare();
+  const initial = await f.worker.tick();
+  const run = f.current();
+  await writeFile(
+    join(f.source, 'CHANGELOG.md'),
+    '# Changelog\n\n## 1.0.1 — 2026-01-01\n\n- **Autre carte** : livrée.\n',
+  );
+  // Une autre carte livrée sur main a pris la même version : seul le changelog entre en conflit.
+  await writeFile(
+    join(f.source, 'package.json'),
+    JSON.stringify({ name: 'fixture', version: '1.0.1' }, null, 2) + '\n',
+  );
+  await writeFile(
+    join(f.source, 'package-lock.json'),
+    JSON.stringify({ name: 'fixture', version: '1.0.1', packages: { '': { version: '1.0.1' } } }, null, 2) + '\n',
+  );
+  await f.git(['add', '.']);
+  await f.git(['commit', '-m', 'Other delivery']);
+  await f.git(['push', 'origin', 'main']);
+  f.setBehind(true);
+  const updated = await f.worker.tick();
+  f.setBehind(false);
+  assert.equal(updated.status, 'merging', f.logs.join('\n'));
+  assert.notEqual(updated.sha, initial.sha);
+  const changelog = await f.git(['show', `refs/heads/planifikateur/${run.id}:CHANGELOG.md`], f.bare);
+  assert.doesNotMatch(changelog, /^<{7}/m);
+  assert.match(changelog, /- \*\*Autre carte\*\* : livrée\./);
+  assert.equal(changelog.split(`<!-- planifikateur:${run.id} -->`).length, 2);
+  assert.match(changelog, new RegExp(`## 1\\.0\\.2 — .+\\n<!-- planifikateur:${run.id} -->`));
+  assert.ok(f.modelCalls.every(call => !/conflit/i.test(call.feedback || '')));
+});
+
+test('a checkout stuck in an operation the worker cannot resume is recloned from GitHub', async t => {
+  const f = await fixture(t, {
+    model: async (input, count) => {
+      if (count === 1) return { status: 'question', summary: '', question: 'Quelle langue ?' };
+      await writeFile(join(input.cwd, 'greet.mjs'), "export const greet = () => 'bonjour';\n");
+      return { status: 'result', summary: 'Greeting translated', question: '' };
+    },
+  });
+  f.prepare();
+  assert.equal((await f.worker.tick()).status, 'waiting');
+  await mkdir(join(f.config.stateRoot, 'jobs', f.current().id, '.git', 'rebase-merge'));
+  answer(f);
+  assert.equal((await f.worker.tick()).status, 'merging', f.logs.join('\n'));
+  assert.ok(f.logs.some(line => line.includes('checkout local recréé (opération Git interrompue (rebase-merge))')));
+});
+
 for (const preset of ['planifikateur', 'defilordi', 'funkart'])
   test(`automatic discovery delivers ${preset} with its model, repository, tests and GitHub workflow`, async t => {
     const repo = `flo91360/${preset}`;

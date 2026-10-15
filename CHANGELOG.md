@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.40 — 2026-10-15
+<!-- planifikateur:worker-fusion-en-attente -->
+
+- **Worker : fusion en attente et sandbox Claude** : Le worker valide lui-même une fusion avec main dont l’agent a résolu les conflits, reprend CHANGELOG.md de main, recrée un checkout Git irrécupérable, et lance le conteneur avec systempaths=unconfined pour que le sandbox Claude Code puisse exécuter des commandes.
+
 ## 0.1.39 — 2026-10-15
 <!-- planifikateur:tests-mobile-allegees -->
 

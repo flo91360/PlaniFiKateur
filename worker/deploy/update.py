@@ -142,8 +142,11 @@ class Updater:
             self.cmd("docker", "rm", name)  # Never remove the persistent volume.
 
     def security(self):
+        # systempaths=unconfined: Docker masks parts of /proc by default, which forbids the
+        # fresh /proc that Claude Code's bubblewrap sandbox mounts for each agent command.
         return ["--security-opt", "seccomp=" + str(self.root / "worker/seccomp.json"),
-                "--security-opt", "apparmor=" + self.options.apparmor_profile]
+                "--security-opt", "apparmor=" + self.options.apparmor_profile,
+                "--security-opt", "systempaths=unconfined"]
 
     def busy(self):
         image = self.inspect(self.name, ".Image")
@@ -233,6 +236,17 @@ class Updater:
             raise UpdateError("Révision Git invalide.")
         labels = self.inspect(self.name, ".Config.Labels") or {}
         deployed = labels.get(REVISION_LABEL)
+        if deployed == sha and self.inspect(self.name, ".HostConfig.MaskedPaths"):
+            # Created by an older updater without systempaths=unconfined: same image, new options.
+            if self.state.get("failed_sha") == sha and not self.options.retry:
+                self.log("Cette révision a échoué au déploiement ; nouvelle tentative suspendue.")
+                return
+            if self.busy():
+                self.log("Une tâche est en cours : mise à jour des options de sécurité différée.")
+                return
+            self.log("Options de sécurité du conteneur à mettre à jour : recréation avec la même image.")
+            self.replace(self.inspect(self.name, ".Image"), sha)
+            return
         if deployed == sha:
             self.log("Worker déjà à jour.")
             if self.state.get("cleaned_sha") != sha:
@@ -276,6 +290,9 @@ class Updater:
         if self.busy() or not tested(self.request, sha, self.options.repository):
             self.log("Remplacement différé : tâche démarrée ou contrôles GitHub modifiés.")
             return
+        self.replace(image, sha)
+
+    def replace(self, image, sha):
         if self.exists(self.next) or self.running(self.backup):
             raise UpdateError("Conteneur de remplacement déjà présent : intervention nécessaire.")
         self.remove(self.backup)
