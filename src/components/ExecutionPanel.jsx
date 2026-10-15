@@ -195,6 +195,8 @@ export default function ExecutionPanel({
       await apiData(base, { method: 'POST', data: {} });
     });
   const active = unfinished(run);
+  // Une tâche terminée n’est plus relancée : une suite fait l’objet d’une nouvelle carte.
+  const finished = run?.state === 'done';
   const submission = run?.submissions.at(-1);
   const pr = submission?.pullRequest;
   const checks = run?.githubChecks;
@@ -289,7 +291,7 @@ export default function ExecutionPanel({
         />
       ) : (
         <div className="execution-actions">
-          {!active && canLaunch && execution.loaded && (
+          {!active && !finished && canLaunch && execution.loaded && (
             <button
               className="primary-button"
               disabled={busy || !canStart}
@@ -321,7 +323,7 @@ export default function ExecutionPanel({
           )}
         </div>
       )}
-      {!active && startHint && <p className="muted">{startHint}</p>}
+      {!active && !finished && startHint && <p className="muted">{startHint}</p>}
       {!canLaunch && (
         <p className="muted">
           Seuls les responsables du projet peuvent confier cette carte à l’agent ou valider son travail.
