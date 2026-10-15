@@ -1,4 +1,5 @@
-import { access, readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { access, readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { CHANGELOG_FILE } from './changelog.mjs';
 
@@ -22,6 +23,23 @@ const exists = async path => {
 const UNRECOVERABLE = ['rebase-merge', 'rebase-apply', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'BISECT_LOG'];
 
 export const mergeInProgress = cwd => exists(join(cwd, '.git', 'MERGE_HEAD'));
+
+// Empreinte de ce qui, dans .git, ferait exécuter du code au worker lors de ses commandes Git
+// locales : configuration (filtres, pilotes de fusion, textconv…), attributs et hooks. Le worker
+// la relève après avoir préparé le checkout ; une différence ensuite vient de l’agent.
+export async function gitGuard(cwd) {
+  const read = name => readFile(join(cwd, '.git', name), 'utf8').catch(() => '');
+  const hooks = await readdir(join(cwd, '.git', 'hooks')).catch(() => []);
+  return createHash('sha256')
+    .update(
+      JSON.stringify([
+        await read('config'),
+        await read(join('info', 'attributes')),
+        hooks.filter(name => !name.endsWith('.sample')).sort(),
+      ]),
+    )
+    .digest('hex');
+}
 
 // Raison de recréer le checkout, ou '' s’il peut être repris tel quel (fusion en cours comprise).
 export async function checkoutProblem(cwd, git, branch) {

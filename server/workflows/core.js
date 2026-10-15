@@ -41,7 +41,7 @@ export function createSchema(db) {
     CREATE INDEX IF NOT EXISTS executions_card ON executions(project_id, card_id);`);
 }
 
-export function createCore(db, { audit, findCard, readProjects, writeProjects, recipients, emit }) {
+export function createCore(db, { audit, findCard, readProjects, writeProjects, recipients, emit, requiresApproval }) {
   // Exécutions filtrées par SQL (indexées par état et par carte), les plus récentes d’abord.
   const rows = (where = '1', ...params) =>
     db.prepare(`SELECT * FROM executions WHERE ${where} ORDER BY rowid DESC`).all(...params);
@@ -203,6 +203,10 @@ export function createCore(db, { audit, findCard, readProjects, writeProjects, r
   // Profil figé dans l’exécution, ou profil par défaut pour une exécution antérieure aux profils.
   const runProfile = run => run.executionProfile || defaultExecutionProfile();
   const lastPullRequest = run => run.submissions.at(-1)?.pullRequest;
+  // Approbation d’un responsable avant fusion : exigée par le projet, ou parce que la PR modifie
+  // les contrôles qui l’autorisent (workflows GitHub, scripts ou configuration des tests).
+  const approvalNeeded = (run, projectRequired = requiresApproval(run.projectId)) =>
+    projectRequired || !!run.submissions.at(-1)?.reviewRequired?.length;
   return {
     rows,
     unpack,
@@ -218,5 +222,6 @@ export function createCore(db, { audit, findCard, readProjects, writeProjects, r
     checkSource,
     runProfile,
     lastPullRequest,
+    approvalNeeded,
   };
 }

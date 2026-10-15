@@ -177,6 +177,15 @@ export function createAgentActions(
       const pullRequest =
         run.delivery === 'github' && !artifactOnly ? pullRequestLink(data.pullRequest, run.repository) : null;
       if (pullRequest) bindPullRequest(run, pullRequest);
+      // Contrôles de la fusion modifiés par la PR (relevés par le worker installé) : un responsable
+      // devra approuver ce commit avant la fusion automatique.
+      const reviewRequired = data.reviewRequired ?? [];
+      if (
+        !Array.isArray(reviewRequired) ||
+        reviewRequired.length > 50 ||
+        reviewRequired.some(item => typeof item !== 'string' || !item.trim() || item.length > 300)
+      )
+        fail(400, 'invalid_review', 'Liste des contrôles modifiés invalide.');
       if (files.length) attachFiles(run, files, agent);
       run.submissions.push({
         summary: text(data.summary, 'Résultat'),
@@ -184,6 +193,7 @@ export function createAgentActions(
         links: data.links,
         pullRequest,
         files: files.map(({ id, name, size, type }) => ({ id, name, size, type })),
+        ...(pullRequest && reviewRequired.length ? { reviewRequired } : {}),
         date: new Date().toISOString(),
         decision: null,
       });

@@ -672,3 +672,42 @@ test('the worker reads failed job logs from the temporary link without sending i
   assert.match(failed[0].log, /menu introuvable$/);
   assert.equal(calls.find(call => call.url.startsWith('https://logs.example.test')).authorization, undefined);
 });
+
+test('a PR that changes its own merge controls waits for a manager to approve its exact commit', async t => {
+  const f = await fixture(t),
+    run = f.prepare();
+  const submit = reviewRequired =>
+    f.store.workflows.agentAction(
+      f.project.id,
+      f.card.id,
+      run.id,
+      'submit',
+      {
+        version: run.version,
+        leaseToken: run.leaseToken,
+        summary: 'Tests allégés',
+        checks: 'Tests lancés',
+        links: [],
+        pullRequest: { url: `https://github.com/${repository}/pull/7`, headSha: sha },
+        reviewRequired,
+      },
+      f.agent,
+    );
+  for (const invalid of ['.github', [''], [42], Array(51).fill('a')])
+    assert.throws(
+      () => submit(invalid),
+      error => error.status === 400 && error.code === 'invalid_review',
+    );
+  const submitted = submit(['.github/workflows/ci.yml', 'package.json (scripts)']);
+  assert.deepEqual(submitted.submissions.at(-1).reviewRequired, ['.github/workflows/ci.yml', 'package.json (scripts)']);
+  assert.deepEqual(f.store.workflows.mergeEligible(repository, 7, sha, f.agent), {
+    eligible: false,
+    reason: 'approval_required',
+  });
+  const [listed] = f.store.workflows.list(f.project.id, f.card.id);
+  assert.equal(listed.approvalRequired, true, 'Le projet n’exige pas d’approbation : la PR, si.');
+  assert.equal(f.store.workflows.projectStatus(f.project.id)[f.card.id].awaitingApproval, true);
+  assert.ok(f.store.workflows.attention().some(item => item.executionId === run.id));
+  f.store.workflows.human(f.project.id, f.card.id, run.id, 'approve', { version: listed.version }, f.user);
+  assert.equal(f.store.workflows.mergeEligible(repository, 7, sha, f.agent).eligible, true);
+});

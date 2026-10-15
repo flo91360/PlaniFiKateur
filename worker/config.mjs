@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { ISOLATION_MODES } from './isolation.mjs';
 
 export const validId = value => typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(value);
 export const validRepository = value =>
@@ -65,6 +66,9 @@ export function readWorkerConfig(env = process.env) {
     return value;
   };
   const stateRoot = resolve(env.PLANIFIKATEUR_WORKER_STATE_DIR || '.data/worker');
+  // bwrap dans l’image Docker ; none pour un worker de développement sans bubblewrap.
+  const isolation = env.PLANIFIKATEUR_WORKER_ISOLATION || 'none';
+  if (!ISOLATION_MODES.includes(isolation)) throw new Error('PLANIFIKATEUR_WORKER_ISOLATION : bwrap ou none.');
   return {
     origin: origin.origin,
     token: required('PLANIFIKATEUR_AGENT_TOKEN'),
@@ -73,6 +77,7 @@ export function readWorkerConfig(env = process.env) {
     projectIds,
     repositories,
     stateRoot,
+    isolation,
     discovery,
     node22Bin: resolve(env.PLANIFIKATEUR_NODE22_BIN || '/opt/node22/bin'),
     codexHome: resolve(env.CODEX_HOME || `${stateRoot}/codex`),

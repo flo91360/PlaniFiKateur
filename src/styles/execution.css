@@ -376,3 +376,20 @@
   outline: 2px solid var(--primary-ring);
   outline-offset: 2px;
 }
+
+/* PR qui modifie ses propres contrôles : approbation demandée. */
+.execution-review {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--warning-surface);
+  color: var(--warning-text);
+  font-size: 13px;
+}
+.execution-review p {
+  margin: 0 0 4px;
+}
+.execution-review ul {
+  margin: 0;
+  padding-left: 18px;
+}

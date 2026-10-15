@@ -2336,6 +2336,16 @@
                   },
                   "usage": {
                     "$ref": "#/components/schemas/ExecutionUsage"
+                  },
+                  "reviewRequired": {
+                    "type": "array",
+                    "maxItems": 50,
+                    "description": "Contrôles de la fusion modifiés par la PR (workflows GitHub, scripts ou configuration des tests), relevés par le worker : un responsable doit approuver ce commit avant la fusion automatique.",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 300
+                    }
                   }
                 },
                 "required": [

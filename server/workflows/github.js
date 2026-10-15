@@ -6,8 +6,8 @@ const CONCLUSIONS = ['success', 'failure', 'cancelled', 'timed_out', 'action_req
 // Suite d’une PR de l’agent sur GitHub : fusion autorisée, résultat des contrôles, fusion
 // constatée (webhooks, ou vérification par server/github-sync.js si un webhook s’est perdu).
 export function createGithub(
-  { transaction, requiresApproval },
-  { rows, unpack, byId, boundExecution, save, checkAgent, checkSource, runProfile, lastPullRequest },
+  { transaction },
+  { rows, unpack, byId, boundExecution, save, checkAgent, checkSource, runProfile, lastPullRequest, approvalNeeded },
 ) {
   // Applique une conclusion de contrôles à une exécution en attente de fusion.
   const applyChecks = (run, conclusion) => {
@@ -54,8 +54,9 @@ export function createGithub(
       if (run.state !== 'merging' || run.agent?.id !== agent.id || lastPullRequest(run)?.headSha !== headSha)
         return { eligible: false };
       checkSource(run);
-      // Validation humaine exigée par le projet : seule la PR approuvée, à ce commit précis, fusionne.
-      if (requiresApproval(run.projectId) && run.approval?.headSha !== headSha)
+      // Validation humaine exigée (projet ou contrôles modifiés) : seule la PR approuvée, à ce
+      // commit précis, fusionne.
+      if (approvalNeeded(run) && run.approval?.headSha !== headSha)
         return { eligible: false, reason: 'approval_required' };
       return { eligible: true };
     },

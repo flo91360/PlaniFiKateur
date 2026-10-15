@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.46 — 2026-10-15
+<!-- planifikateur:etape-11-isolation-worker -->
+
+- **Isolation du worker** : L’installation et les tests du projet s’exécutent dans bubblewrap sans accès aux clés ni à l’état du worker, les clés quittent l’environnement du processus, le jeton GitHub ne sert qu’aux échanges avec GitHub, Git n’exécute plus de hooks et une modification de .git par l’agent supprime le checkout, les outils de Claude restent dans le dépôt, et une PR qui modifie ses propres contrôles attend l’approbation d’un responsable.
+
 ## 0.1.45 — 2026-10-15
 <!-- planifikateur:etape-10b-lisibilite-interface -->
 

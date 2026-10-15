@@ -80,6 +80,13 @@ export async function projectDiagnostic(project, config, github, execute, signal
     await checkRuntime(installedProfile(project.executionProfile), config, execute, signal);
     return `Node ${project.executionProfile.nodeMajor}${project.executionProfile.godotVersion ? ` · Godot ${project.executionProfile.godotVersion}` : ''} disponibles.`;
   });
+  await check('Isolation des tests', async () => {
+    // Vérifiée au démarrage (index.mjs) ; l’image Docker l’active toujours. Désactivée, elle
+    // n’est signalée qu’à titre d’information : c’est le choix d’un worker de développement.
+    return config.isolation === 'bwrap'
+      ? 'Installation et tests exécutés dans bubblewrap, sans accès aux clés ni à l’état du worker.'
+      : 'Désactivée (worker de développement) : les tests du projet ne sont pas isolés du worker.';
+  });
   await check('Authentification IA', async () => {
     if (project.ai.engine === 'claude-code') {
       if (!config.claudeApiKey && !config.claudeOauthToken)

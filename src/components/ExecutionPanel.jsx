@@ -211,6 +211,21 @@ export default function ExecutionPanel({
           <Steps state={run.state} />
           <p className={`execution-headline ${run.state}`}>{headline(run)}</p>
           {text && <p className="execution-detail">{text}</p>}
+          {run.state === 'merging' && submission?.reviewRequired?.length > 0 && (
+            <div className="execution-review" role="note">
+              <p>
+                Cette PR modifie les contrôles qui autorisent sa fusion : un responsable vérifie qu’ils ne sont pas
+                affaiblis avant de l’approuver.
+              </p>
+              <ul aria-label="Contrôles modifiés">
+                {submission.reviewRequired.map(item => (
+                  <li key={item}>
+                    <code>{item}</code>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {submission && ['review', 'merging', 'done'].includes(run.state) && <Result submission={submission} />}
           {(pr || checks) && (
             <p className="execution-links">

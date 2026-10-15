@@ -101,9 +101,38 @@ travail et signale une interruption si le site est accessible ; sinon la
 réservation expire. Le redémarrage reprend depuis la file du site. Conserver
 `PLANIFIKATEUR_WORKER_STATE_DIR` et `CODEX_HOME`, et utiliser une seule instance par
 volume. Les jetons d’accès et de réservation ne sont pas stockés dans l’état des
-tâches. Les tests et Codex reçoivent un environnement filtré sans clés GitHub/site.
-Les copies sont distinctes par tâche, mais ce service reste destiné à vos dépôts
-de confiance : il exécute leur code et n’isole pas des utilisateurs hostiles.
+tâches. Les copies sont distinctes par tâche, et ce service reste destiné à vos
+dépôts de confiance.
+
+### Isolation du code exécuté
+
+L’installation et les tests du projet exécutent le code de la branche que l’agent
+vient de modifier. Dans l’image Docker (`PLANIFIKATEUR_WORKER_ISOLATION=bwrap`),
+chacune de ces commandes tourne dans bubblewrap, contrôlé au démarrage du worker :
+
+- nouvel espace de processus avec son propre `/proc` : ni le worker ni ses variables
+  ne sont visibles, et bwrap reçoit un environnement déjà filtré, sans clé ;
+- système en lecture seule, dossier d’état masqué (autres tâches, état local,
+  connexions Codex et Claude) ; seuls le checkout et le cache npm sont modifiables ;
+- `.git` du checkout en lecture seule.
+
+Les clés du worker ne restent pas dans son environnement : `entrypoint.sh` les écrit
+dans un fichier privé que le worker lit puis supprime (`worker/secrets.mjs`), si bien
+qu’aucun processus ne les retrouve dans `/proc/<pid>/environ`. Le code du worker
+appartient à root. Le jeton GitHub n’accompagne que `clone`, `fetch`, `ls-remote` et
+`push` ; toutes les commandes Git désactivent hooks et `core.fsmonitor`, et une
+empreinte de `.git` (configuration, attributs, hooks) prise avant le travail de
+l’agent est revérifiée après : une différence supprime le checkout, recréé depuis
+GitHub. Les outils de fichiers de Claude restent dans le dépôt, liens symboliques
+résolus, et n’écrivent jamais dans `.git`.
+
+Une PR qui modifie les contrôles de sa fusion (workflows GitHub, scripts npm,
+configuration des tests déclarée par le profil) attend l’approbation d’un
+responsable. Limite connue : la clé du moteur IA reste lisible par le moteur
+lui-même et par ses commandes (Codex, Claude Code), qui en ont besoin.
+
+`PLANIFIKATEUR_WORKER_ISOLATION=none` désactive l’isolation pour un worker de
+développement sans bubblewrap ; le diagnostic du projet le signale.
 
 Paramètres facultatifs : `PLANIFIKATEUR_CODEX_MODEL`, `PLANIFIKATEUR_WORKER_POLL_MS`
 (10 s), `PLANIFIKATEUR_WORKER_HEARTBEAT_MS` (60 s),

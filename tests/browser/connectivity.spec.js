@@ -1632,6 +1632,42 @@ test.describe('project task execution', () => {
     expect(await eligible()).toBe(true);
   });
 
+  test('a PR that changes its own checks waits for a manager even without project approval', async ({
+    page,
+    request,
+    appServer,
+  }) => {
+    await login(page, appServer);
+    const project = seed[0],
+      card = project.cards[0];
+    const headers = await agentFor(page, appServer, project, 'Agent contrôlé');
+    const base = `${appServer}/api/v1/projects/${project.id}/cards/${card.id}/work`;
+    let run = (await (await page.request.post(base, { data: {} })).json()).data;
+    run = (await (await request.post(`${base}/${run.id}/claim`, { headers, data: { version: run.version } })).json())
+      .data;
+    const submitted = await request.post(`${base}/${run.id}/submit`, {
+      headers,
+      data: {
+        version: run.version,
+        leaseToken: run.leaseToken,
+        summary: 'Tests réorganisés.',
+        checks: 'Tests lancés.',
+        links: [],
+        pullRequest: { url: 'https://github.com/flo91360/PlaniFiKateur/pull/11', headSha: 'c'.repeat(40) },
+        reviewRequired: ['.github/workflows/ci.yml', 'package.json (scripts)'],
+      },
+    });
+    expect(submitted.status()).toBe(200);
+    await page.getByRole('heading', { name: card.title, exact: true }).click();
+    const panel = page.getByRole('region', { name: 'Exécution IA', exact: true });
+    await expect(panel).toContainText('elle attend l’approbation d’un responsable avant la fusion');
+    await expect(panel.getByRole('list', { name: 'Contrôles modifiés', exact: true })).toHaveText(
+      '.github/workflows/ci.ymlpackage.json (scripts)',
+    );
+    await panel.getByRole('button', { name: 'Approuver la fusion', exact: true }).click();
+    await expect(panel).toContainText('PR approuvée par Alice : fusion après les tests GitHub.');
+  });
+
   test('the event stream delivers board and agent changes without waiting for a refresh', async ({
     page,
     browser,
