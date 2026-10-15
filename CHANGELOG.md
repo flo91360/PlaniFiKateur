@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.47 — 2026-10-15
+<!-- planifikateur:controles-annules-silencieux -->
+
+- **Contrôles annulés sans message** : Une exécution des contrôles GitHub annulée parce qu'une nouvelle l'a remplacée n'ajoute plus de message trompeur au journal de la carte.
+
 ## 0.1.46 — 2026-10-15
 <!-- planifikateur:etape-11-isolation-worker -->
 

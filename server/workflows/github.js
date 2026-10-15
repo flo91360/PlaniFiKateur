@@ -12,14 +12,10 @@ export function createGithub(
   // Applique une conclusion de contrôles à une exécution en attente de fusion.
   const applyChecks = (run, conclusion) => {
     const date = new Date().toISOString();
-    // Labeling a newly opened PR starts another CI run and supersedes the
-    // first one. A cancelled run must not send the task back to Codex.
-    if (conclusion === 'cancelled') {
-      run.updates.push({
-        text: 'Une exécution des contrôles GitHub a été annulée. La tâche reste en attente des tests et de la fusion.',
-        date,
-      });
-    } else if (conclusion !== 'success' && conclusion !== 'failure') {
+    // L’étiquette posée sur une PR qui vient d’être ouverte relance les contrôles et annule la
+    // première exécution : rien à corriger ni à signaler, la tâche attend la suivante en silence.
+    if (conclusion === 'cancelled') return;
+    if (conclusion !== 'success' && conclusion !== 'failure') {
       // Délai dépassé, approbation requise, contrôle ignoré… : le code n’est pas en cause, le
       // modèle n’a rien à corriger. Les contrôles doivent être relancés depuis GitHub.
       run.updates.push({
