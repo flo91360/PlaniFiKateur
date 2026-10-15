@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { apiData } from '../lib/api-client.js';
 
 // Validation humaine avant la fusion des PR de l’agent, réglée par un responsable du projet.
-export default function MergeApproval({ projectId, canManage }) {
+export default function MergeApproval({ projectId, canManage, onState }) {
   const [required, setRequired] = useState(null),
     [saved, setSaved] = useState(null),
     [message, setMessage] = useState(''),
@@ -14,12 +14,13 @@ export default function MergeApproval({ projectId, canManage }) {
       .then(data => {
         setRequired(data.required);
         setSaved(data.required);
+        onState?.(data.required);
       })
       .catch(cause => {
         if (!controller.signal.aborted) setError(cause.message);
       });
     return () => controller.abort();
-  }, [projectId]);
+  }, [projectId, onState]);
   const save = async () => {
     setBusy(true);
     setError('');
@@ -27,6 +28,7 @@ export default function MergeApproval({ projectId, canManage }) {
     try {
       const data = await apiData(`projects/${projectId}/approval`, { method: 'PUT', data: { required } });
       setSaved(data.required);
+      onState?.(data.required);
       setMessage(
         data.required
           ? 'Chaque PR de l’agent attendra désormais l’approbation d’un responsable.'

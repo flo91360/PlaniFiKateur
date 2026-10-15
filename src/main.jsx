@@ -14,6 +14,7 @@ import { apiData } from './lib/api-client.js';
 import { applyAccent } from './lib/accents.js';
 import { useWorkspace, offlineMode, exportWithAlert } from './lib/use-workspace.js';
 import { useCardFollowers } from './lib/use-card-followers.js';
+import { useWorkStatus } from './lib/use-work-status.js';
 import { useAttention } from './lib/use-attention.js';
 import { useServerEvents } from './lib/use-server-events.js';
 import { useNotifications } from './lib/use-notifications.js';
@@ -108,16 +109,28 @@ function DeleteProjectConfirm({ name, onCancel, onConfirm }) {
   );
 }
 
+// Adresse d’un projet ou d’une carte : #/projets/<id>[/cartes/<id>], partageable et conservée au
+// rechargement (hors copie HTML autonome).
+const parseRoute = hash => {
+  const match = /^#\/projets\/([^/]+)(?:\/cartes\/([^/]+))?$/.exec(hash);
+  return match
+    ? { projectId: decodeURIComponent(match[1]), cardId: match[2] ? decodeURIComponent(match[2]) : null }
+    : null;
+};
+const routeOf = (projectId, cardId) =>
+  `#/projets/${encodeURIComponent(projectId)}${cardId ? `/cartes/${encodeURIComponent(cardId)}` : ''}`;
+const initialRoute = offlineMode ? null : parseRoute(globalThis.location?.hash || '');
+
 function App() {
   const [acceptingInvitation, setAcceptingInvitation] = useState(() =>
     /^#invitation=[a-f0-9]{64}$/.test(location.hash),
   );
   const [modal, setModal] = useState(null);
-  const [selectedId, setSelectedId] = useState(null);
+  const [selectedId, setSelectedId] = useState(initialRoute?.cardId ?? null);
   const [dragging, setDragging] = useState(null);
   const workspace = useWorkspace({ pauseRefresh: !!modal || !!selectedId || !!dragging });
   const { projects, setProjects, ready, needsLogin, saveStatus } = workspace;
-  const [projectId, setProjectId] = useState(projects[0]?.id ?? null);
+  const [projectId, setProjectId] = useState(initialRoute?.projectId ?? projects[0]?.id ?? null);
   const [filters, setFilters] = useState(NO_FILTERS);
   const [sidebar, setSidebar] = useState(false);
   const [notice, setNotice] = useNotice();
@@ -131,10 +144,39 @@ function App() {
   const cardFollowers = useCardFollowers({ projectId: project?.id, enabled: !offlineMode && ready && !needsLogin });
   const [projectAi, setProjectAi] = useProjectAi(project?.id, ready);
   const attention = useAttention({ enabled: !offlineMode && ready && !needsLogin });
+  const workStatus = useWorkStatus({ projectId: project?.id, enabled: !offlineMode && ready && !needsLogin });
   useServerEvents(!offlineMode && ready && !needsLogin);
   const notifications = useNotifications(!offlineMode && ready && !needsLogin);
   useEffect(() => applyAccent(workspace.accent), [workspace.accent]);
 
+  // L’adresse suit le projet et la carte affichés ; ouvrir une carte ajoute une entrée d’historique,
+  // pour que « Précédent » la referme. Une adresse inconnue (carte supprimée, projet masqué) est oubliée.
+  useEffect(() => {
+    if (offlineMode || acceptingInvitation || !ready || !project) return;
+    if (selectedId && !selected) {
+      setSelectedId(null);
+      return;
+    }
+    const hash = routeOf(project.id, selected?.id);
+    if (location.hash !== hash)
+      history[selected && !parseRoute(location.hash)?.cardId ? 'pushState' : 'replaceState'](null, '', hash);
+    document.title = [selected?.title, project.name, 'PlaniFiKateur'].filter(Boolean).join(' · ');
+  }, [ready, acceptingInvitation, project, selected, selectedId]);
+  useEffect(() => {
+    if (offlineMode) return;
+    const follow = () => {
+      const route = parseRoute(location.hash);
+      if (!route) return;
+      setProjectId(route.projectId);
+      setSelectedId(route.cardId);
+    };
+    window.addEventListener('popstate', follow);
+    window.addEventListener('hashchange', follow);
+    return () => {
+      window.removeEventListener('popstate', follow);
+      window.removeEventListener('hashchange', follow);
+    };
+  }, []);
   const updateProject = transform =>
     setProjects(ps => {
       let changed = false;
@@ -434,6 +476,7 @@ function App() {
                 project={project}
                 readOnly={role === 'viewer'}
                 followers={cardFollowers}
+                work={workStatus}
                 filters={filters}
                 onFilters={setFilters}
                 dragging={dragging}
