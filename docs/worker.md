@@ -116,7 +116,7 @@ Les délais par phase sont indépendants :
 Chaque valeur est en millisecondes, entre 1 s et 2 h ; le plafond global reste
 applicable à l’ensemble de la prise en charge. Une ancienne variable globale à
 20 min conserve sa valeur : la supprimer ou l’augmenter pour bénéficier du nouveau
-plafond. Les commentaires distinguent un délai dépassé, un arrêt du worker et une
+plafond. Le panneau **Exécution IA** distingue un délai dépassé, un arrêt du worker et une
 réservation perdue. Un délai dépassé entraîne une reprise automatique, sans demande
 de validation humaine.
 
@@ -300,9 +300,9 @@ du fonctionnement. » Passer cette carte au statut **Prête à démarrer**.
 Le worker la détecte automatiquement ; aucun bouton de lancement n’est nécessaire. Le dépôt se configure une fois dans
 **Paramètres du projet** et la livraison se fait toujours par fusion automatique. Lancer le worker et observer :
 
-1. Le statut **En cours**, l’avancement et les questions dans la **Discussion**
-   de la carte. Si elle est **À préciser**, publier un commentaire pour répondre
-   et relancer la même exécution.
+1. Le statut **En cours** et l’avancement dans le panneau **Exécution IA**, les
+   questions dans la **Discussion** de la carte. Si elle est **À préciser**,
+   publier un commentaire pour répondre et relancer la même exécution.
 2. Le commit et la PR liés à cette exécution, après tests locaux réussis.
 3. Les deux contrôles GitHub réussis sur ce commit, puis sa fusion automatique.
 4. La carte terminée après la livraison du webhook signé.
@@ -330,8 +330,8 @@ mêmes après une question, une interruption ou une correction. Modifier les
 paramètres du projet affecte les prochaines exécutions ; les anciennes
 conversations Codex continuent avec Codex. Le worker conserve aussi le modèle
 résolu lorsqu’il est disponible : nom annoncé à l’initialisation par Claude Code,
-ou métadonnées de session pour Codex. Le détail de la carte et ses commentaires
-affichent les réglages de l’exécution. Si le moteur ne rapporte pas de nom, le
+ou métadonnées de session pour Codex. Le panneau **Exécution IA** du détail de la
+carte affiche les réglages de l’exécution. Si le moteur ne rapporte pas de nom, le
 modèle reste indiqué **par défaut**, sans inventer un identifiant.
 
 Claude Code utilise `@anthropic-ai/claude-agent-sdk`, livré dans l’image du worker,
@@ -379,8 +379,8 @@ présence et leur taille, puis les ajoute aux pièces jointes de la carte. Un fi
 Qt `.ui` est contrôlé comme XML avec une structure Qt Designer 4.0 ; ce contrôle
 ne remplace pas un essai d’ouverture avec votre version de Qt Designer.
 
-Une livraison composée uniquement de fichiers termine directement la carte et
-publie un commentaire avec leurs noms. Les tests du dépôt et une PR ne sont pas
+Une livraison composée uniquement de fichiers termine directement la carte ;
+leurs noms figurent dans le panneau **Exécution IA**. Les tests du dépôt et une PR ne sont pas
 nécessaires pour cette livraison. Si le modèle modifie aussi le dépôt, les tests
 obligatoires, la PR et la fusion automatique restent nécessaires ; les fichiers
 sont joints lors de la soumission. Les pièces jointes générées sont attribuées à

@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Bot, Plus } from 'lucide-react';
 import Attachments from './Attachments.jsx';
 import DescriptionAssistant from './DescriptionAssistant.jsx';
 import LocalForm from './LocalForm.jsx';
@@ -55,7 +55,8 @@ export default function CreationForm({
   const [error, setError] = useState('');
   const isCard = type === 'card';
   const text = texts[type];
-  const submit = () => {
+  // `chosenStatus` : « ready » quand la carte est confiée à l’agent depuis le bandeau d’exécution.
+  const create = chosenStatus => {
     if (uploading || !formRef.current.reportValidity()) return;
     const data = new FormData(formRef.current);
     const submittedTitle = String(data.get('title') || '').trim();
@@ -69,7 +70,7 @@ export default function CreationForm({
         description: String(data.get('description') || '').trim(),
         listId: target,
         priority,
-        status,
+        status: chosenStatus,
         aiEffort,
         tags: parseTags(String(data.get('tags') || '')),
         checklist: [],
@@ -80,6 +81,7 @@ export default function CreationForm({
       setError('La création a échoué. Vos informations sont conservées : vous pouvez réessayer.');
     }
   };
+  const submit = () => create(status);
   return (
     <LocalForm className={`creation-form ${isCard ? 'card-creation' : ''}`} formRef={formRef} onConfirm={submit}>
       <p>{text.intro}</p>
@@ -121,6 +123,37 @@ export default function CreationForm({
                 listId={target}
               />
               <p className="muted">La description sera la demande transmise à l’agent.</p>
+              {!offline && (
+                <section className="execution-panel" aria-label="Exécution IA">
+                  <h3>
+                    <Bot size={17} />
+                    Exécution IA
+                  </h3>
+                  <p className="execution-detail">
+                    Aucune exécution pour cette carte. Confiez-la à l’agent dès sa création : le worker la prendra en
+                    charge.
+                  </p>
+                  {canLaunch ? (
+                    <>
+                      <div className="execution-actions">
+                        <button
+                          type="button"
+                          className="primary-button"
+                          disabled={uploading || !title.trim() || !target || !description.trim()}
+                          onClick={() => create('ready')}
+                        >
+                          Créer et confier à l’agent
+                        </button>
+                      </div>
+                      {!description.trim() && (
+                        <p className="muted">Rédigez la description : c’est la demande transmise à l’agent.</p>
+                      )}
+                    </>
+                  ) : (
+                    <p className="muted">Seuls les responsables du projet peuvent confier cette carte à l’agent.</p>
+                  )}
+                </section>
+              )}
               <label>
                 Étiquettes
                 <input

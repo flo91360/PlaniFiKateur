@@ -2327,6 +2327,43 @@ textarea::placeholder {
   gap: 4px;
   color: var(--primary);
 }
+.execution-deliverables {
+  margin: 0 0 8px;
+  padding-left: 22px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.execution-deliverables a {
+  color: var(--primary);
+}
+.execution-journal {
+  margin: 0 0 8px;
+  font-size: 12px;
+}
+.execution-journal summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+.execution-journal ol {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.execution-journal li {
+  display: grid;
+  gap: 2px;
+  padding-left: 10px;
+  border-left: 2px solid var(--border);
+  line-height: 1.5;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.execution-journal time {
+  color: var(--muted);
+  font-size: 10px;
+}
 .execution-actions {
   display: flex;
   flex-wrap: wrap;
