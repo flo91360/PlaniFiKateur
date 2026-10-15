@@ -1,5 +1,6 @@
 import React from 'react';
 import { ChevronRight, Layers3, Plus, Sparkles } from 'lucide-react';
+import { ideaCards } from '../lib/infos.js';
 import Avatar from './Avatar.jsx';
 import { version as appVersion } from '../../package.json';
 
@@ -77,7 +78,7 @@ export default function Sidebar({ projects, currentId, user, offline, open, onCl
                 {p.emoji}
               </span>
               <span>{p.name}</span>
-              <span className="project-count">{p.cards.length}</span>
+              <span className="project-count">{ideaCards(p).length}</span>
             </button>
           ))}
         </nav>

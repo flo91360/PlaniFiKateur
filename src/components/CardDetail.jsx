@@ -9,7 +9,7 @@ import Dialog from './Dialog.jsx';
 import LocalForm from './LocalForm.jsx';
 import Status, { PriorityOptions, StatusOptions } from './Status.jsx';
 import { EffortSelect } from './AiSettings.jsx';
-import { cardLinks } from '../lib/infos.js';
+import { cardLinks, isSystemCard } from '../lib/infos.js';
 import { createId as uid } from '../lib/id.js';
 import { parseTags } from '../lib/tags.js';
 import { unfinished, useCardExecutions } from '../lib/use-card-executions.js';
@@ -168,7 +168,6 @@ const changesRequest = (card, patch) =>
   Object.entries(requestFields).some(
     ([key, normalize]) => key in patch && normalize(patch[key]) !== normalize(card[key]),
   );
-const systemCards = projectId => [`${projectId}-git-version`, `${projectId}-readme`, `${projectId}-changelog`];
 
 function CancelConfirm({ onConfirm, onRevert }) {
   // Le bandeau s’affiche en haut du détail : le rendre visible même si la saisie a eu lieu plus bas.
@@ -205,6 +204,8 @@ export default function CardDetail({
   saveStatus,
   card,
   lists,
+  position = null,
+  onReorder = () => {},
   onClose,
   onUpdate,
   onDelete,
@@ -279,7 +280,7 @@ export default function CardDetail({
   // enregistrée sur le serveur juste avant d’être confiée à l’agent.
   const startHint = description.trim() ? '' : 'Rédigez la description : c’est la demande transmise à l’agent.';
   const stored = fieldsSaved && saveStatus === 'saved';
-  const executionShown = !offline && !systemCards(projectId).includes(card.id);
+  const executionShown = !offline && !isSystemCard(projectId, card.id);
   const saveFailed = ['error', 'conflict'].includes(saveStatus);
   // Demandes « Confier à l’agent » en attente de l’enregistrement de la carte.
   const saveWaiters = useRef([]);
@@ -392,6 +393,47 @@ export default function CardDetail({
         </div>
         <aside className="detail-side">
           {!offline && <CardSubscription projectId={projectId} cardId={card.id} />}
+          {!readOnly && (
+            <div className="detail-move">
+              <label>
+                Liste
+                <select
+                  aria-label="Déplacer vers la liste"
+                  value={card.listId}
+                  onChange={e => onUpdate({ listId: e.target.value })}
+                >
+                  {lists.map(list => (
+                    <option key={list.id} value={list.id}>
+                      {list.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {position && position.count > 1 && (
+                <div className="detail-order" role="group" aria-label="Position dans la liste">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={position.index === 0}
+                    onClick={() => onReorder(-1)}
+                  >
+                    Monter
+                  </button>
+                  <span>
+                    {position.index + 1} / {position.count}
+                  </span>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={position.index === position.count - 1}
+                    onClick={() => onReorder(1)}
+                  >
+                    Descendre
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           <label>
             Statut
             <select

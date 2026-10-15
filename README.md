@@ -4,7 +4,8 @@ Un tableau de projets inspiré de Trello, conçu pour préparer des demandes con
 
 ## Interface et connectivité
 
-- Projets indépendants, listes personnalisées et cartes déplaçables.
+- Projets indépendants, listes personnalisées et cartes déplaçables, à la souris ou depuis le détail de la carte (liste et position, au clavier ou au toucher).
+- Listes modifiables (nom, couleur, place, suppression d’une liste vide) et projet modifiable par ses responsables (nom, description, symbole, couleur).
 - Suppression d’un projet avec confirmation, y compris du dernier projet ; ses listes et cartes sont supprimées avec lui.
 - Création et édition avec titre, description, statut, priorité, étiquettes et commentaires.
 - Dictée de la description au micro et reformulation de la demande par l’IA (« Reformuler avec l’IA »).
@@ -122,7 +123,7 @@ Conserver également des copies hors du volume Railway.
 npm run export:preview
 ```
 
-`dist/PlaniFiKateur-apercu-v0.1.39.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
+`dist/PlaniFiKateur-apercu-v0.1.40.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 

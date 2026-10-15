@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.40 — 2026-10-15
+<!-- planifikateur:etape-9a-organiser-sans-glisser -->
+
+- **Organiser le tableau sans glisser-déposer** : Une carte se déplace vers une autre liste et monte ou descend dans la sienne depuis son détail, au clavier ou au toucher. Les listes se renomment, changent de couleur et de place et se suppriment lorsqu’elles sont vides ; les responsables modifient le nom, la description, le symbole et la couleur du projet. Les statistiques ne comptent plus les cartes Infos, et le statut « Flo regarde » devient « À relire ».
+
 ## 0.1.39 — 2026-10-15
 <!-- planifikateur:tests-mobile-allegees -->
 

@@ -30,6 +30,7 @@ import Dialog from './components/Dialog.jsx';
 import InfoPanel from './components/InfoPanel.jsx';
 import ProjectAutomation from './components/ProjectAutomation.jsx';
 import ProjectHeader from './components/ProjectHeader.jsx';
+import { ListSettings, ProjectDetailsForm } from './components/EditForms.jsx';
 import Sidebar from './components/Sidebar.jsx';
 import SyncAlerts from './components/SyncAlerts.jsx';
 import Topbar from './components/Topbar.jsx';
@@ -44,6 +45,8 @@ const dialogTitles = {
   project: 'Un nouveau projet',
   list: 'Une nouvelle liste',
   'delete-project': 'Supprimer le projet',
+  'edit-project': 'Modifier le projet',
+  'edit-list': 'Modifier la liste',
   account: 'Mon compte',
   activity: 'Activité des projets',
   attention: 'À traiter',
@@ -150,6 +153,19 @@ function App() {
         return p;
       return { ...p, cards: p.cards.map(c => (c.id === id ? { ...c, ...patch } : c)) };
     });
+  // Déplace une carte d’un rang dans sa liste (vers le haut : -1), au clavier ou au toucher.
+  const reorderCard = (id, delta) =>
+    updateProject(p => {
+      const card = p.cards.find(c => c.id === id);
+      const siblings = p.cards.filter(c => c.listId === card?.listId);
+      const neighbour = siblings[siblings.indexOf(card) + delta];
+      if (!card || !neighbour) return p;
+      const cards = [...p.cards];
+      const from = cards.indexOf(card),
+        to = cards.indexOf(neighbour);
+      [cards[from], cards[to]] = [cards[to], cards[from]];
+      return { ...p, cards };
+    });
   const chooseProject = id => {
     setProjectId(id);
     setFilters(NO_FILTERS);
@@ -205,6 +221,23 @@ function App() {
     updateProject(p => ({ ...p, cards: [...p.cards, newCard] }));
     setFilters(NO_FILTERS);
     setNotice('Carte créée');
+  };
+  const updateList = (listId, fields) =>
+    updateProject(p => ({ ...p, lists: p.lists.map(l => (l.id === listId ? { ...l, ...fields } : l)) }));
+  const moveList = (listId, delta) =>
+    updateProject(p => {
+      const from = p.lists.findIndex(l => l.id === listId),
+        to = from + delta;
+      if (from < 0 || to < 0 || to >= p.lists.length) return p;
+      const lists = [...p.lists];
+      [lists[from], lists[to]] = [lists[to], lists[from]];
+      return { ...p, lists };
+    });
+  const deleteList = listId => {
+    updateProject(p =>
+      p.cards.some(c => c.listId === listId) ? p : { ...p, lists: p.lists.filter(l => l.id !== listId) },
+    );
+    setNotice('Liste supprimée');
   };
   const deleteProject = id => {
     const remaining = projects.filter(p => p.id !== id);
@@ -272,6 +305,37 @@ function App() {
             <ActivityPanel />
           </div>
         );
+      case 'edit-project':
+        return (
+          <ProjectDetailsForm
+            project={project}
+            onClose={close}
+            onSave={fields => {
+              updateProject(p => ({ ...p, ...fields }));
+              setNotice('Projet modifié');
+            }}
+          />
+        );
+      case 'edit-list': {
+        const index = project.lists.findIndex(l => l.id === modal.listId);
+        if (index < 0) return <p className="muted">Cette liste n’existe plus.</p>;
+        return (
+          <ListSettings
+            key={modal.listId}
+            list={project.lists[index]}
+            index={index}
+            count={project.lists.length}
+            cardCount={project.cards.filter(c => c.listId === modal.listId).length}
+            onSave={fields => {
+              updateList(modal.listId, fields);
+              setNotice('Liste modifiée');
+            }}
+            onMove={delta => moveList(modal.listId, delta)}
+            onDelete={() => deleteList(modal.listId)}
+            onClose={close}
+          />
+        );
+      }
       case 'delete-project':
         return (
           <DeleteProjectConfirm
@@ -362,6 +426,7 @@ function App() {
                 canDelete={role === 'manager'}
                 readOnly={role === 'viewer'}
                 onOpenSettings={() => setModal('project-settings')}
+                onEdit={() => setModal('edit-project')}
                 onDelete={() => setModal({ type: 'delete-project', projectId: project.id })}
               />
               <Board
@@ -380,6 +445,7 @@ function App() {
                 onOpenCard={setSelectedId}
                 onAddCard={listId => setModal({ type: 'card', listId })}
                 onAddList={() => setModal('list')}
+                onEditList={listId => setModal({ type: 'edit-list', listId })}
               />
             </>
           ) : (
@@ -436,6 +502,11 @@ function App() {
             saveStatus={saveStatus}
             card={selected}
             lists={project.lists}
+            position={(() => {
+              const siblings = project.cards.filter(c => c.listId === selected.listId);
+              return { index: siblings.indexOf(selected), count: siblings.length };
+            })()}
+            onReorder={delta => reorderCard(selected.id, delta)}
             onClose={() => setSelectedId(null)}
             onUpdate={patch => updateCard(selected.id, patch)}
             onDelete={() => {

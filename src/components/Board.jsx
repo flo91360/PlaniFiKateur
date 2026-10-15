@@ -8,6 +8,7 @@ import {
   Lightbulb,
   ListFilter,
   MessageSquare,
+  Pencil,
   Plus,
   Search,
   X,
@@ -28,7 +29,10 @@ function Toolbar({ listCount, query, statusFilter, onQuery, onStatusFilter }) {
     <div className="board-toolbar">
       <div className="board-tab">
         <LayoutGrid size={16} />
-        Tableau<span>{listCount} listes</span>
+        Tableau
+        <span>
+          {listCount} liste{listCount > 1 ? 's' : ''}
+        </span>
       </div>
       <div className="board-controls">
         <label className="search-field">
@@ -141,6 +145,7 @@ export default function Board({
   onOpenCard,
   onAddCard,
   onAddList,
+  onEditList = () => {},
   readOnly = false,
 }) {
   const [dropList, setDropList] = useState(null);
@@ -167,7 +172,7 @@ export default function Board({
             ? `${visible.length} carte${visible.length > 1 ? 's' : ''} trouvée${visible.length > 1 ? 's' : ''}`
             : readOnly
               ? 'Lecture seule sur ce projet'
-              : 'Glissez les cartes pour les organiser'}
+              : 'Glissez les cartes, ou déplacez-les depuis leur détail'}
         </span>
       </div>
       <div className="board" aria-label="Tableau du projet">
@@ -199,13 +204,22 @@ export default function Board({
                   <span className="list-count">{cards.length}</span>
                 </div>
                 {!readOnly && (
-                  <button
-                    className="icon-button"
-                    aria-label={`Ajouter une carte dans ${list.name}`}
-                    onClick={() => onAddCard(list.id)}
-                  >
-                    <Plus size={17} />
-                  </button>
+                  <div className="list-actions">
+                    <button
+                      className="icon-button"
+                      aria-label={`Modifier la liste ${list.name}`}
+                      onClick={() => onEditList(list.id)}
+                    >
+                      <Pencil size={15} />
+                    </button>
+                    <button
+                      className="icon-button"
+                      aria-label={`Ajouter une carte dans ${list.name}`}
+                      onClick={() => onAddCard(list.id)}
+                    >
+                      <Plus size={17} />
+                    </button>
+                  </div>
                 )}
               </header>
               <div className="cards">

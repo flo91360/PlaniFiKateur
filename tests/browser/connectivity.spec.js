@@ -4,6 +4,7 @@ import { test as base, expect } from '@playwright/test';
 import { createAppServer } from '../../server/index.js';
 import { createStore } from '../../server/store.js';
 import { seed } from '../../src/data/demo.js';
+import { isSystemCard } from '../../src/lib/infos.js';
 import { createBackups } from '../../server/backups.js';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -325,6 +326,66 @@ test('saved attachments are previewed and downloaded from their route, not carri
   const download = await downloading;
   expect(download.suggestedFilename()).toBe('notes.txt');
   expect(readFileSync(await download.path(), 'utf8')).toBe('Notes de réunion');
+});
+
+test('cards, lists and the project are rearranged and edited without drag and drop', async ({
+  page,
+  request,
+  appServer,
+}) => {
+  await login(page, appServer);
+  const headers = { Authorization: `Bearer ${readToken}` };
+  const cardsOf = async () =>
+    (await (await request.get(`${appServer}/api/v1/projects/${seed[0].id}/cards`, { headers })).json()).data;
+  // Les cartes Infos ne comptent pas parmi les idées du projet.
+  const ideas = seed[0].cards.filter(item => !isSystemCard(seed[0].id, item.id)).length;
+  expect(ideas).toBeLessThan(seed[0].cards.length);
+  await expect(page.locator('.stats')).toContainText(`${ideas}idées au total`);
+  // Déplacer une carte vers une autre liste, puis la remonter dans sa liste.
+  const card = seed[0].cards[0];
+  const target = seed[0].lists[1];
+  await page.getByRole('heading', { name: card.title, exact: true }).click();
+  await page.getByLabel('Déplacer vers la liste', { exact: true }).selectOption(target.id);
+  await expect(page.locator('.detail-status')).toContainText(`dans ${target.name}`);
+  const order = page.getByRole('group', { name: 'Position dans la liste', exact: true });
+  const before = await order.locator('span').textContent();
+  const [index] = before.split(' / ').map(Number);
+  if (index > 1) {
+    await order.getByRole('button', { name: 'Monter', exact: true }).click();
+    await expect(order.locator('span')).toHaveText(new RegExp(`^${index - 1} / `));
+  }
+  await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+  await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+  expect((await cardsOf()).find(item => item.id === card.id).listId).toBe(target.id);
+  // Renommer et déplacer une liste, puis supprimer une liste vide.
+  await page.getByRole('button', { name: `Modifier la liste ${target.name}`, exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Modifier la liste', exact: true });
+  await dialog.getByLabel('Nom de la liste', { exact: true }).fill('Pistes retenues');
+  await dialog.getByRole('button', { name: 'Vers la gauche', exact: true }).click();
+  await expect(dialog.getByRole('button', { name: 'Supprimer la liste', exact: true })).toBeDisabled();
+  await dialog.getByRole('button', { name: 'Enregistrer la liste', exact: true }).click();
+  await expect(page.locator('.list-header h2').first()).toHaveText('Pistes retenues');
+  await page.getByRole('button', { name: 'Ajouter une liste', exact: true }).click();
+  await page.getByLabel('Nom de la liste', { exact: true }).fill('Liste éphémère');
+  await page.getByRole('button', { name: 'Créer la liste', exact: true }).click();
+  await page.getByRole('button', { name: 'Modifier la liste Liste éphémère', exact: true }).click();
+  await page.getByRole('button', { name: 'Supprimer la liste', exact: true }).click();
+  await expect(page.locator('.list-header h2', { hasText: 'Liste éphémère' })).toHaveCount(0);
+  // Modifier le projet.
+  await page.getByRole('button', { name: 'Modifier le projet', exact: true }).click();
+  const project = page.getByRole('dialog', { name: 'Modifier le projet', exact: true });
+  await project.getByLabel('Nom du projet', { exact: true }).fill('PlaniFiKateur renommé');
+  await project.getByLabel('Symbole', { exact: true }).fill('★');
+  await project.getByRole('button', { name: 'Enregistrer le projet', exact: true }).click();
+  await expect(page.locator('.project-heading h1')).toHaveText('PlaniFiKateur renommé');
+  await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+  const { data } = await (await request.get(`${appServer}/api/v1/projects`, { headers })).json();
+  const saved = data.find(item => item.id === seed[0].id);
+  expect([saved.name, saved.emoji]).toEqual(['PlaniFiKateur renommé', '★']);
+  const board = await (await page.request.get(`${appServer}/api/v1/workspace`)).json();
+  const names = board.projects.find(item => item.id === seed[0].id).lists.map(list => list.name);
+  expect(names[0]).toBe('Pistes retenues');
+  expect(names).not.toContain('Liste éphémère');
 });
 
 test('JSON import adds local cards to the API without replacing existing projects', async ({

@@ -1,5 +1,6 @@
 import React from 'react';
-import { CheckCheck, CircleHelp, Clock3, Lightbulb, Trash2 } from 'lucide-react';
+import { CheckCheck, CircleHelp, Clock3, Lightbulb, Pencil, Trash2 } from 'lucide-react';
+import { ideaCards } from '../lib/infos.js';
 
 function Stat({ icon: Icon, tone, value, label, hint }) {
   return (
@@ -56,6 +57,7 @@ export default function ProjectHeader({
   canDelete = true,
   readOnly = false,
   onOpenSettings,
+  onEdit,
   onDelete,
 }) {
   return (
@@ -83,6 +85,12 @@ export default function ProjectHeader({
             </button>
           )}
           {canDelete && (
+            <button className="secondary-button" onClick={onEdit}>
+              <Pencil size={16} />
+              Modifier le projet
+            </button>
+          )}
+          {canDelete && (
             <button className="delete-button project-delete" onClick={onDelete}>
               <Trash2 size={16} />
               Supprimer le projet
@@ -90,7 +98,7 @@ export default function ProjectHeader({
           )}
         </div>
       </div>
-      <ProjectStats cards={project.cards} />
+      <ProjectStats cards={ideaCards(project)} />
     </>
   );
 }
