@@ -68,7 +68,8 @@ export function contentRoutes({ store, config, guards }) {
             throw httpError(400, 'invalid_change', 'Une liste de modifications est requise.');
           if (typeof partial !== 'boolean') throw httpError(400, 'invalid_change', 'partial : booléen attendu.');
           // `partial` : les modifications refusées sont listées dans `rejected`, les autres enregistrées.
-          const { skipped, rejected, ...workspace } = apply(ctx, changes, { partial });
+          // Le tableau renvoyé n’inclut pas le contenu des pièces jointes (voir leur route).
+          const { skipped, rejected, ...workspace } = apply(ctx, changes, { partial, attachmentData: false });
           ctx.res.setHeader('ETag', `"${workspace.revision}"`);
           ctx.send(200, { data: { ...workspace, skipped, ...(partial ? { rejected } : {}) } });
         },

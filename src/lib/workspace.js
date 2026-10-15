@@ -3,7 +3,9 @@ import { efforts } from '../../worker/ai-settings.mjs';
 import { validateDriveRelease } from './drive-release.js';
 const priorities = ['low', 'normal', 'high'];
 
-export function validateWorkspace(projects) {
+// `attachmentData: false` accepte les pièces jointes sans contenu : c’est ainsi que le serveur
+// envoie le tableau au navigateur (le contenu se télécharge par sa route).
+export function validateWorkspace(projects, { attachmentData = true } = {}) {
   if (!Array.isArray(projects)) throw new Error('Une liste de projets est requise.');
   const ids = new Set();
   let attachmentBytes = 0;
@@ -85,18 +87,20 @@ export function validateWorkspace(projects) {
           if (/[\x00-\x1f\x7f/\\]/.test(name)) fail('Nom de pièce jointe invalide.');
           if (!Number.isInteger(a.size) || a.size < 1 || a.size > 1024 * 1024)
             fail('Chaque fichier doit peser entre 1 octet et 1 Mo.');
-          const data = text(a.data, 'attachment.data', 1398104, true);
+          const data =
+            !attachmentData && a.data === undefined ? undefined : text(a.data, 'attachment.data', 1398104, true);
           if (
-            !/^[A-Za-z0-9+/]+={0,2}$/.test(data) ||
-            data.length % 4 !== 0 ||
-            (data.length / 4) * 3 - (data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0) !== a.size
+            data !== undefined &&
+            (!/^[A-Za-z0-9+/]+={0,2}$/.test(data) ||
+              data.length % 4 !== 0 ||
+              (data.length / 4) * 3 - (data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0) !== a.size)
           )
             fail('Contenu de pièce jointe invalide.');
           attachmentBytes += a.size;
           if (attachmentBytes > 2 * 1024 * 1024) fail('Les pièces jointes de tous les projets dépassent 2 Mo.');
           const type = text(a.type, 'attachment.type', 100, true);
           if (!/^[a-zA-Z0-9.+-]+\/[a-zA-Z0-9.+-]+$/.test(type)) fail('Type de pièce jointe invalide.');
-          return { id: attachmentId, name, type, size: a.size, data };
+          return { id: attachmentId, name, type, size: a.size, ...(data === undefined ? {} : { data }) };
         }),
         tags: array(c.tags, `${path}.cards.tags`, 50).map(tag => text(tag, 'tag', 140, true)),
         checklist: array(c.checklist, `${path}.cards.checklist`, 500).map(item => {

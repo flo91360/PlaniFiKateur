@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.34 — 2026-10-14
+<!-- planifikateur:etape-8a-lectures-et-pieces-jointes -->
+
+- **Tableau allégé et lectures ciblées** : Le tableau envoyé au navigateur n’inclut plus le contenu des pièces jointes : elles s’affichent et se téléchargent par leur propre route, et l’export JSON les récupère sur le serveur. Les droits, les notifications et les cartes se lisent sans relire tout le tableau, l’historique et l’écriture des modifications sont plus rapides : avec 900 cartes, une modification passe de 181 à 96 ms et le tableau de 4,8 à 2,2 Mo.
+
 ## 0.1.33 — 2026-10-14
 <!-- planifikateur:etape-7-modifications-robustes -->
 

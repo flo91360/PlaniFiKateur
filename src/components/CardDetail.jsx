@@ -360,6 +360,7 @@ export default function CardDetail({
           <Attachments
             otherBytes={attachmentBytes}
             attachments={card.attachments || []}
+            source={offline ? null : { projectId, cardId: card.id }}
             readOnly={requestLocked}
             onChange={attachments => update({ attachments })}
           />

@@ -4584,6 +4584,18 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "attachments",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "data"
+              ]
+            },
+            "description": "data : inclut le contenu (base64) des pièces jointes, pour l’export JSON. Sans ce paramètre, les pièces jointes n’ont que id, name, type et size."
           }
         ],
         "responses": {
@@ -7152,6 +7164,66 @@
           },
           "403": {
             "description": "Origine de la requête non autorisée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/cards/{cardId}/attachments/{attachmentId}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ProjectId"
+        },
+        {
+          "$ref": "#/components/parameters/CardId"
+        },
+        {
+          "name": "attachmentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Contenu d’une pièce jointe",
+        "description": "Le tableau envoyé au navigateur ne contient que le nom, le type et la taille des pièces jointes. Les images (PNG, JPEG, GIF, WebP) sont servies en ligne pour l’aperçu ; tout autre fichier est téléchargé en application/octet-stream, sous une politique de sécurité qui interdit son interprétation.",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Contenu du fichier.",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session requise.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Projet invisible, ou pièce jointe inexistante dans cette carte (attachment_not_found).",
             "content": {
               "application/json": {
                 "schema": {

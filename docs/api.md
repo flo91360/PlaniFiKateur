@@ -76,7 +76,7 @@ La spécification **OpenAPI 3.1** est servie à `/openapi.json` et conservée da
 
 ## Synchronisation de l’interface
 
-Les routes `/api/v1/session` et `/api/v1/workspace` sont réservées à l’interface. GET session indique le compte connecté et si le premier compte administrateur doit être créé ; il n’établit pas de session anonyme. Avec un compte connecté, GET session renvoie aussi `preferences`, les préférences d’affichage de ce compte (voir ci-dessous). POST session reçoit `{ "email": "…", "password": "…" }` ; DELETE termine la session. GET workspace fournit les projets visibles par le compte, la révision et `access`, le rôle du compte sur chacun (`viewer`, `editor`, `manager`).
+Les routes `/api/v1/session` et `/api/v1/workspace` sont réservées à l’interface. GET session indique le compte connecté et si le premier compte administrateur doit être créé ; il n’établit pas de session anonyme. Avec un compte connecté, GET session renvoie aussi `preferences`, les préférences d’affichage de ce compte (voir ci-dessous). POST session reçoit `{ "email": "…", "password": "…" }` ; DELETE termine la session. GET workspace fournit les projets visibles par le compte, la révision et `access`, le rôle du compte sur chacun (`viewer`, `editor`, `manager`). Depuis la v0.1.34, les pièces jointes y figurent sans leur contenu (`id`, `name`, `type`, `size`) : il se télécharge par `GET /api/v1/projects/{projectId}/cards/{cardId}/attachments/{attachmentId}`, et `GET /api/v1/workspace?attachments=data` l’inclut pour l’export JSON. Une pièce jointe renvoyée sans `data` dans une modification garde le contenu enregistré sous son identifiant ; une pièce jointe nouvelle doit l’inclure.
 
 ### Apparence personnelle
 
@@ -96,7 +96,7 @@ Toutes ces routes exigent une **session personnelle** de la même origine ; une 
 
 | Route | Usage |
 | --- | --- |
-| `PATCH /api/v1/workspace` | Lot de modifications fines, appliqué en une transaction ; réponse `{ "data": { projects, revision, updatedAt, skipped } }` |
+| `PATCH /api/v1/workspace` | Lot de modifications fines, appliqué en une transaction ; réponse `{ "data": { projects, revision, updatedAt, skipped, rejected? } }`, pièces jointes sans contenu |
 | `POST /api/v1/projects` | `{ name, description?, emoji?, color?, lists? }` ; trois listes par défaut et les cartes Infos ; réponse 201 |
 | `PATCH /api/v1/projects/{projectId}` | `{ name?, description?, emoji?, color? }` |
 | `DELETE /api/v1/projects/{projectId}` | Supprime le projet, ses listes et ses cartes |
@@ -107,6 +107,7 @@ Toutes ces routes exigent une **session personnelle** de la même origine ; une 
 | `PATCH /api/v1/projects/{projectId}/cards/{cardId}` | Mêmes champs, tous facultatifs ; seuls les champs envoyés changent |
 | `DELETE /api/v1/projects/{projectId}/cards/{cardId}` | Supprime la carte, ses commentaires et ses pièces jointes |
 | `POST /api/v1/projects/{projectId}/cards/{cardId}/comments` | `{ text }` ; réponse 201 avec le commentaire signé par le serveur |
+| `GET /api/v1/projects/{projectId}/cards/{cardId}/attachments/{attachmentId}` | Contenu d’une pièce jointe (lecteur du projet) : images PNG, JPEG, GIF et WebP affichées en ligne, autres fichiers téléchargés en `application/octet-stream` avec `Content-Security-Policy: sandbox` |
 
 Les routes par élément répondent 404 (`change_missing`) quand l’élément n’existe pas et 400 pour un champ inconnu ou un contenu invalide. Les cartes renvoyées ont la même forme qu’en consultation (projet et nom de liste). Modifier la demande d’une carte (titre, description, étiquettes, critères, pièces jointes ou effort) annule son exécution IA en cours ; changer le statut d’une carte prise en charge renvoie 409 (`managed_status`).
 

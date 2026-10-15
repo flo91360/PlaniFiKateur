@@ -8,6 +8,8 @@ import { applyChanges, diffWorkspace } from './workspace-changes.js';
 import { useServerConnected, useServerEvent } from './use-server-events.js';
 
 const STORAGE = 'planifikateur.workspace.v1';
+// Le serveur envoie les pièces jointes sans leur contenu, téléchargé à la demande.
+export const SERVER_FORM = { attachmentData: false };
 export const offlineMode = globalThis.__PLANIFIKATEUR_OFFLINE__ === true || globalThis.location?.protocol === 'file:';
 function readLocal() {
   try {
@@ -59,7 +61,7 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
         return;
       }
       const workspace = await request('workspace');
-      const clean = validateWorkspace(workspace.projects);
+      const clean = validateWorkspace(workspace.projects, SERVER_FORM);
       setAccess(workspace.access || {});
       current.current = clean;
       saved.current = clean;
@@ -104,7 +106,7 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
       )
         return;
       if (remote && remote.revision > baseRevision) {
-        const clean = validateWorkspace(remote.projects);
+        const clean = validateWorkspace(remote.projects, SERVER_FORM);
         current.current = clean;
         saved.current = clean;
         revision.current = remote.revision;
@@ -177,7 +179,7 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
           fallback: 'Le serveur ne répond pas.',
         });
         setSaveNotice(describeRefusals(data));
-        const canonical = validateWorkspace(data.projects);
+        const canonical = validateWorkspace(data.projects, SERVER_FORM);
         revision.current = data.revision;
         saved.current = canonical;
         setAccess(data.access || {});
@@ -282,7 +284,31 @@ export function describeRefusals({ rejected = [], skipped = [] } = {}) {
   return parts.join(' ');
 }
 
-export function exportWorkspace(projects) {
+// Export JSON réimportable : en mode connecté, le contenu des pièces jointes (absent du tableau
+// affiché) est relu sur le serveur. Les modifications locales non enregistrées sont conservées.
+export async function exportWorkspace(projects) {
+  if (projects.some(project => project.cards.some(card => (card.attachments || []).some(file => !file.data)))) {
+    let full;
+    try {
+      full = await request('workspace?attachments=data');
+    } catch {
+      throw new Error('Le contenu des pièces jointes est indisponible pour l’export. Réessayez dans un instant.');
+    }
+    const data = new Map(
+      full.projects.flatMap(project =>
+        project.cards.flatMap(card => (card.attachments || []).map(file => [file.id, file.data])),
+      ),
+    );
+    projects = projects.map(project => ({
+      ...project,
+      cards: project.cards.map(card => ({
+        ...card,
+        attachments: (card.attachments || [])
+          .map(file => (file.data ? file : { ...file, data: data.get(file.id) }))
+          .filter(file => file.data),
+      })),
+    }));
+  }
   const blob = new Blob([JSON.stringify({ version: 1, projects }, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -291,3 +317,5 @@ export function exportWorkspace(projects) {
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+// Lance l’export depuis un bouton : une erreur est signalée sans interrompre la page.
+export const exportWithAlert = projects => void exportWorkspace(projects).catch(error => window.alert(error.message));

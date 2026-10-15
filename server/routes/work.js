@@ -52,7 +52,7 @@ export function workRoutes({ store, config, auth, guards }) {
       guard: guards.account,
       methods: {
         GET(ctx) {
-          const { access } = store.readFor(ctx.user);
+          const access = store.accessOf(ctx.user);
           ctx.send(200, { data: workflows.attention().filter(item => access[item.projectId]) });
         },
       },
