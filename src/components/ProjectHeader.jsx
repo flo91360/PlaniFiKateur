@@ -1,6 +1,7 @@
 import React from 'react';
 import { CheckCheck, CircleHelp, Clock3, Lightbulb, Pencil, Trash2 } from 'lucide-react';
 import { ideaCards } from '../lib/infos.js';
+import { useProjectAccess } from '../lib/project-access.js';
 
 function Stat({ icon: Icon, tone, value, label, hint }) {
   return (
@@ -51,15 +52,8 @@ function ProjectStats({ cards }) {
   );
 }
 
-export default function ProjectHeader({
-  project,
-  offline,
-  canDelete = true,
-  readOnly = false,
-  onOpenSettings,
-  onEdit,
-  onDelete,
-}) {
+export default function ProjectHeader({ project, offline, onOpenSettings, onEdit, onDelete }) {
+  const { readOnly, canManage: canDelete } = useProjectAccess();
   return (
     <>
       <div className="project-heading">

@@ -1,24 +1,17 @@
 import React, { useState } from 'react';
 import { apiData } from '../lib/api-client.js';
+import { useApiAction } from '../lib/use-api.js';
+import FormStatus from './FormStatus.jsx';
+import { docsLink } from '../lib/links.js';
+
 export default function GithubSetup({ projectId, configuration, onConfigured }) {
-  const [repository, setRepository] = useState(configuration?.repository || ''),
-    [busy, setBusy] = useState(false),
-    [error, setError] = useState(''),
-    [saved, setSaved] = useState(false);
-  const save = async () => {
-    setBusy(true);
-    setError('');
-    setSaved(false);
-    try {
+  const [repository, setRepository] = useState(configuration?.repository || '');
+  const action = useApiAction();
+  const save = () =>
+    action.run(async () => {
       await apiData(`projects/${projectId}/github`, { method: 'PUT', data: { repository: repository.trim() } });
       onConfigured(await apiData(`projects/${projectId}/github`));
-      setSaved(true);
-    } catch (cause) {
-      setError(cause.message);
-    } finally {
-      setBusy(false);
-    }
-  };
+    }, 'Dépôt enregistré pour ce projet.');
   return (
     <details className="agent-setup">
       <summary>Dépôt GitHub et fusion automatique</summary>
@@ -30,15 +23,14 @@ export default function GithubSetup({ projectId, configuration, onConfigured }) 
           value={repository}
           onChange={e => {
             setRepository(e.target.value);
-            setSaved(false);
+            action.clear();
           }}
           maxLength={200}
         />
       </label>
-      <button className="secondary-button" disabled={busy || !repository.trim()} onClick={() => void save()}>
+      <button className="secondary-button" disabled={action.busy || !repository.trim()} onClick={() => void save()}>
         Enregistrer le dépôt
       </button>
-      {saved && <p role="status">Dépôt enregistré pour ce projet.</p>}
       <p>
         Les PR seront fusionnées après réussite des contrôles du profil d’exécution. La carte sera terminée après
         confirmation de GitHub.
@@ -46,14 +38,10 @@ export default function GithubSetup({ projectId, configuration, onConfigured }) 
       {!configuration?.webhookConfigured && (
         <p>La connexion GitHub reste à configurer sur le serveur et dans le dépôt.</p>
       )}
-      <a href="https://github.com/flo91360/PlaniFiKateur/blob/main/docs/github.md" target="_blank" rel="noreferrer">
+      <a href={docsLink('github.md')} target="_blank" rel="noreferrer">
         Guide de configuration GitHub
       </a>
-      {error && (
-        <p role="alert" className="form-error">
-          {error}
-        </p>
-      )}
+      <FormStatus message={action.message} error={action.error} />
     </details>
   );
 }

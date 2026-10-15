@@ -1,0 +1,93 @@
+/* Variables de couleur, typographie et éléments de base (boutons, liens, champs). */
+:root {
+  font-family: 'DM Sans', sans-serif;
+  color: var(--text);
+  background: var(--page);
+  font-synthesis: none;
+  font-weight: 400;
+  /* Couleur dominante : valeurs par défaut, remplacées selon le choix du compte (src/lib/accents.js). */
+  --primary: #28734b;
+  --primary-hover: #1e5939;
+  --primary-soft: #e9f3ef;
+  --primary-ring: #a5c8ba;
+  --sidebar: #193d2f;
+  --sidebar-raised: #24483a;
+  --sidebar-hover: #2a4d3f;
+  --sidebar-active: #315345;
+  --sidebar-border: #345648;
+  --sidebar-text: #eff6f3;
+  --sidebar-soft: #b7cac2;
+  --sidebar-muted: #88a69a;
+  --sidebar-accent: #a4dfc7;
+  --border: #e2e9e6;
+  --muted: #83908b;
+  --text: #263b33;
+  --page: #f7faf9;
+  /* Couleurs communes : surfaces, bordures, textes et états. */
+  --surface: #fff; /* cartes, panneaux et champs */
+  --surface-tint: #f2f7f4; /* fond teinté d’un encadré */
+  --surface-hover: #e7f1ed; /* survol d’un élément clair */
+  --border-strong: #dae6e1; /* bordure appuyée */
+  --border-accent: #b0cbc0; /* bordure d’un élément actif */
+  --text-soft: #395147; /* texte secondaire foncé */
+  --text-muted: #5f736b; /* texte d’appoint */
+  --text-faint: #8ba59b; /* libellés discrets */
+  --success-surface: #e7f1e8; /* fond d’une réussite */
+  --warning-surface: #fdf8ea; /* fond d’un avertissement */
+  --warning-soft: #fbf1dc; /* fond appuyé d’un avertissement */
+  --warning-text: #8e6d29; /* texte d’un avertissement */
+  --danger-surface: #fbede3; /* fond d’une erreur ou d’une suppression */
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+button {
+  cursor: pointer;
+}
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+button {
+  color: inherit;
+}
+button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+a {
+  color: var(--primary);
+}
+button:focus-visible,
+a:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 3px;
+}
+input:focus,
+textarea:focus,
+select:focus {
+  outline: 2px solid var(--primary-ring);
+  outline-offset: 1px;
+}
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: var(--primary);
+}
+button {
+  transition:
+    background 0.16s,
+    box-shadow 0.16s,
+    transform 0.16s;
+}

@@ -1,33 +1,24 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { apiData } from '../lib/api-client.js';
+import { useApiAction, useApiResource } from '../lib/use-api.js';
+import FormStatus from './FormStatus.jsx';
 
 export default function AgentSetup({ projectId }) {
-  const [agent, setAgent] = useState(null),
-    [name, setName] = useState('Agent principal'),
+  const agents = useApiResource('agents');
+  const request = useApiAction();
+  const [name, setName] = useState('Agent principal'),
     [token, setToken] = useState(''),
-    [error, setError] = useState(''),
-    [busy, setBusy] = useState(false),
-    [loaded, setLoaded] = useState(false),
     [confirm, setConfirm] = useState(false);
-  const load = async () => {
-    setAgent((await apiData('agents')).find(a => a.active) || null);
-    setLoaded(true);
-  };
-  useEffect(() => {
-    void load().catch(e => setError(e.message));
-  }, []);
-  const action = async fn => {
-    setBusy(true);
-    setError('');
-    try {
-      await fn();
-      await load();
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setBusy(false);
-    }
-  };
+  const agent = agents.data?.find(item => item.active) || null,
+    loaded = agents.loaded,
+    busy = request.busy,
+    error = request.error || agents.error;
+  // Chaque action relit la liste des agents : la clé, ses projets ou sa révocation ont changé.
+  const action = work =>
+    request.run(async () => {
+      await work();
+      agents.setData(await apiData('agents'));
+    });
   return (
     <details className="agent-setup">
       <summary>Connexion de l’agent (administrateur)</summary>
@@ -115,11 +106,7 @@ export default function AgentSetup({ projectId }) {
           </button>
         </>
       )}
-      {error && (
-        <p role="alert" className="form-error">
-          {error}
-        </p>
-      )}
+      <FormStatus error={error} />
       <p>
         Le service d’exécution externe doit être connecté pour commencer le travail.{' '}
         <a href="/agent-guide.html" target="_blank" rel="noreferrer">

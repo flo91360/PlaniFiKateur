@@ -1,59 +1,31 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { apiData } from '../lib/api-client.js';
 import { executionPresets, validateExecutionProfile } from '../../worker/execution-profile.mjs';
+import { useApiAction, useApiResource } from '../lib/use-api.js';
+import FormStatus from './FormStatus.jsx';
 
 export default function ExecutionSettings({ projectId, repository, user }) {
-  const [profile, setProfile] = useState(null),
-    [status, setStatus] = useState(null),
-    [busy, setBusy] = useState(false),
-    [error, setError] = useState(''),
-    [message, setMessage] = useState('');
-  useEffect(() => {
-    const controller = new AbortController();
-    setProfile(null);
-    setStatus(null);
-    setError('');
-    setMessage('');
-    Promise.all([
-      apiData(`projects/${projectId}/execution`, { signal: controller.signal }),
-      apiData(`projects/${projectId}/worker-status`, { signal: controller.signal }),
-    ])
-      .then(([value, report]) => {
-        setProfile(value);
-        setStatus(report);
-      })
-      .catch(cause => {
-        if (!controller.signal.aborted) setError(cause.message);
-      });
-    const timer = setInterval(() => {
-      apiData(`projects/${projectId}/worker-status`, { signal: controller.signal })
-        .then(setStatus)
-        .catch(() => {});
-    }, 30000);
-    return () => {
-      controller.abort();
-      clearInterval(timer);
-    };
-  }, [projectId, repository]);
-  const save = async () => {
-    setBusy(true);
-    setError('');
-    setMessage('');
-    try {
-      setProfile(
+  // Le profil par défaut dépend du dépôt : il est relu quand le dépôt change.
+  const saved = useApiResource(`projects/${projectId}/execution`, { key: repository || '' });
+  const worker = useApiResource(`projects/${projectId}/worker-status`, { key: repository || '', every: 30000 });
+  const action = useApiAction();
+  // Profil en cours de modification, oublié quand le dépôt change.
+  const [draft, setDraft] = useState({ repository, profile: null });
+  const profile = (draft.repository === repository && draft.profile) || saved.data,
+    status = worker.data,
+    busy = action.busy,
+    setProfile = next => setDraft({ repository, profile: next });
+  const save = () =>
+    action.run(async () => {
+      saved.setData(
         await apiData(`projects/${projectId}/execution`, {
           method: 'PUT',
           data: { preset: profile.preset, branch: profile.branch },
         }),
       );
-      setStatus(null);
-      setMessage('Profil enregistré pour les prochaines tâches.');
-    } catch (cause) {
-      setError(cause.message);
-    } finally {
-      setBusy(false);
-    }
-  };
+      setDraft({ repository, profile: null });
+      worker.setData(null);
+    }, 'Profil enregistré pour les prochaines tâches.');
   return (
     <details className="agent-setup">
       <summary>Exécution et connexion du projet</summary>
@@ -99,12 +71,7 @@ export default function ExecutionSettings({ projectId, repository, user }) {
           )}
         </>
       )}
-      {message && <p role="status">{message}</p>}
-      {error && (
-        <p role="alert" className="form-error">
-          {error}
-        </p>
-      )}
+      <FormStatus message={action.message} error={action.error || saved.error || worker.error} />
       <p>
         <strong>Connexion du worker</strong>
       </p>

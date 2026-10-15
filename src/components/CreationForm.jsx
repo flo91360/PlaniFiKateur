@@ -6,6 +6,7 @@ import LocalForm from './LocalForm.jsx';
 import { EffortSelect } from './AiSettings.jsx';
 import { PriorityOptions, StatusOptions } from './Status.jsx';
 import { parseTags } from '../lib/tags.js';
+import { useProjectAccess } from '../lib/project-access.js';
 
 const texts = {
   project: {
@@ -37,10 +38,10 @@ export default function CreationForm({
   type,
   lists,
   listId,
-  canLaunch = true,
   onCancel,
   onSubmit,
 }) {
+  const { canLaunch } = useProjectAccess();
   const formRef = useRef(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
