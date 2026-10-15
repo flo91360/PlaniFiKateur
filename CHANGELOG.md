@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.38 — 2026-10-15
+<!-- planifikateur:4eded793-f029-4a29-9a17-22ae66aa3073 -->
+
+- **Visuel** : Ajout d'un espace de 14 px entre le bouton « Nouveau projet » et l'encadré de texte situé juste en dessous dans le bandeau de gauche (src/style.css, règle .new-project, avec un commentaire explicatif). Cause : l'encadré est poussé vers le bas du bandeau par une marge haute automatique. Quand le bandeau manque de hauteur (plusieurs projets ou petit écran), cette marge tombe à zéro et l'encadré se colle au bouton. Avec la nouvelle marge basse du bouton, un petit écart reste visible même quand le bandeau est plein. Quand il y a de la place, l'encadré reste en bas comme avant. Seule la règle de ce bouton change. Les tests du navigateur cliquent sur ce bouton par son nom, qui n'a pas changé. Non vérifié : les commandes shell échouent dans le bac à sable de l'agent (« Can't mount proc »), donc ni le formatage Prettier ni les tests n'ont été lancés, et l'écart n'a pas été constaté à l'écran.
+
 ## 0.1.37 — 2026-10-15
 <!-- planifikateur:suppression-branches-fusionnees -->
 
