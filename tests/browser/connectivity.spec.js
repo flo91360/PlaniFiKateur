@@ -1321,6 +1321,7 @@ test.describe('project task execution', () => {
     expect(merged.status()).toBe(200);
     await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('done', { timeout: 10000 });
     await expect(executionPanel).toContainText('PR fusionnée : tâche terminée.');
+    await expect(executionPanel.getByRole('button', { name: 'Relancer l’agent', exact: true })).toHaveCount(0);
     await expect(discussion).not.toContainText('PR a été fusionnée');
     await page.getByRole('button', { name: 'Terminé', exact: true }).click();
     await page.reload();
