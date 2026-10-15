@@ -207,6 +207,8 @@ button {
   background: none;
   padding: 12px;
   margin-top: 7px;
+  /* Espace minimal avant l’encadré d’aide, même quand la marge automatique de celui-ci est nulle. */
+  margin-bottom: 14px;
   display: flex;
   align-items: center;
   gap: 10px;
