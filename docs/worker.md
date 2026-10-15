@@ -366,7 +366,9 @@ comptes fournisseurs depuis le site. Un ancien identifiant hors catalogue reste
 visible comme **modèle enregistré** et n’est pas remplacé silencieusement.
 L’**Effort IA** est choisi à la création ou dans le détail de chaque carte.
 Les niveaux proposés dépendent du moteur ; leur disponibilité effective dépend
-aussi du modèle. **Par défaut** n’impose aucun niveau au fournisseur.
+aussi du modèle. Une carte sans effort enregistré affiche **Moyen** et reçoit cet
+effort à sa prise en charge ; seul un ancien worker qui ignore les paramètres IA
+la traite avec le défaut du fournisseur.
 
 Le serveur conserve ces choix à la première prise en charge. Ils restent les
 mêmes après une question, une interruption ou une correction. Modifier les
@@ -397,7 +399,7 @@ charge pas les nouvelles variables.
 Les paramètres sont consultables par les comptes via
 `GET /api/v1/projects/{projet}/ai` et modifiables par un administrateur via `PUT`
 avec `{ "engine": "codex", "model": "identifiant-ou-chaîne-vide" }`.
-Le champ des cartes est `aiEffort` (chaîne vide ou absent pour le défaut).
+Le champ des cartes est `aiEffort` (chaîne vide ou absent pour **Moyen**).
 Un ancien worker ne peut pas prendre une carte avec un moteur, modèle explicite
 ou effort qu’il ignorerait : le serveur exige le nouveau protocole de prise en
 charge. Les essais automatisés des deux moteurs simulent les appels aux modèles ;
