@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createId } from '../lib/id.js';
+import { ATTACHMENT_LIMITS } from '../lib/workspace.js';
 
 const imageTypes = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 // Fichier ajouté dans la page (contenu en base64) : lien local. Fichier déjà enregistré (le
@@ -68,11 +69,14 @@ export default function Attachments({
     onBusy(true);
     setError('');
     try {
-      if (attachments.length + files.length > 10) throw new Error('Maximum 10 pièces jointes par carte.');
-      if (files.some(f => f.size < 1 || f.size > 1024 * 1024))
+      if (attachments.length + files.length > ATTACHMENT_LIMITS.files)
+        throw new Error('Maximum 10 pièces jointes par carte.');
+      if (files.some(f => f.size < 1 || f.size > ATTACHMENT_LIMITS.file))
         throw new Error('Chaque fichier doit peser entre 1 octet et 1 Mo.');
-      if ([...attachments, ...files].reduce((sum, f) => sum + f.size, otherBytes) > 2 * 1024 * 1024)
-        throw new Error('Maximum 2 Mo de pièces jointes.');
+      const cardBytes = [...attachments, ...files].reduce((sum, f) => sum + f.size, 0);
+      if (cardBytes > ATTACHMENT_LIMITS.card) throw new Error('Maximum 2 Mo de pièces jointes par carte.');
+      if (cardBytes + otherBytes > ATTACHMENT_LIMITS.project)
+        throw new Error('Le projet a atteint sa limite de 20 Mo de pièces jointes.');
       const added = await Promise.all(
         files.map(
           file =>
@@ -116,8 +120,8 @@ export default function Attachments({
     >
       <h3>Pièces jointes</h3>
       <p className="muted">
-        Fichiers et captures pour l’agent, ou fichiers générés à télécharger. 10 fichiers par carte, 1 Mo par fichier et
-        2 Mo au total dans les projets.
+        Fichiers et captures pour l’agent, ou fichiers générés à télécharger. 10 fichiers et 2 Mo par carte, 1 Mo par
+        fichier, 20 Mo par projet.
       </p>
       {!readOnly && (
         <>

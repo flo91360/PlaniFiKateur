@@ -163,6 +163,50 @@ test('Codex receives the frozen model and effort and extracts the actual model w
   assert.equal(result.status, 'question');
 });
 
+test('a failed Codex turn still reports what it consumed, read from its session log', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'planifikateur-codex-usage-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const home = join(root, 'codex'),
+    sessions = join(home, 'sessions', '2026'),
+    log = join(sessions, 'rollout-usage-session.jsonl');
+  const count = (input, output) =>
+    JSON.stringify({
+      type: 'event_msg',
+      payload: {
+        type: 'token_count',
+        info: { total_token_usage: { input_tokens: input, cached_input_tokens: 0, output_tokens: output } },
+      },
+    });
+  await mkdir(sessions, { recursive: true });
+  // Consommation des tours précédents de la conversation : elle n’est pas comptée à nouveau.
+  await writeFile(log, count(1000, 100) + '\n');
+  class Codex {
+    resumeThread() {
+      return {
+        runStreamed: async () => ({
+          events: (async function* () {
+            await writeFile(log, [count(1000, 100), count(1600, 180)].join('\n'));
+            yield { type: 'turn.failed', error: { message: 'stream disconnected' } };
+          })(),
+        }),
+      };
+    }
+  }
+  const usages = [];
+  const run = { cardSnapshot: { title: 'W' }, objective: 'W', exchanges: [], submissions: [], updates: [] };
+  await assert.rejects(
+    createCodexRunner({ codexHome: home }, { Codex }).run({
+      run,
+      job: { threadId: 'usage-session', ai: { engine: 'codex', model: '', effort: '' } },
+      cwd: root,
+      onThread() {},
+      onUsage: value => usages.push(value),
+    }),
+    /Codex a échoué/,
+  );
+  assert.deepEqual(usages, [{ inputTokens: 600, cachedInputTokens: 0, outputTokens: 80 }]);
+});
+
 test('Claude Code uses isolated credentials, frozen model/effort, resumed session and structured results', async t => {
   const unauthenticated = await createClaudeRunner({}).run({});
   assert.equal(unauthenticated.status, 'question');
@@ -223,9 +267,15 @@ test('Claude AskUserQuestion is relayed to the card instead of waiting for termi
   const root = await mkdtemp(join(tmpdir(), 'planifikateur-claude-question-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const config = { claudeApiKey: 'private', claudeHome: join(root, 'claude'), codexHome: join(root, 'codex') };
+  const usages = [];
   const query = ({ options }) =>
     (async function* () {
       yield { type: 'system', subtype: 'init', session_id: 'question-session', model: 'sonnet' };
+      // Un même message peut arriver en plusieurs blocs : sa consommation n’est comptée qu’une fois.
+      const usage = { input_tokens: 100, cache_read_input_tokens: 50, output_tokens: 20 };
+      yield { type: 'assistant', message: { id: 'msg-1', usage } };
+      yield { type: 'assistant', message: { id: 'msg-1', usage } };
+      yield { type: 'assistant', message: { id: 'msg-2', usage: { input_tokens: 10, output_tokens: 5 } } };
       const permission = await options.canUseTool('AskUserQuestion', {
         questions: [
           {
@@ -244,7 +294,15 @@ test('Claude AskUserQuestion is relayed to the card instead of waiting for termi
     job: { ai: { engine: 'claude-code', model: 'sonnet', effort: '' } },
     cwd: root,
     onThread() {},
+    onUsage: value => usages.push(value),
   });
   assert.equal(result.status, 'question');
   assert.equal(result.question, 'Quelle fenêtre faut-il modifier ?\nPrincipale : Écran d’accueil');
+  // Sans résultat final, la consommation des messages reçus est tout de même rapportée.
+  assert.equal(usages.length, 1);
+  assert.deepEqual(
+    { ...usages[0], durationMs: undefined },
+    { inputTokens: 160, cachedInputTokens: 50, outputTokens: 25, durationMs: undefined },
+  );
+  assert.ok(usages[0].durationMs >= 0);
 });

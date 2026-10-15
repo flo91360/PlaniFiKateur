@@ -27,7 +27,10 @@ carte. Le worker réutilise ses clés existantes : aucun secret GitHub Actions
 supplémentaire n’est nécessaire pour cette fusion.
 
 Si `main` avance pendant l’attente, le worker reprend la PR avec `revise`, intègre
-`main`, relance Codex et les tests et soumet le nouveau commit. Une PR fermée sans
+`main`, refait la version et les tests puis soumet le nouveau commit. Sans conflit,
+sans échec des contrôles GitHub ni nouvelle réponse, le résultat IA déjà publié est
+repris tel quel : le modèle n’est rappelé (et facturé) que si l’intégration produit
+des conflits ou fait échouer les tests, avec leur sortie. Une PR fermée sans
 fusion provoque une question. Trois tentatives sans intervention humaine
 provoquent aussi une question, afin d’éviter une boucle de dépenses. Une réponse
 humaine autorise un nouveau cycle de tentatives.
@@ -428,8 +431,8 @@ nécessaires pour cette livraison. Si le modèle modifie aussi le dépôt, les t
 obligatoires, la PR et la fusion automatique restent nécessaires ; les fichiers
 sont joints lors de la soumission. Les pièces jointes générées sont attribuées à
 l’agent dans l’historique et enregistrées dans SQLite. Les limites existantes
-restent applicables : dix fichiers par carte, 1 Mo par fichier et 2 Mo au total
-dans les projets. Les chemins hors du dépôt, liens symboliques et fichiers internes
+restent applicables : dix fichiers et 2 Mo par carte, 1 Mo par fichier et 20 Mo
+par projet. Les chemins hors du dépôt, liens symboliques et fichiers internes
 de Git ou de connexion ne peuvent pas être déclarés comme livrables.
 
 ## Vérification reproductible locale
@@ -454,6 +457,19 @@ GitHub réelle. Il vérifie aussi la concurrence, les questions, l’arrêt/repr
 les tests échoués, la récupération du label, une avancée de `main` et la reprise
 de conversation du SDK. Les parcours du site restent couverts par
 `npm run test:browser`.
+
+L’état local de chaque tâche (`state/<exécution>.json`) est réécrit de façon
+atomique. Un fichier tout de même illisible est renommé en `.json.corrupt` et
+signalé dans le journal ; les autres tâches restent suivies et celle-ci repart
+de GitHub et du site. Une tâche interrompue ou remise en file sur le site n’est
+plus marquée « en cours » localement, même si le worker a été arrêté avant de
+l’enregistrer : la mise à jour automatique du worker n’attend donc pas une tâche
+qu’il ne traite plus.
+
+La consommation du modèle (tokens, coût, durée) est rapportée pour chaque
+tentative, y compris quand elle s’arrête sans résultat : question posée par
+Claude Code (messages déjà reçus, coût alors inconnu) ou tour Codex en échec
+(écart de consommation relevé dans le journal de session Codex).
 
 Si une carte a été supprimée ou déplacée hors de son projet, le worker archive
 localement son ancienne exécution et continue à consulter les tâches disponibles.

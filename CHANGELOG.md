@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.48 — 2026-10-15
+<!-- planifikateur:etape-12-fiabilite -->
+
+- **Fiabilité du worker et du serveur** : Quand main avance, la PR est mise à jour avec le résultat IA déjà publié, sans nouvel appel au modèle. La consommation est rapportée même sans résultat (question Claude Code, échec Codex). L’état local du worker tolère un fichier corrompu et ne reste plus « en cours » pour une tâche interrompue sur le site. Les synchronisations GitHub d’arrière-plan ne peuvent plus arrêter le serveur. Pièces jointes limitées à 2 Mo par carte et 20 Mo par projet, au lieu de 2 Mo pour tous les projets. Le blocage des connexions est compté par adresse et par compte : un tiers ne peut plus bloquer un titulaire.
+
 ## 0.1.47 — 2026-10-15
 <!-- planifikateur:controles-annules-silencieux -->
 

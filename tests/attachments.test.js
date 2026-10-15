@@ -52,6 +52,27 @@ test('attachment validation rejects malformed contents, unsafe names and size/co
   assert.throws(() => validateWorkspace(projects), /2 Mo/);
   assert.deepEqual(validateWorkspace(clean())[0].cards[0].attachments, []);
 });
+test('attachment quota applies per card and per project, not across all projects', () => {
+  const projects = structuredClone(seed);
+  assert.ok(projects.length >= 2 && projects.every(project => project.cards.length));
+  const full = Buffer.alloc(1024 * 1024).toString('base64');
+  const files = (prefix, count) =>
+    Array.from({ length: count }, (_, i) => ({ ...attachment(), id: `${prefix}-${i}`, size: 1024 * 1024, data: full }));
+  // 2 Mo dans une carte de chaque projet : un projet chargé ne bloque plus les autres.
+  for (const project of projects) project.cards[0].attachments = files(`file-${project.id}`, 2);
+  assert.equal(validateWorkspace(projects).length, projects.length);
+  // Au-delà de 20 Mo dans un même projet, la modification est refusée.
+  const [project] = projects;
+  const template = project.cards[0];
+  project.cards = Array.from({ length: 11 }, (_, i) => ({
+    ...structuredClone(template),
+    id: `quota-card-${i}`,
+    checklist: [],
+    comments: [],
+    attachments: files(`quota-${i}`, 2),
+  }));
+  assert.throws(() => validateWorkspace(projects), /20 Mo/);
+});
 test('worker materializes bytes safely, removes stale files and sends images to Codex', async t => {
   const root = await mkdtemp(join(tmpdir(), 'planifikateur-attachments-'));
   t.after(() => rm(root, { recursive: true, force: true }));

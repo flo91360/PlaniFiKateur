@@ -59,9 +59,9 @@ const dialogTitles = {
   info: 'À propos de PlaniFiKateur',
 };
 
-const attachmentSize = (projects, exceptCardId) =>
-  projects
-    .flatMap(p => p.cards)
+// Pièces jointes des autres cartes du projet, comptées dans son quota.
+const attachmentSize = (project, exceptCardId) =>
+  (project?.cards || [])
     .filter(c => c.id !== exceptCardId)
     .flatMap(c => c.attachments || [])
     .reduce((sum, a) => sum + a.size, 0);
@@ -314,7 +314,7 @@ function App() {
             offline={offlineMode}
             projectId={project?.id}
             type={kind}
-            attachmentBytes={attachmentSize(projects)}
+            attachmentBytes={attachmentSize(project)}
             lists={project?.lists || []}
             listId={modal.listId}
             onCancel={close}
@@ -534,7 +534,7 @@ function App() {
           >
             <CardDetail
               engine={projectAi.engine}
-              attachmentBytes={attachmentSize(projects, selected.id)}
+              attachmentBytes={attachmentSize(project, selected.id)}
               onWorkflowRefresh={() => workspace.refresh({ whileEditing: true })}
               offline={offlineMode}
               projectId={project.id}

@@ -128,7 +128,7 @@ Conserver également des copies hors du volume Railway.
 npm run export:preview
 ```
 
-`dist/PlaniFiKateur-apercu-v0.1.47.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
+`dist/PlaniFiKateur-apercu-v0.1.48.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 
@@ -201,8 +201,8 @@ La description suffit à préparer une tâche IA. L’agent en déduit le résul
 Les cartes peuvent contenir des pièces jointes dès leur création ou depuis leur
 fiche : fichiers, images et captures collées dans la zone prévue. Les images PNG,
 JPEG, GIF et WebP ont un aperçu ; chaque fichier peut être téléchargé ou retiré.
-La limite est de 10 fichiers par carte, 1 Mo par fichier et 2 Mo de pièces jointes
-pour l’ensemble des projets. Les contenus sont conservés dans SQLite, inclus dans
+La limite est de 10 fichiers et 2 Mo par carte, 1 Mo par fichier et 20 Mo de
+pièces jointes par projet. Les contenus sont conservés dans SQLite, inclus dans
 les sauvegardes et les exports JSON, et accessibles avec les mêmes droits que les
 cartes. Le worker prépare les fichiers dans `.planifikateur/attachments/` (exclu
 par le worker des commits) et transmet les images à Codex. Modifier les pièces

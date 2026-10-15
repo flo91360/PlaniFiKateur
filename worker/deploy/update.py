@@ -18,7 +18,8 @@ REVISION_LABEL = "io.planifikateur.worker.revision"
 READY = "Worker IA démarré : une tâche à la fois."
 BUSY_PROBE = """const fs=require('node:fs');
 try { const jobs=fs.readdirSync('/data/state').filter(f=>f.endsWith('.json'));
-console.log(jobs.some(f=>JSON.parse(fs.readFileSync('/data/state/'+f,'utf8')).phase==='running')?'busy':'idle'); }
+const running=f=>{ try { return JSON.parse(fs.readFileSync('/data/state/'+f,'utf8')).phase==='running'; } catch { return false; } };
+console.log(jobs.some(running)?'busy':'idle'); }
 catch(e) { if(e.code==='ENOENT') console.log('idle'); else process.exit(2); }"""
 
 

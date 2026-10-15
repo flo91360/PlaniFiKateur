@@ -62,6 +62,9 @@ export function createGithubSync(
           reported.set(pending.executionId, message);
         }
       }
+    } catch (error) {
+      // Lancé par un minuteur : une erreur locale (base indisponible…) ne doit pas arrêter le serveur.
+      onError(`PlaniFiKateur : vérification des PR GitHub impossible (${error.message}).`);
     } finally {
       running = false;
     }

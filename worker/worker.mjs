@@ -44,11 +44,11 @@ const legacyPublicationQuestion = run =>
 export function createWorker(config, dependencies = {}) {
   const site = dependencies.site || createSiteClient(config);
   const github = dependencies.github || createGithubClient(config.githubToken);
-  const state = dependencies.state || createState(config.stateRoot);
   const model = dependencies.model || createCodexRunner(config);
   const claude = dependencies.claude || createClaudeRunner(config);
   const execute = dependencies.execute || runCommand;
   const log = dependencies.log || console.log;
+  const state = dependencies.state || createState(config.stateRoot, { log });
   // Les tests remplacent les presets installés par les leurs ; en production, ceux du worker.
   const profileOf = dependencies.installedProfile || installedProfile;
   const clean = text =>
@@ -362,13 +362,22 @@ export function createWorker(config, dependencies = {}) {
     };
     let feedback = [checkout.conflicts, ciFeedback].filter(Boolean).join('\n\n');
     let cached = job.checkpoint;
+    // PR déjà publiée, reprise seulement parce que la branche cible a avancé : sans conflit, sans
+    // échec de CI ni nouvelle demande, le résultat IA publié reste valable. Seuls la version et les
+    // tests sont refaits sur le dépôt à jour, sans nouvel appel au modèle.
+    const refresh =
+      !!cached?.published &&
+      !feedback &&
+      reservation.run.githubChecks?.conclusion !== 'failure' &&
+      cached.context === requestFingerprint(reservation.run, job);
     if (cached) {
       try {
         if (
           cached.format !== 1 ||
           checkout.conflicts ||
+          (cached.published && !refresh) ||
           cached.context !== requestFingerprint(reservation.run, job) ||
-          cached.fingerprint !== (await checkoutFingerprint(checkout, cached.result, job.id))
+          (!refresh && cached.fingerprint !== (await checkoutFingerprint(checkout, cached.result, job.id)))
         )
           cached = undefined;
       } catch (error) {
@@ -384,7 +393,10 @@ export function createWorker(config, dependencies = {}) {
       let result = cached?.result;
       if (result) {
         await reservation.action('progress', {
-          message: 'Résultat IA sauvegardé : reprise des vérifications sans nouvel appel au modèle.',
+          message:
+            refresh && round === 0
+              ? `${checkout.targetBranch} a avancé : la PR est mise à jour avec le résultat IA déjà publié, sans nouvel appel au modèle.`
+              : 'Résultat IA sauvegardé : reprise des vérifications sans nouvel appel au modèle.',
         });
       } else {
         if (!task.attemptStarted) {
@@ -547,6 +559,14 @@ export function createWorker(config, dependencies = {}) {
       files,
       ...(reviewRequired.length ? { reviewRequired } : {}),
     });
+    // Résultat publié : rattaché à la demande telle que le site l’enregistre désormais (avec cette
+    // soumission), pour une mise à jour de la PR quand la branche cible avance.
+    if (job.checkpoint)
+      job.checkpoint = {
+        ...job.checkpoint,
+        published: true,
+        context: requestFingerprint(reservation.run, job),
+      };
     job.phase = 'merging';
     job.attempts = 0;
     await state.put(job);
@@ -636,7 +656,9 @@ export function createWorker(config, dependencies = {}) {
         .catch(() => current);
     }
     if (job) {
-      job.phase = current?.state || 'interrupted';
+      // Le worker ne travaille plus sur la tâche, même si le site n’a pas pu enregistrer l’arrêt :
+      // son bail expirera et le suivi relira alors l’état du site.
+      job.phase = current?.state && current.state !== 'running' ? current.state : 'interrupted';
       job.retryAfter = Date.now() + 60000;
       await state.put(job);
     }
@@ -747,6 +769,13 @@ export function createWorker(config, dependencies = {}) {
       }
       await releaseCheckout(job);
       return null;
+    }
+    // Interrompue ou remise en file sur le site (bail expiré, worker arrêté avant de le signaler) :
+    // la tâche n’est plus « running » localement, sinon la mise à jour du worker se croirait occupée.
+    if (['interrupted', 'ready'].includes(run.state) && job.phase === 'running') {
+      job.phase = run.state;
+      await state.put(job);
+      log(`Exécution ${job.id} : ${run.state} sur le site.`);
     }
     if (run.state !== 'merging' || !allowed(run)) return null;
     const submission = run.submissions.at(-1)?.pullRequest;
