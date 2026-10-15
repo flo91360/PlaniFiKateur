@@ -27,7 +27,8 @@ export function createReservation({ site, run, config, log, parentSignal }) {
     deadlineTimer,
     failed = false,
     heartbeating = false,
-    heartbeatPromise;
+    heartbeatPromise,
+    usage = null;
   const lose = message => {
     failed = true;
     controller.abort(new Error(message));
@@ -72,8 +73,19 @@ export function createReservation({ site, run, config, log, parentSignal }) {
     get failure() {
       return controller.signal.reason?.message;
     },
+    // Consommation du modèle pendant cette réservation (une tentative côté site), envoyée en cumul
+    // avec chaque action suivante.
+    addUsage(next) {
+      usage ??= {};
+      for (const [field, value] of Object.entries(next))
+        if (Number.isFinite(value) && value >= 0) usage[field] = (usage[field] || 0) + value;
+    },
+    get usage() {
+      return usage;
+    },
     async action(name, data = {}, actionSignal = reservation.signal) {
-      const response = await site.action({ ...reservation.run, leaseToken: token }, name, data, actionSignal);
+      const payload = usage ? { ...data, usage } : data;
+      const response = await site.action({ ...reservation.run, leaseToken: token }, name, payload, actionSignal);
       reservation.run = { ...response, leaseToken: token };
       if (reservation.run.state === 'running') renew(reservation.run);
       else {

@@ -47,6 +47,17 @@ exigé avant la fusion. Le contrôle est un fichier installé avec le worker
 (`@worker/checks/…` dans le profil), jamais un script du dépôt modifié. Le worker
 augmente la ligne `VERSION = x.y.z` du `.pro` à chaque livraison de code.
 
+Chaque profil est une entrée du registre `executionPresets` de
+`worker/execution-profile.mjs`, installé avec le worker. Il déclare tout ce qui
+lui est propre : outils, commandes et contrôles GitHub, mais aussi les dépôts qui
+le choisissent par défaut (`repositories`), son fichier de version
+(`versioning.format` : `npm` pour `package.json` et son lockfile, `godot` pour
+`project.godot`, `qmake` pour l’unique `.pro`, avec les documents dont le numéro
+suit la version), ses consignes au modèle (`instructions`, par exemple le format
+Qt Designer pour TrameErgo seulement) et ses variables d’environnement. Ajouter un
+projet revient à ajouter une entrée : le reste du worker s’en déduit sans tester
+les noms de profils.
+
 ## Changelog de chaque projet
 
 À chaque livraison de code, quel que soit le profil, le worker ajoute lui-même

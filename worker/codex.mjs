@@ -4,6 +4,7 @@ import { createInterface } from 'node:readline';
 import { join } from 'node:path';
 import { commandEnvironment } from './commands.mjs';
 import { parseModelResult } from './model-result.mjs';
+import { presetRules } from './execution-profile.mjs';
 
 export async function codexSessionModel(home, threadId) {
   if (!/^[a-zA-Z0-9_-]{1,128}$/.test(threadId || '')) return null;
@@ -44,11 +45,11 @@ export function taskPrompt(run, feedback = '', attachments = []) {
   return `Tu traites une carte PlaniFiKateur. Lis les instructions du dépôt et réalise la demande ci-dessous.
 La description est suffisante : déduis le résultat attendu et les tests pertinents. Si une ambiguïté essentielle empêche de travailler, réponds avec status=question et une question précise ; ne devine pas cette décision.
 Une question doit être écrite intégralement dans le champ question, avec status=question et files=[]. Elle sera publiée dans la discussion de la carte. Arrête ce tour dès que tu attends une réponse : ne simule pas de réponse, ne demande pas de saisie dans le terminal et ne prétends pas avoir livré un résultat. À la reprise, lis les réponses humaines dans Échanges et continue la même demande.
-Si la carte demande un fichier téléchargeable (par exemple un formulaire Qt Designer .ui), crée-le dans .planifikateur/generated/ et indique ses chemins relatifs dans files. Ce dossier sert à la livraison et n'est pas ajouté au commit. Pour Qt, produis un véritable document XML ui version 4.0, ouvrable dans Qt Designer, avec les champs demandés. Ne te limite pas à décrire le fichier ou à afficher son code dans le résumé. Si la demande porte aussi sur le code du dépôt, réalise ces changements normalement et référence les fichiers à livrer dans files. Utilise files=[] si aucun fichier n'est demandé.
+Si la carte demande un fichier téléchargeable, crée-le dans .planifikateur/generated/ et indique ses chemins relatifs dans files. Ce dossier sert à la livraison et n'est pas ajouté au commit. Produis un fichier réellement utilisable dans son format. Ne te limite pas à décrire le fichier ou à afficher son code dans le résumé. Si la demande porte aussi sur le code du dépôt, réalise ces changements normalement et référence les fichiers à livrer dans files. Utilise files=[] si aucun fichier n'est demandé.
 Tu travailles dans une branche gérée par le worker. Ne fais aucun commit, push, PR, merge ou appel à l’API du site. Le worker réalise lui-même les tests obligatoires puis publie la PR. Ne modifie ni l’origine Git ni les accès du service. Ne délègue pas à d’autres agents.
 Pour tous les profils, y compris PlaniFiKateur, le worker prépare la nouvelle version et le changelog avec le même module que les interventions directes, avant les tests. Une version majeure ou mineure explicitement augmentée est conservée.
 Le worker ajoute aussi lui-même, à chaque livraison de code, une section à CHANGELOG.md à partir du titre de la carte et de ton résumé : n’y ajoute pas d’entrée et rédige un résumé clair des modifications.
-Réponds en JSON conforme au schéma, avec status=result une fois les modifications prêtes.
+${presetRules(run.executionProfile).instructions ? `Consignes propres à ce projet : ${presetRules(run.executionProfile).instructions}\n` : ''}Réponds en JSON conforme au schéma, avec status=result une fois les modifications prêtes.
 
 Carte : ${run.cardSnapshot.title}
 Description : ${run.objective}
@@ -83,7 +84,7 @@ export async function prepareAttachments(run, cwd) {
 
 export function createCodexRunner(config, dependencies = {}) {
   return {
-    async run({ run, job, cwd, signal, onThread, onRuntime, feedback, environment }) {
+    async run({ run, job, cwd, signal, onThread, onRuntime, onUsage, feedback, environment }) {
       const { Codex } = dependencies.Codex ? dependencies : await import('@openai/codex-sdk');
       await mkdir(config.codexHome, { recursive: true, mode: 0o700 });
       const home = join(cwd, '.planifikateur', 'home');
@@ -131,7 +132,15 @@ export function createCodexRunner(config, dependencies = {}) {
         if (event.type === 'item.completed' && event.item.type === 'agent_message') response = event.item.text;
         if (event.type === 'turn.failed' || event.type === 'error')
           throw new Error('L’exécution Codex a échoué. Vérifiez sa connexion et les logs privés du service.');
-        if (event.type === 'turn.completed') completed = true;
+        if (event.type === 'turn.completed') {
+          completed = true;
+          if (event.usage)
+            onUsage?.({
+              inputTokens: event.usage.input_tokens,
+              cachedInputTokens: event.usage.cached_input_tokens,
+              outputTokens: event.usage.output_tokens,
+            });
+        }
       }
       if (!completed) throw new Error('Codex s’est arrêté sans résultat.');
       const effective = await codexSessionModel(config.codexHome, threadId);

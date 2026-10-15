@@ -1,7 +1,7 @@
 import { dirname, join, delimiter } from 'node:path';
 import { access, mkdir } from 'node:fs/promises';
 import { commandEnvironment } from './commands.mjs';
-import { executionPresets, installedProfile } from './execution-profile.mjs';
+import { installedProfile, presetRules } from './execution-profile.mjs';
 import { parse } from 'yaml';
 import picomatch from 'picomatch';
 
@@ -42,7 +42,7 @@ export function runtimeEnvironment(profile, config) {
   return {
     ...commandEnvironment(),
     PATH: `${bin}${delimiter}${process.env.PATH || ''}`,
-    ...executionPresets[profile.preset]?.environment,
+    ...presetRules(profile).environment,
   };
 }
 export async function checkRuntime(profile, config, execute, signal) {

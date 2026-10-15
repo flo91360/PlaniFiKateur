@@ -2107,6 +2107,9 @@
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 20000
+                  },
+                  "usage": {
+                    "$ref": "#/components/schemas/ExecutionUsage"
                   }
                 },
                 "required": [
@@ -2208,6 +2211,9 @@
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 20000
+                  },
+                  "usage": {
+                    "$ref": "#/components/schemas/ExecutionUsage"
                   }
                 },
                 "required": [
@@ -2327,6 +2333,9 @@
                   },
                   "pullRequest": {
                     "$ref": "#/components/schemas/PullRequestDelivery"
+                  },
+                  "usage": {
+                    "$ref": "#/components/schemas/ExecutionUsage"
                   }
                 },
                 "required": [
@@ -2431,6 +2440,9 @@
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 20000
+                  },
+                  "usage": {
+                    "$ref": "#/components/schemas/ExecutionUsage"
                   }
                 },
                 "required": [
@@ -7777,6 +7789,77 @@
                 "format": "date-time"
               }
             }
+          },
+          "attempts": {
+            "type": "array",
+            "description": "Tentatives de l’agent (50 dernières) : début, fin et consommation rapportée par le worker.",
+            "items": {
+              "type": "object",
+              "required": [
+                "startedAt"
+              ],
+              "properties": {
+                "startedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "endedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "usage": {
+                  "$ref": "#/components/schemas/ExecutionUsage"
+                }
+              }
+            }
+          },
+          "usage": {
+            "description": "Total des tentatives (lecture d’une carte uniquement) ; null si l’agent n’a jamais pris l’exécution.",
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "attempts",
+                  "inputTokens",
+                  "cachedInputTokens",
+                  "outputTokens",
+                  "durationMs",
+                  "costUsd"
+                ],
+                "properties": {
+                  "attempts": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "inputTokens": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "cachedInputTokens": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "outputTokens": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "durationMs": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "costUsd": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "description": "Coût estimé en dollars, connu pour Claude Code seulement."
+                  }
+                }
+              }
+            ]
           }
         }
       },
@@ -8749,6 +8832,32 @@
           },
           "read": {
             "type": "boolean"
+          }
+        }
+      },
+      "ExecutionUsage": {
+        "type": "object",
+        "description": "Consommation cumulée d’une tentative : tokens d’entrée (dont lus en cache), de sortie, coût estimé en dollars (Claude Code) et durée du modèle.",
+        "properties": {
+          "inputTokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cachedInputTokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "outputTokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "costUsd": {
+            "type": "number",
+            "minimum": 0
+          },
+          "durationMs": {
+            "type": "integer",
+            "minimum": 0
           }
         }
       }

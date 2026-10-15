@@ -1,5 +1,6 @@
 import { readFile, writeFile, lstat, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { presetRules } from './execution-profile.mjs';
 
 export const parseProjectVersion = version => {
   const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(version || '');
@@ -16,10 +17,12 @@ export function nextProjectVersion(base, current) {
   parseProjectVersion(before.join('.'));
   return before.join('.');
 }
+// Version suivante écrite dans le fichier que déclare le profil installé (`versioning`).
 export async function bumpProjectVersion(cwd, profile, command) {
-  if (profile.preset === 'trameergo') return bumpQmakeVersion(cwd, profile, command);
-  if (!['planifikateur', 'defilordi', 'funkart'].includes(profile.preset)) return null;
-  const npm = profile.preset !== 'funkart',
+  const versioning = presetRules(profile).versioning;
+  if (versioning?.format === 'qmake') return bumpQmakeVersion(cwd, profile, command);
+  if (!['npm', 'godot'].includes(versioning?.format)) return null;
+  const npm = versioning.format === 'npm',
     file = npm ? 'package.json' : 'project.godot';
   const regular = async name => {
     const details = await lstat(join(cwd, name));
@@ -42,7 +45,7 @@ export async function bumpProjectVersion(cwd, profile, command) {
     if (lock.packages?.['']) lock.packages[''].version = version;
     await writeFile(join(cwd, file), JSON.stringify(json, null, 2) + '\n');
     await writeFile(join(cwd, 'package-lock.json'), JSON.stringify(lock, null, 2) + '\n');
-    if (profile.preset === 'planifikateur') {
+    if (versioning.documents?.length) {
       const previous = JSON.parse(base).version;
       try {
         if (!(await lstat(join(cwd, 'docs'))).isDirectory())
@@ -50,7 +53,7 @@ export async function bumpProjectVersion(cwd, profile, command) {
       } catch (error) {
         if (error.code !== 'ENOENT') throw error;
       }
-      for (const document of ['README.md', 'docs/agents.md', 'docs/github.md']) {
+      for (const document of versioning.documents) {
         try {
           await regular(document);
           const source = await readFile(join(cwd, document), 'utf8');

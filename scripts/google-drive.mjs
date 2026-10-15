@@ -4,6 +4,10 @@ import { createHash } from 'node:crypto';
 import { basename } from 'node:path';
 import { driveFolderId, validateDriveRelease } from '../src/lib/drive-release.js';
 
+// Erreurs identifiées par leur code, que l’archivage serveur distingue sans lire le message :
+// drive_unavailable (compte ou dossier inutilisable, pour toutes les versions) et drive_conflict
+// (version déjà archivée depuis d’autres fichiers, jamais remplacée).
+export const driveError = (code, message) => Object.assign(new Error(message), { code });
 const escapeQuery = value => value.replaceAll('\\', '\\\\').replaceAll("'", "\\'");
 export async function fileIdentity(path) {
   const details = await stat(path),
@@ -19,7 +23,10 @@ export function createDriveClient(
 ) {
   const root = driveFolderId(folder);
   if (!credentials?.client_id || !credentials.client_secret || !credentials.refresh_token)
-    throw new Error('Configurez GOOGLE_DRIVE_CREDENTIALS avec l’authentification de votre compte Google.');
+    throw driveError(
+      'drive_unavailable',
+      'Configurez GOOGLE_DRIVE_CREDENTIALS avec l’authentification de votre compte Google.',
+    );
   let token,
     expires = 0;
   const folders = new Set([root]);
@@ -37,7 +44,10 @@ export function createDriveClient(
       }),
     });
     if (!response.ok)
-      throw new Error(`Authentification Google refusée (${response.status}). Reconnectez le compte Google.`);
+      throw driveError(
+        'drive_unavailable',
+        `Authentification Google refusée (${response.status}). Reconnectez le compte Google.`,
+      );
     const data = await response.json();
     if (!data.access_token || !Number.isFinite(data.expires_in))
       throw new Error('Réponse d’authentification Google invalide.');
@@ -115,7 +125,10 @@ export function createDriveClient(
         folder.mimeType !== 'application/vnd.google-apps.folder' ||
         !folder.capabilities?.canAddChildren
       )
-        throw new Error('Le dossier fourni est absent ou votre compte ne peut pas y ajouter des fichiers.');
+        throw driveError(
+          'drive_unavailable',
+          'Le dossier fourni est absent ou votre compte ne peut pas y ajouter des fichiers.',
+        );
       return root;
     },
     async folder(parent, name, properties = {}) {
@@ -144,7 +157,8 @@ export function createDriveClient(
         (selected.appProperties?.commit !== properties.commit ||
           selected.appProperties?.repository !== properties.repository)
       )
-        throw new Error(
+        throw driveError(
+          'drive_conflict',
           'Cette version appartient déjà à un autre commit. Augmentez le numéro de version ; les anciens fichiers sont conservés.',
         );
       folders.add(selected.id);
@@ -160,7 +174,10 @@ export function createDriveClient(
           existing[0].md5Checksum !== identity.md5 ||
           Number(existing[0].size) !== identity.size
         )
-          throw new Error('Un fichier différent existe déjà dans cette version. Aucun exécutable n’a été remplacé.');
+          throw driveError(
+            'drive_conflict',
+            'Un fichier différent existe déjà dans cette version. Aucun exécutable n’a été remplacé.',
+          );
         return { id: existing[0].id, ...identity };
       }
       const initiated = await request(

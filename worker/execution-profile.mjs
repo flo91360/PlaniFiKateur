@@ -1,4 +1,11 @@
 // Installed worker code: never load delivery rules from the branch being changed.
+// Registre des profils : chaque entrée déclare tout ce qui lui est propre, et le reste du worker
+// s’en déduit sans tester les noms de profils.
+// - repositories : noms de dépôt qui choisissent ce profil par défaut ;
+// - versioning : fichier de version (npm : package.json et son lockfile, godot : project.godot,
+//   qmake : l’unique fichier .pro) et documents dont le numéro suit la version ;
+// - instructions : consignes propres au projet ajoutées à la demande envoyée au modèle ;
+// - environment : variables ajoutées aux commandes (hors du profil validé, qui reste comparable).
 export const executionPresets = {
   planifikateur: {
     label: 'PlaniFiKateur',
@@ -12,6 +19,8 @@ export const executionPresets = {
       ['npm', 'run', 'test:browser'],
     ],
     workflow: { file: 'ci.yml', name: 'Tests', jobs: ['Tests serveur', 'Tests navigateur'] },
+    repositories: ['planifikateur'],
+    versioning: { format: 'npm', documents: ['README.md', 'docs/agents.md', 'docs/github.md'] },
   },
   defilordi: {
     label: 'DefilOrdi — Electron',
@@ -26,7 +35,8 @@ export const executionPresets = {
       ['npm', 'run', 'build'],
     ],
     workflow: { file: 'build-windows.yml', name: 'Windows .exe', jobs: ['build'] },
-    // Variables ajoutées aux commandes du profil (hors du profil validé, qui reste comparable).
+    repositories: ['defilordi'],
+    versioning: { format: 'npm' },
     environment: { ELECTRON_SKIP_BINARY_DOWNLOAD: '1' },
   },
   trameergo: {
@@ -38,6 +48,10 @@ export const executionPresets = {
     installCommands: [['python3', '--version']],
     testCommands: [['python3', '@worker/checks/qt_project.py']],
     workflow: { file: 'build-windows.yml', name: 'Windows .exe', jobs: ['build'] },
+    repositories: ['trameergo'],
+    versioning: { format: 'qmake' },
+    instructions:
+      'Un formulaire Qt Designer demandé en fichier téléchargeable est un véritable document XML <ui version="4.0">, ouvrable dans Qt Designer, avec les champs demandés.',
   },
   funkart: {
     label: 'FunKart — Godot',
@@ -51,14 +65,19 @@ export const executionPresets = {
       ['godot', '--headless', '--path', '.', '--script', 'res://tests/autoplay.gd', '--', '--fast'],
     ],
     workflow: { file: 'build.yml', name: 'Construire le jeu', jobs: ['export'] },
+    repositories: ['funkart'],
+    versioning: { format: 'godot' },
   },
 };
+// Profil par défaut d’un dépôt : celui qui le déclare dans `repositories`, sinon PlaniFiKateur.
 export function defaultExecutionProfile(repository = '') {
   const name = repository.split('/').at(-1).toLowerCase();
-  return validateExecutionProfile({
-    preset: ['defilordi', 'funkart', 'trameergo'].includes(name) ? name : 'planifikateur',
-  });
+  const preset = Object.keys(executionPresets).find(key => executionPresets[key].repositories?.includes(name));
+  return validateExecutionProfile({ preset: preset || 'planifikateur' });
 }
+// Règles installées d’un profil validé (versionnage, consignes, environnement), jamais celles
+// d’un profil reçu du site.
+export const presetRules = profile => executionPresets[profile?.preset] || {};
 // Profil réellement exécuté par le worker : seuls le preset et la branche viennent du site ; les
 // commandes et les contrôles GitHub sont ceux des presets installés avec ce worker. Un site
 // compromis ou un profil enregistré par une version précédente ne peut donc pas imposer de commande.

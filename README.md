@@ -14,6 +14,7 @@ Un tableau de projets inspiré de Trello, conçu pour préparer des demandes con
 - Badge sur chaque carte du tableau où l’agent travaille : en attente, au travail, question, résultat à valider, PR à approuver, tests GitHub en cours ou en échec.
 - Adresse propre à chaque projet et à chaque carte ouverte (`#/projets/…/cartes/…`) : partageable, conservée au rechargement, refermée par « Précédent ».
 - Paramètres du projet en onglets (Accès, Agent IA, Dépôt), chacun résumant son état.
+- Consommation de chaque exécution IA dans le détail de la carte : tentatives, durée, tokens et coût estimé (Claude Code).
 - Boîte « À traiter » avec badge : questions de l’agent et résultats à valider de tous les projets, ouverts en un clic.
 - Confirmation avant toute modification qui annulerait une exécution IA en cours.
 - Mode connecté : données SQLite partagées entre le site et l’API de consultation, rangées en tables (projets, listes, cartes, commentaires, pièces jointes).
@@ -126,7 +127,7 @@ Conserver également des copies hors du volume Railway.
 npm run export:preview
 ```
 
-`dist/PlaniFiKateur-apercu-v0.1.43.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
+`dist/PlaniFiKateur-apercu-v0.1.44.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 

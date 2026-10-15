@@ -278,3 +278,25 @@ test('preset environments reach the profile commands without changing the valida
   );
   assert.equal('environment' in defilordi, false);
 });
+
+test('each installed profile declares its repositories, versioning and own instructions', async () => {
+  const { executionPresets, defaultExecutionProfile } = await import('../worker/execution-profile.mjs');
+  const { taskPrompt } = await import('../worker/codex.mjs');
+  for (const [preset, rules] of Object.entries(executionPresets)) {
+    assert.ok(['npm', 'godot', 'qmake'].includes(rules.versioning?.format), preset);
+    for (const name of rules.repositories) assert.equal(defaultExecutionProfile(`owner/${name}`).preset, preset);
+  }
+  assert.equal(defaultExecutionProfile('owner/inconnu').preset, 'planifikateur');
+  const prompt = preset =>
+    taskPrompt({
+      cardSnapshot: { title: 'Formulaire' },
+      objective: 'Créer le formulaire',
+      exchanges: [],
+      submissions: [],
+      updates: [],
+      executionProfile: defaultExecutionProfile(`owner/${preset}`),
+    });
+  // La consigne Qt Designer ne part qu’avec le profil Qt.
+  assert.match(prompt('trameergo'), /Consignes propres à ce projet : .*Qt Designer/);
+  for (const preset of ['planifikateur', 'defilordi', 'funkart']) assert.doesNotMatch(prompt(preset), /Qt/);
+});
