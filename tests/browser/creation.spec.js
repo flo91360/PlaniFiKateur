@@ -5,7 +5,7 @@ const { version } = JSON.parse(readFileSync(new URL('../../package.json', import
 const html = readFileSync(new URL(`../../dist/PlaniFiKateur-apercu-v${version}.html`, import.meta.url), 'utf8');
 
 for (const mode of ['standalone', 'sandbox-with-storage', 'sandbox-without-storage']) {
-  test(`creation and editing in ${mode}`, async ({ page }) => {
+  test(`creation and editing in ${mode}`, { tag: '@mobile' }, async ({ page }) => {
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     page.on('console', message => {

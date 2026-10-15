@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.39 — 2026-10-15
+<!-- planifikateur:tests-mobile-allegees -->
+
+- **Tests navigateur allégés** : Le projet mobile ne rejoue plus que les tests d’affichage marqués @mobile et la CI réutilise Chromium en cache : les tests navigateur sont nettement plus courts, en CI comme sur le worker.
+
 ## 0.1.38 — 2026-10-15
 <!-- planifikateur:4eded793-f029-4a29-9a17-22ae66aa3073 -->
 
