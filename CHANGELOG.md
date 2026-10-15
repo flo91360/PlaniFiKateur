@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.49 — 2026-10-16
+<!-- planifikateur:masquer-relance-terminee -->
+
+- **Relance masquée sur une tâche terminée** : Le bouton « Relancer l’agent » n’apparaît plus sur une carte dont la PR est fusionnée ; il reste disponible après une annulation.
+
 ## 0.1.48 — 2026-10-15
 <!-- planifikateur:effort-moyen-par-defaut -->
 
