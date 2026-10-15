@@ -2543,3 +2543,22 @@ textarea::placeholder {
   margin: 64px auto;
   padding: 0 16px;
 }
+
+/* Déplacement d’une carte sans glisser-déposer (clavier, toucher). */
+.detail-move {
+  margin-bottom: 18px;
+}
+.detail-order {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+.detail-order .secondary-button {
+  padding: 6px 10px;
+}
+.list-actions {
+  display: flex;
+  gap: 2px;
+}

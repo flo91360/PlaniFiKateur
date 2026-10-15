@@ -3,6 +3,12 @@ export const buildInfo =
     ? { tag: 'Version indisponible', date: '' }
     : __PLANIFIKATEUR_BUILD_INFO__;
 
+// Cartes Infos d’un projet (version, mode d’emploi, changelog) : tenues par le serveur, elles ne
+// comptent pas parmi les idées du projet.
+export const isSystemCard = (projectId, cardId) =>
+  [`${projectId}-git-version`, `${projectId}-readme`, `${projectId}-changelog`].includes(cardId);
+export const ideaCards = project => project.cards.filter(card => !isSystemCard(project.id, card.id));
+
 // Stable project-scoped identifiers allow updates without duplicating the card.
 export function withInfos(project, version) {
   const listId = `${project.id}-infos`;

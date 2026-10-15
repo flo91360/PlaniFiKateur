@@ -84,11 +84,13 @@ for (const mode of ['standalone', 'sandbox-with-storage', 'sandbox-without-stora
         .locator('.card'),
     ).toHaveCount(1);
     await app.getByRole('heading', { name: 'Ma carte', exact: true }).click();
-    await expect(app.getByLabel('Déplacer vers', { exact: true })).toHaveCount(0);
+    await expect(app.getByLabel('Déplacer vers la liste', { exact: true }).locator('option:checked')).toHaveText(
+      'Ma liste',
+    );
     await expect(app.locator('.detail-status')).toContainText('dans Ma liste');
     await expect(app.getByLabel('Statut', { exact: true })).toHaveValue('ready');
-    await app.getByLabel('Statut', { exact: true }).selectOption({ label: 'Flo regarde' });
-    await expect(app.locator('.detail-status')).toContainText('Flo regarde');
+    await app.getByLabel('Statut', { exact: true }).selectOption({ label: 'À relire' });
+    await expect(app.locator('.detail-status')).toContainText('À relire');
     await expect(app.getByLabel('Priorité', { exact: true })).toHaveValue('high');
     await expect(app.getByLabel('Étiquettes', { exact: true })).toHaveValue('UX, Recherche');
     await expect(app.getByRole('heading', { name: /^Critères d’acceptation/ })).toHaveCount(0);
@@ -113,9 +115,9 @@ for (const mode of ['standalone', 'sandbox-with-storage', 'sandbox-without-stora
     await app.getByLabel('Votre commentaire').press('Control+Enter');
     await expect(app.getByText('Commentaire par raccourci', { exact: true })).toBeVisible();
     await app.getByRole('button', { name: 'Terminé', exact: true }).click();
-    await app.getByLabel('Filtrer par statut', { exact: true }).selectOption({ label: 'Flo regarde' });
+    await app.getByLabel('Filtrer par statut', { exact: true }).selectOption({ label: 'À relire' });
     await expect(app.locator('.card')).toHaveCount(1);
-    await expect(app.locator('.card .status')).toHaveText('Flo regarde');
+    await expect(app.locator('.card .status')).toHaveText('À relire');
     await app.getByLabel('Filtrer par statut', { exact: true }).selectOption('ready');
     await expect(app.locator('.card')).toHaveCount(0);
     await app.getByLabel('Filtrer par statut', { exact: true }).selectOption('all');

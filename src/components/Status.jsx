@@ -8,7 +8,7 @@ export const statuses = {
   progress: { label: 'En cours', icon: Clock3 },
   clarify: { label: 'À préciser', icon: CircleHelp },
   review: { label: 'Tests et fusion', icon: CheckCheck },
-  flo: { label: 'Flo regarde', icon: CircleHelp },
+  flo: { label: 'À relire', icon: CircleHelp },
   done: { label: 'Terminée', icon: Check },
 };
 export const priorities = { low: 'Basse', normal: 'Normale', high: 'Haute' };
