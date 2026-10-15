@@ -29,18 +29,23 @@ const groupBy = (rows, key) => {
   return groups;
 };
 
-// `projectId` limite la lecture à un projet ; sans `attachmentData`, les pièces jointes n’ont que
+// `projectIds` limite la lecture à ces projets ; sans `attachmentData`, les pièces jointes n’ont que
 // leur nom, leur type et leur taille (le contenu se télécharge par sa propre route).
-export function readWorkspace(db, { projectId = null, attachmentData = true } = {}) {
-  const one = projectId !== null;
-  const cardsOf = one ? 'WHERE card_id IN (SELECT id FROM cards WHERE project_id = ?)' : '';
-  const params = one ? [projectId] : [];
+export function readWorkspace(db, { projectIds = null, attachmentData = true } = {}) {
+  const some = Array.isArray(projectIds);
+  const among = 'IN (SELECT value FROM json_each(?))';
+  const cardsOf = some ? `WHERE card_id IN (SELECT id FROM cards WHERE project_id ${among})` : '';
+  const params = some ? [JSON.stringify(projectIds)] : [];
   const lists = groupBy(
-    db.prepare(`SELECT * FROM lists ${one ? 'WHERE project_id = ?' : ''} ORDER BY project_id, position`).all(...params),
+    db
+      .prepare(`SELECT * FROM lists ${some ? `WHERE project_id ${among}` : ''} ORDER BY project_id, position`)
+      .all(...params),
     'project_id',
   );
   const cards = groupBy(
-    db.prepare(`SELECT * FROM cards ${one ? 'WHERE project_id = ?' : ''} ORDER BY project_id, position`).all(...params),
+    db
+      .prepare(`SELECT * FROM cards ${some ? `WHERE project_id ${among}` : ''} ORDER BY project_id, position`)
+      .all(...params),
     'project_id',
   );
   const comments = groupBy(
@@ -56,7 +61,7 @@ export function readWorkspace(db, { projectId = null, attachmentData = true } = 
     'card_id',
   );
   return db
-    .prepare(`SELECT * FROM projects ${one ? 'WHERE id = ?' : ''} ORDER BY position`)
+    .prepare(`SELECT * FROM projects ${some ? `WHERE id ${among}` : ''} ORDER BY position`)
     .all(...params)
     .map(p => ({
       id: p.id,
@@ -182,11 +187,19 @@ const COLUMNS = {
 // Remplace le contenu des tables par `projects` (déjà validé) en n’écrivant que les différences.
 // `previous`, quand il est fourni, est l’état actuellement en base (tel que lu par readWorkspace) :
 // les différences sont alors calculées en mémoire, sans relire les tables ni les pièces jointes.
-// Renvoie le nombre de lignes écrites ou supprimées.
+// Renvoie le nombre de lignes écrites ou supprimées, les projets dont le contenu a changé
+// (`projectIds`) et `structural` quand la liste des projets elle-même change (ajout, suppression
+// ou ordre) : les navigateurs relisent alors tout le tableau plutôt que ces seuls projets.
 export function writeWorkspace(db, projects, previous = null) {
   const wanted = rowsOf(projects);
   const known = previous && rowsOf(previous);
-  let written = 0;
+  let written = 0,
+    structural = false;
+  const projectIds = new Set();
+  const cardProjects = new Map();
+  // Projet d’une ligne : elle-même (projects), sa colonne project_id (lists, cards) ou celui de sa carte.
+  const projectOf = (table, row) =>
+    table === 'projects' ? row[0] : table === 'lists' || table === 'cards' ? row[1] : cardProjects.get(row[1]);
   for (const [table, columns] of Object.entries(COLUMNS)) {
     const existing = known
       ? new Map(known[table].map(row => [row[0], row]))
@@ -199,6 +212,7 @@ export function writeWorkspace(db, projects, previous = null) {
     const upsert = db.prepare(
       `INSERT OR REPLACE INTO ${table}(${columns.join(',')}) VALUES(${columns.map(() => '?').join(',')})`,
     );
+    if (table === 'cards') for (const row of [...existing.values(), ...wanted.cards]) cardProjects.set(row[0], row[1]);
     const ids = new Set();
     for (const row of wanted[table]) {
       ids.add(row[0]);
@@ -206,16 +220,23 @@ export function writeWorkspace(db, projects, previous = null) {
       if (!current || current.length !== row.length || current.some((value, i) => value !== row[i])) {
         upsert.run(...row);
         written++;
+        projectIds.add(projectOf(table, row));
+        if (current) projectIds.add(projectOf(table, current));
+        // Projet créé ou déplacé dans la liste des projets.
+        if (table === 'projects' && (!current || current[1] !== row[1])) structural = true;
       }
     }
     const remove = db.prepare(`DELETE FROM ${table} WHERE id = ?`);
-    for (const id of existing.keys())
+    for (const [id, row] of existing)
       if (!ids.has(id)) {
         remove.run(id);
         written++;
+        projectIds.add(projectOf(table, row));
+        if (table === 'projects') structural = true;
       }
   }
-  return written;
+  projectIds.delete(undefined);
+  return { written, projectIds: [...projectIds], structural };
 }
 
 // Convertit l’ancien tableau JSON (colonne workspace.projects) en tables, une seule fois.

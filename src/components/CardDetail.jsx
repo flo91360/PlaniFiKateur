@@ -368,7 +368,7 @@ export default function CardDetail({
           {!offline && <ActivityPanel projectId={projectId} cardId={card.id} />}
         </div>
         <aside className="detail-side">
-          {!offline && <CardSubscription projectId={projectId} cardId={card.id} saveStatus={saveStatus} />}
+          {!offline && <CardSubscription projectId={projectId} cardId={card.id} />}
           <label>
             Statut
             <select

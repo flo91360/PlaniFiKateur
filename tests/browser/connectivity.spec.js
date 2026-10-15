@@ -138,8 +138,9 @@ test('two browsers editing the same board merge their changes without a conflict
   const context = await browser.newContext();
   const other = await context.newPage();
   await login(other, appServer);
-  // Le second navigateur ne s’actualise plus : ses modifications partent d’un tableau périmé.
-  await other.route('**/api/v1/workspace', route =>
+  // Le second navigateur ne s’actualise plus (lectures complètes ou par projet) : ses
+  // modifications partent d’un tableau périmé.
+  await other.route(/\/api\/v1\/workspace(\?|$)/, route =>
     route.request().method() === 'GET' ? route.abort() : route.continue(),
   );
   const card = seed[0].cards[0];
@@ -167,6 +168,28 @@ test('two browsers editing the same board merge their changes without a conflict
     await request.get(`${appServer}/api/v1/projects/${seed[0].id}/cards/${card.id}`, { headers })
   ).json();
   expect(saved.data).toMatchObject({ title: 'Titre choisi par le premier', priority: 'low' });
+  await context.close();
+});
+
+test('a change made elsewhere is read back for its project only', async ({ page, browser, appServer }) => {
+  await login(page, appServer);
+  const context = await browser.newContext();
+  const other = await context.newPage();
+  await login(other, appServer);
+  await expect(other.locator('.project-heading h1')).toHaveText(seed[0].name);
+  // Laisser le flux d’événements se connecter avant d’observer les lectures.
+  await other.waitForTimeout(500);
+  const reads = [];
+  other.on('request', request => {
+    const url = new URL(request.url());
+    if (url.pathname === '/api/v1/workspace' && request.method() === 'GET') reads.push(url.search);
+  });
+  const card = seed[0].cards[0];
+  await page.getByRole('heading', { name: card.title, exact: true }).click();
+  await page.getByLabel('Titre de la carte', { exact: true }).fill('Titre annoncé en direct');
+  await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+  await expect(other.getByRole('heading', { name: 'Titre annoncé en direct', exact: true })).toBeVisible();
+  expect(reads).toEqual([`?projects=${seed[0].id}`]);
   await context.close();
 });
 

@@ -38,6 +38,12 @@ export function eventRoutes({ store, config, auth, guards, streams }) {
           // Les événements d’un projet ne parviennent qu’aux comptes qui le voient.
           const unsubscribe = store.subscribe(({ type, userIds, ...data }) => {
             if (data.projectId && !store.projectRole(ctx.user, data.projectId)) return;
+            // Changement limité à certains projets : seuls ceux que le compte voit lui sont cités.
+            if (data.projectIds) {
+              const visible = data.projectIds.filter(id => store.projectRole(ctx.user, id));
+              if (!visible.length) return;
+              data = { ...data, projectIds: visible };
+            }
             // Un événement destiné à certains comptes (notifications) ne parvient qu’à eux.
             if (userIds && !userIds.includes(ctx.user.id)) return;
             send(type, data);

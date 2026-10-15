@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.35 — 2026-10-15
+<!-- planifikateur:etape-8b-actualisation-par-projet -->
+
+- **Actualisation par projet** : Un changement dans un projet ne fait plus relire tout le tableau aux autres navigateurs : seul ce projet est relu, et un projet masqué n’est jamais annoncé. L’enregistrement ne renvoie plus que les projets modifiés. « À traiter », le suivi des cartes et l’abonnement d’une carte sont relus sur les événements qui les concernent, et non plus à chaque frappe.
+
 ## 0.1.34 — 2026-10-14
 <!-- planifikateur:etape-8a-lectures-et-pieces-jointes -->
 

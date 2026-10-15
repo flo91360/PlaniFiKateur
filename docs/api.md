@@ -136,12 +136,20 @@ Les anciennes copies HTML restent indépendantes : les projets de votre navigate
 
 `GET /api/v1/workspace` accepte `If-None-Match: "révision"` et renvoie **304 sans corps** si la révision est inchangée. L’authentification du compte est vérifiée même pour cette réponse.
 
+Depuis la v0.1.35, les échanges se font projet par projet :
+
+- `GET /api/v1/workspace?projects=a,b` ne renvoie que ces projets (ceux que le compte voit), avec la révision et `access` complet.
+- Un événement `workspace` dont `fromRevision` est la révision connue du navigateur ne fait relire que les projets de `projectIds` ; sinon (événement manqué, liste des projets changée), tout le tableau est relu.
+- Un changement dans un projet masqué n’est pas annoncé aux comptes qui ne le voient pas.
+- `PATCH /api/v1/workspace` avec `"scope": "changed"` ne renvoie que les projets visés par le lot (`projectIds`, et `fromRevision`, la révision lue au départ) ; tout le tableau quand le lot crée, supprime ou réordonne des projets. L’interface fusionne ces projets dans son état et relit tout le tableau si d’autres écritures ont eu lieu entre-temps.
+- « À traiter », le suivi des cartes et l’abonnement d’une carte sont relus sur les événements qui les concernent, plus à chaque frappe.
+
 Le site reste à jour grâce au flux **`GET /api/v1/events`** (Server-Sent Events, session personnelle) :
 
 | Événement | Données | Envoyé |
 | --- | --- | --- |
 | `ready` | `{ revision }` | À la connexion et à chaque reconnexion |
-| `workspace` | `{ revision }` | Après chaque enregistrement du tableau, par une personne, l’agent ou GitHub |
+| `workspace` | `{ revision, fromRevision?, projectIds? }` | Après chaque enregistrement du tableau, par une personne, l’agent ou GitHub ; `projectIds` cite les projets modifiés que le compte voit (absent si la liste des projets elle-même a changé) |
 | `work` | `{ projectId, cardId, executionId, state }` | Après chaque étape d’une exécution IA |
 | `subscriptions` | `{ projectId, cardId }` | Après un changement de suivi d’une carte |
 | `notifications` | `{}` | Au compte destinataire, quand une notification arrive ou qu’il les marque comme lues |

@@ -125,15 +125,9 @@ function App() {
     ? 'manager'
     : workspace.access?.[project?.id] || (workspace.access && project ? 'manager' : 'viewer');
   const selected = project?.cards.find(c => c.id === selectedId);
-  const cardFollowers = useCardFollowers({
-    project,
-    enabled: !offlineMode && ready && !needsLogin,
-    saveStatus,
-    selectedId,
-    modal,
-  });
+  const cardFollowers = useCardFollowers({ projectId: project?.id, enabled: !offlineMode && ready && !needsLogin });
   const [projectAi, setProjectAi] = useProjectAi(project?.id, ready);
-  const attention = useAttention({ enabled: !offlineMode && ready && !needsLogin, projects });
+  const attention = useAttention({ enabled: !offlineMode && ready && !needsLogin });
   useServerEvents(!offlineMode && ready && !needsLogin);
   const notifications = useNotifications(!offlineMode && ready && !needsLogin);
   useEffect(() => applyAccent(workspace.accent), [workspace.accent]);

@@ -25,8 +25,12 @@ export function workspaceRoutes({ store, config, auth, guards }) {
           }
           // Seuls les projets visibles par le compte, avec son rôle sur chacun (access). Le contenu
           // des pièces jointes n’est inclus qu’avec ?attachments=data (export JSON).
+          // ?projects=a,b : relecture partielle de ces projets, annoncés par le flux d’événements.
+          const listed = ctx.url.searchParams.get('projects');
+          const projectIds = listed === null ? null : listed.split(',').filter(Boolean).slice(0, 100);
           const workspace = store.readFor(auth.requireAccount(ctx.req), {
             attachmentData: ctx.url.searchParams.get('attachments') === 'data',
+            projectIds,
           });
           ctx.res.setHeader('ETag', `"${workspace.revision}"`);
           ctx.send(200, workspace);

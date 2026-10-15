@@ -17,6 +17,17 @@ import { migrateWorkspace, readWorkspace, writeWorkspace } from './workspace-tab
 import { applyChanges, ChangeError } from '../src/lib/workspace-changes.js';
 import { allows, createAccess, MEMBER_ROLES, requirements, ROLES } from './access.js';
 
+// Projets visés par un lot de modifications, ou null si la liste des projets elle-même change.
+const changedProjects = changes => {
+  if (!Array.isArray(changes)) return null;
+  const ids = new Set();
+  for (const change of changes) {
+    if (['project.create', 'project.delete', 'project.order'].includes(change?.type)) return null;
+    if (typeof change?.projectId === 'string') ids.add(change.projectId);
+  }
+  return [...ids];
+};
+
 // Erreur qui refuse une demande (4xx), par opposition à une panne du serveur.
 const refusal = error => error?.status >= 400 && error.status < 500;
 
@@ -123,6 +134,17 @@ export function createStore(filename, { backupDirectory } = {}) {
   const emit = event => {
     if (!queued) return deliver([event]);
     const key = JSON.stringify([event.type, event.projectId, event.cardId, event.executionId, event.userIds]);
+    // Plusieurs révisions dans une transaction : un seul événement, depuis la première révision,
+    // qui cite tous les projets touchés (ou aucun si l’une d’elles concernait tout le tableau).
+    const previous = queued.get(key);
+    if (event.type === 'workspace' && previous)
+      event = {
+        ...event,
+        fromRevision: previous.fromRevision,
+        ...(previous.projectIds && event.projectIds
+          ? { projectIds: [...new Set([...previous.projectIds, ...event.projectIds])] }
+          : { projectIds: undefined }),
+      };
     queued.set(key, event);
   };
   const transaction = fn => {
@@ -143,7 +165,8 @@ export function createStore(filename, { backupDirectory } = {}) {
   };
   // Chaque lecture retient le nombre d’écritures déjà faites : une écriture qui part d’un état lu
   // depuis, sans écriture intermédiaire, calcule ses différences en mémoire (writeWorkspace).
-  let writes = 0;
+  let writes = 0,
+    touched = new Set();
   const snapshots = new WeakMap();
   const readProjects = () => {
     const projects = readWorkspace(db);
@@ -154,11 +177,29 @@ export function createStore(filename, { backupDirectory } = {}) {
   // suivante de la même transaction s’en charge) : les navigateurs actualisent leur tableau.
   // `previous` : état lu juste avant (readProjects), si aucune autre écriture n’a eu lieu depuis.
   const writeProjects = (projects, date = new Date().toISOString(), { revision = true, previous = null } = {}) => {
-    writeWorkspace(db, projects, previous && snapshots.get(previous) === writes ? previous : null);
+    const { projectIds, structural } = writeWorkspace(
+      db,
+      projects,
+      previous && snapshots.get(previous) === writes ? previous : null,
+    );
     writes++;
+    // Projets touchés depuis le dernier événement de la transaction (une écriture sans révision
+    // les transmet à la suivante).
+    for (const id of projectIds) touched.add(id);
+    if (structural) touched.structural = true;
     if (!revision) return;
     db.prepare('UPDATE workspace SET revision = revision + 1, updated_at = ? WHERE id = 1').run(date);
-    emit({ type: 'workspace', revision: db.prepare('SELECT revision FROM workspace WHERE id = 1').get().revision });
+    // Les navigateurs ne relisent que les projets cités ; sans `projectIds` (liste des projets
+    // changée, ou rien d’identifiable), ils relisent tout le tableau.
+    const ids = [...touched];
+    const current = db.prepare('SELECT revision FROM workspace WHERE id = 1').get().revision;
+    emit({
+      type: 'workspace',
+      revision: current,
+      fromRevision: current - 1,
+      ...(touched.structural || !ids.length ? {} : { projectIds: ids }),
+    });
+    touched = new Set();
   };
   const synchronizeInfos = () => {
     const previous = readProjects();
@@ -201,7 +242,7 @@ export function createStore(filename, { backupDirectory } = {}) {
   };
   const userById = id => db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   const findCard = (projectId, cardId) => {
-    const [project] = readWorkspace(db, { projectId });
+    const [project] = readWorkspace(db, { projectIds: [projectId] });
     const card = project?.cards.find(c => c.id === cardId);
     if (!card) fail(404, 'card_not_found', 'Carte inexistante dans ce projet.');
     return { project, card };
@@ -711,17 +752,21 @@ export function createStore(filename, { backupDirectory } = {}) {
     },
     // Tableau vu par un compte : seulement ses projets, avec son rôle sur chacun (`access`).
     // `attachmentData: false` : pièces jointes sans leur contenu, pour le navigateur.
-    readFor(user, { attachmentData = true } = {}) {
-      const workspace = attachmentData
-        ? this.read()
-        : {
-            ...db.prepare('SELECT revision, updated_at AS updatedAt FROM workspace WHERE id = 1').get(),
-            projects: readWorkspace(db, { attachmentData: false }),
-          };
-      const roles = access.map(
-        user,
-        workspace.projects.map(project => project.id),
-      );
+    // `projectIds` : seulement ces projets (relecture partielle), `access` restant complet.
+    readFor(user, { attachmentData = true, projectIds = null } = {}) {
+      const workspace =
+        attachmentData && !projectIds
+          ? this.read()
+          : {
+              ...db.prepare('SELECT revision, updated_at AS updatedAt FROM workspace WHERE id = 1').get(),
+              projects: readWorkspace(db, { attachmentData, projectIds }),
+            };
+      const roles = projectIds
+        ? this.accessOf(user)
+        : access.map(
+            user,
+            workspace.projects.map(project => project.id),
+          );
       return { ...workspace, projects: workspace.projects.filter(project => roles[project.id]), access: roles };
     },
     projectRole: (user, projectId) => access.role(user, projectId),
@@ -857,14 +902,22 @@ export function createStore(filename, { backupDirectory } = {}) {
     // sans exiger de révision. Les modifications dont la cible a disparu sont ignorées et
     // renvoyées dans `skipped` ; avec `strict`, elles annulent tout.
     // `attachmentData: false` : le tableau renvoyé omet le contenu des pièces jointes.
-    change(changes, actor, { strict = false, partial = false, attachmentData = true } = {}) {
+    // `scope: 'changed'` : seuls les projets visés par le lot sont renvoyés (`projectIds`), avec
+    // la révision lue au départ (`fromRevision`) ; tout le tableau si la liste des projets change.
+    change(changes, actor, { strict = false, partial = false, attachmentData = true, scope = 'all' } = {}) {
       return transaction(() => {
         const before = this.read();
+        const targets = scope === 'changed' ? changedProjects(changes) : null;
+        const respond = extra => ({
+          ...this.readFor(actor, { attachmentData, projectIds: targets }),
+          ...(targets ? { projectIds: targets, fromRevision: before.revision } : {}),
+          ...extra,
+        });
         if (!partial) {
           const { clean, skipped } = planChanges(before, changes, actor, strict);
           // Rien à enregistrer (modifications ignorées ou déjà appliquées) : la révision ne bouge pas.
           if (JSON.stringify(clean) !== JSON.stringify(before.projects)) commit(before, clean, actor);
-          return { ...this.readFor(actor, { attachmentData }), skipped };
+          return respond({ skipped });
         }
         // `partial` : une modification refusée (droits, contenu invalide, statut piloté par l’agent)
         // n’empêche pas les autres. Le lot est d’abord tenté en entier ; s’il est refusé, chaque
@@ -891,7 +944,7 @@ export function createStore(filename, { backupDirectory } = {}) {
           return skipped;
         };
         const whole = attempt('batch', () => apply(before, changes));
-        if (!whole.error) return { ...this.readFor(actor, { attachmentData }), skipped: whole.result, rejected: [] };
+        if (!whole.error) return respond({ skipped: whole.result, rejected: [] });
         if (!Array.isArray(changes)) throw whole.error;
         const skipped = [],
           rejected = [];
@@ -901,7 +954,7 @@ export function createStore(filename, { backupDirectory } = {}) {
             rejected.push({ index, type: change?.type ?? null, code: one.error.code, message: one.error.message });
           else skipped.push(...one.result.map(item => ({ ...item, index })));
         });
-        return { ...this.readFor(actor, { attachmentData }), skipped, rejected };
+        return respond({ skipped, rejected });
       });
     },
     // Vérifie des modifications sans les enregistrer (mêmes refus que `change`) et indique si

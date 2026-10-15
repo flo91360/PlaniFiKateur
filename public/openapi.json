@@ -4596,6 +4596,15 @@
               ]
             },
             "description": "data : inclut le contenu (base64) des pièces jointes, pour l’export JSON. Sans ce paramètre, les pièces jointes n’ont que id, name, type et size."
+          },
+          {
+            "name": "projects",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifiants séparés par des virgules (100 au plus) : relecture partielle de ces projets, annoncés par le flux d’événements. access reste complet."
           }
         ],
         "responses": {
@@ -4785,6 +4794,14 @@
                   "partial": {
                     "type": "boolean",
                     "description": "Enregistre les modifications acceptées et liste les autres dans rejected, au lieu de refuser tout le lot."
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "all",
+                      "changed"
+                    ],
+                    "description": "changed : la réponse ne contient que les projets visés par le lot (projectIds, fromRevision), sauf si le lot crée, supprime ou réordonne des projets."
                   }
                 }
               }
@@ -8474,6 +8491,17 @@
                 }
               }
             }
+          },
+          "projectIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Avec scope=changed : projets renvoyés."
+          },
+          "fromRevision": {
+            "type": "integer",
+            "description": "Avec scope=changed : révision lue au début de l’enregistrement."
           }
         }
       },
