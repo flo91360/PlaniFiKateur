@@ -71,6 +71,13 @@ const newProject = async (page, name) => {
   await page.getByLabel('Nom du projet', { exact: true }).fill(name);
   await page.getByRole('button', { name: 'Créer le projet', exact: true }).click();
 };
+// Les sauvegardes serveur ne sont proposées que dans la fenêtre « Espace personnel » du menu latéral.
+const openWorkspace = async page => {
+  const menu = page.getByRole('button', { name: 'Ouvrir les projets', exact: true });
+  if ((await menu.isVisible()) && !(await page.locator('.sidebar.open').count())) await menu.click();
+  await page.getByRole('button', { name: /Espace personnel/ }).click();
+  await expect(page.getByRole('dialog', { name: 'Votre espace personnel' })).toBeVisible();
+};
 
 test(
   'a UI-created card is readable by an agent and another browser',
@@ -499,6 +506,21 @@ test('owner can create and download a SQLite backup from the interface', async (
   await newProject(page, 'Projet dans ma sauvegarde');
   await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
   await page.getByRole('button', { name: 'Informations sur PlaniFiKateur', exact: true }).click();
+  const about = page.getByRole('dialog', { name: 'À propos de PlaniFiKateur' });
+  await expect(about).toContainText('Confier une carte à l’agent IA');
+  await expect(about.getByRole('heading', { name: 'Sauvegardes', exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: 'Créer et télécharger une sauvegarde SQLite', exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole('button', { name: 'C’est compris', exact: true }).click();
+  await page.getByRole('button', { name: 'Historique des projets', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Activité des projets' })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Créer et télécharger une sauvegarde SQLite', exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole('button', { name: 'Fermer', exact: true }).click();
+  await openWorkspace(page);
+  await expect(page.getByRole('heading', { name: 'Sauvegardes', exact: true })).toBeVisible();
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Créer et télécharger une sauvegarde SQLite', exact: true }).click();
   const download = await downloadPromise;
@@ -613,7 +635,7 @@ test('administrator invites a member whose cards, comments and actions carry the
   await member.getByRole('button', { name: 'Mon compte', exact: true }).click();
   await expect(member.getByRole('heading', { name: 'Membres de l’espace', exact: true })).toHaveCount(0);
   await member.getByRole('button', { name: 'Fermer', exact: true }).click();
-  await member.getByRole('button', { name: 'Informations sur PlaniFiKateur', exact: true }).click();
+  await openWorkspace(member);
   await expect(
     member.getByRole('button', { name: 'Créer et télécharger une sauvegarde SQLite', exact: true }),
   ).toHaveCount(0);

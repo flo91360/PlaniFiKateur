@@ -112,7 +112,7 @@ Les tests utilisent Chromium installé sur la machine. S’il est absent, exécu
 
 ## Sauvegardes
 
-Les copies sont automatiquement créées à côté de la base, sur le volume persistant. Depuis le site, le bouton d’information permet de les consulter et de les télécharger. Voir [la procédure de sauvegarde et restauration](docs/backups.md) pour Railway, les paramètres et les commandes `npm run db:backup` / `npm run db:restore`.
+Les copies sont automatiquement créées à côté de la base, sur le volume persistant. Depuis le site, l’administrateur les consulte et les télécharge dans la fenêtre **Espace personnel** du menu latéral, seul accès aux sauvegardes serveur. Voir [la procédure de sauvegarde et restauration](docs/backups.md) pour Railway, les paramètres et les commandes `npm run db:backup` / `npm run db:restore`.
 
 Conserver également des copies hors du volume Railway.
 
@@ -122,7 +122,7 @@ Conserver également des copies hors du volume Railway.
 npm run export:preview
 ```
 
-`dist/PlaniFiKateur-apercu-v0.1.40.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
+`dist/PlaniFiKateur-apercu-v0.1.41.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 
