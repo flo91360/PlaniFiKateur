@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { apiData } from '../lib/api-client.js';
 import { efforts, effortLabels } from '../../worker/ai-settings.mjs';
 import { aiModels } from '../lib/ai-models.js';
+import { useApiAction, useApiResource } from '../lib/use-api.js';
+import FormStatus from './FormStatus.jsx';
 
 export function EffortSelect({ engine = 'codex', value = 'medium', onChange, disabled = false }) {
   const levels = (efforts[engine] || efforts.codex).filter(Boolean);
@@ -30,39 +32,23 @@ export function EffortSelect({ engine = 'codex', value = 'medium', onChange, dis
 }
 
 export default function AiSettings({ projectId, user, onConfigured, onState }) {
-  const [ai, setAi] = useState(null),
-    [message, setMessage] = useState(''),
-    [error, setError] = useState(''),
-    [busy, setBusy] = useState(false);
+  const saved = useApiResource(`projects/${projectId}/ai`);
+  const action = useApiAction();
+  const [draft, setDraft] = useState(null);
+  const ai = draft || saved.data,
+    busy = action.busy,
+    setAi = setDraft;
   const models = aiModels[ai?.engine] || [];
   useEffect(() => {
-    const controller = new AbortController();
-    apiData(`projects/${projectId}/ai`, { signal: controller.signal })
-      .then(data => {
-        setAi(data);
-        onState?.(data);
-      })
-      .catch(cause => {
-        if (!controller.signal.aborted) setError(cause.message);
-      });
-    return () => controller.abort();
-  }, [projectId, onState]);
-  const save = async () => {
-    setBusy(true);
-    setError('');
-    setMessage('');
-    try {
-      const saved = await apiData(`projects/${projectId}/ai`, { method: 'PUT', data: ai });
-      setAi(saved);
-      onState?.(saved);
-      onConfigured?.(saved);
-      setMessage('Moteur et modèle enregistrés pour ce projet.');
-    } catch (cause) {
-      setError(cause.message);
-    } finally {
-      setBusy(false);
-    }
-  };
+    if (saved.data) onState?.(saved.data);
+  }, [saved.data, onState]);
+  const save = () =>
+    action.run(async () => {
+      const next = await apiData(`projects/${projectId}/ai`, { method: 'PUT', data: ai });
+      saved.setData(next);
+      setDraft(null);
+      onConfigured?.(next);
+    }, 'Moteur et modèle enregistrés pour ce projet.');
   return (
     <details className="agent-setup">
       <summary>Moteur et modèle IA</summary>
@@ -114,12 +100,7 @@ export default function AiSettings({ projectId, user, onConfigured, onState }) {
           )}
         </>
       )}
-      {message && <p role="status">{message}</p>}
-      {error && (
-        <p role="alert" className="form-error">
-          {error}
-        </p>
-      )}
+      <FormStatus message={action.message} error={action.error || saved.error} />
     </details>
   );
 }

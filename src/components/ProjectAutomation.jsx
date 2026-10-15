@@ -1,34 +1,29 @@
-import React, { useEffect, useId, useRef, useState } from 'react';
+import React, { useId, useRef, useState } from 'react';
 import GithubSetup from './GithubSetup.jsx';
 import AgentSetup from './AgentSetup.jsx';
-import { apiData } from '../lib/api-client.js';
+import { useApiResource } from '../lib/use-api.js';
 import AiSettings from './AiSettings.jsx';
 import ExecutionSettings from './ExecutionSettings.jsx';
 import DriveArchive from './DriveArchive.jsx';
 import ProjectMembers, { roleLabels } from './ProjectMembers.jsx';
 import MergeApproval from './MergeApproval.jsx';
+import { useProjectAccess } from '../lib/project-access.js';
 
 const engineLabels = { codex: 'Codex', 'claude-code': 'Claude Code' };
 
 // Paramètres d’un projet en onglets ; chaque onglet résume son état. Les panneaux restent montés :
 // un réglage en cours de saisie survit au changement d’onglet.
-export default function ProjectAutomation({ project, user, role, onAiConfigured, onAccessChanged }) {
-  const [configuration, setConfiguration] = useState(null),
-    [error, setError] = useState(''),
-    [tab, setTab] = useState('access'),
+export default function ProjectAutomation({ project, user, onAiConfigured, onAccessChanged }) {
+  const { role, canManage } = useProjectAccess();
+  const github = useApiResource(`projects/${project.id}/github`);
+  const configuration = github.data || null,
+    setConfiguration = github.setData,
+    error = github.error;
+  const [tab, setTab] = useState('access'),
     [ai, setAi] = useState(null),
     [approval, setApproval] = useState(null);
   const id = useId(),
     tabs = useRef({});
-  useEffect(() => {
-    const controller = new AbortController();
-    apiData(`projects/${project.id}/github`, { signal: controller.signal })
-      .then(setConfiguration)
-      .catch(cause => {
-        if (!controller.signal.aborted) setError(cause.message);
-      });
-    return () => controller.abort();
-  }, [project.id]);
   const sections = [
     {
       key: 'access',
@@ -95,8 +90,8 @@ export default function ProjectAutomation({ project, user, role, onAiConfigured,
           {panel(
             'access',
             <>
-              <ProjectMembers projectId={project.id} canManage={role === 'manager'} onChanged={onAccessChanged} />
-              <MergeApproval projectId={project.id} canManage={role === 'manager'} onState={setApproval} />
+              <ProjectMembers projectId={project.id} canManage={canManage} onChanged={onAccessChanged} />
+              <MergeApproval projectId={project.id} canManage={canManage} onState={setApproval} />
             </>,
           )}
           {panel(

@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.45 — 2026-10-15
+<!-- planifikateur:etape-10b-lisibilite-interface -->
+
+- **Lisibilité de l’interface** : Les composants lisent et enregistrent par des hooks communs (useApiResource, useApiAction, FormStatus), les droits sur le projet viennent d’un contexte au lieu de passer de composant en composant, et les styles sont rangés par zone avec des variables de couleur communes, sans règles mortes.
+
 ## 0.1.44 — 2026-10-15
 <!-- planifikateur:etape-10a-lisibilite-serveur -->
 

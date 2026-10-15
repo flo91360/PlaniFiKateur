@@ -1,5 +1,8 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React from 'react';
 import { apiData } from '../lib/api-client.js';
+import { useApiAction, useApiResource } from '../lib/use-api.js';
+import FormStatus from './FormStatus.jsx';
+import { docsLink } from '../lib/links.js';
 
 const labels = {
   archived: 'Archivée',
@@ -14,28 +17,13 @@ const date = value =>
     : '';
 
 export default function DriveArchive({ projectId, user }) {
-  const [status, setStatus] = useState(null),
-    [error, setError] = useState(''),
-    [busy, setBusy] = useState(false);
-  const load = useCallback(signal => apiData(`projects/${projectId}/drive`, { signal }).then(setStatus), [projectId]);
-  useEffect(() => {
-    const controller = new AbortController();
-    load(controller.signal).catch(cause => {
-      if (!controller.signal.aborted) setError(cause.message);
-    });
-    return () => controller.abort();
-  }, [load]);
-  const start = async () => {
-    setBusy(true);
-    setError('');
-    try {
-      setStatus(await apiData(`projects/${projectId}/drive`, { method: 'POST' }));
-    } catch (cause) {
-      setError(cause.message);
-    } finally {
-      setBusy(false);
-    }
-  };
+  const drive = useApiResource(`projects/${projectId}/drive`);
+  const action = useApiAction();
+  const status = drive.data,
+    error = action.error || drive.error,
+    busy = action.busy;
+  const start = () =>
+    action.run(async () => drive.setData(await apiData(`projects/${projectId}/drive`, { method: 'POST' })));
   const problem = status && (status.configurationError || status.error || status.repositoryError);
   return (
     <details className="agent-setup drive-archive">
@@ -84,16 +72,8 @@ export default function DriveArchive({ projectId, user }) {
           {status.running ? 'Archivage en cours…' : 'Vérifier les Releases maintenant'}
         </button>
       )}
-      {error && (
-        <p role="alert" className="form-error">
-          {error}
-        </p>
-      )}
-      <a
-        href="https://github.com/flo91360/PlaniFiKateur/blob/main/docs/google-drive.md"
-        target="_blank"
-        rel="noreferrer"
-      >
+      <FormStatus error={error} />
+      <a href={docsLink('google-drive.md')} target="_blank" rel="noreferrer">
         Guide de l’archivage Google Drive
       </a>
     </details>

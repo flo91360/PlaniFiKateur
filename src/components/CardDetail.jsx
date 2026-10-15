@@ -14,6 +14,7 @@ import { createId as uid } from '../lib/id.js';
 import { parseTags } from '../lib/tags.js';
 import { unfinished, useCardExecutions } from '../lib/use-card-executions.js';
 import ExecutionPanel from './ExecutionPanel.jsx';
+import { useProjectAccess } from '../lib/project-access.js';
 
 function CommentText({ text }) {
   return (
@@ -195,7 +196,6 @@ function CancelConfirm({ onConfirm, onRevert }) {
 
 export default function CardDetail({
   engine = 'codex',
-  role = 'manager',
   attachmentBytes = 0,
   onWorkflowRefresh,
   offline,
@@ -211,8 +211,7 @@ export default function CardDetail({
   onDelete,
 }) {
   // Droits sur le projet : lecture seule pour un lecteur ; seul un responsable confie la carte à l’agent.
-  const readOnly = role === 'viewer',
-    canLaunch = role === 'manager';
+  const { readOnly, canLaunch } = useProjectAccess();
   // Une carte prête attend l’agent avec la demande validée par un responsable : lui seul la modifie.
   const requestLocked = readOnly || (card.status === 'ready' && !canLaunch);
   const tagsText = card.tags.join(', ');

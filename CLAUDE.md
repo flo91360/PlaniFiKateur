@@ -10,15 +10,22 @@ comptes, sauvegardes, Google Drive, multi-projets).
 
 - `src/` : interface React 19 + Vite. `main.jsx` garde l’état et les actions ;
   l’affichage est dans `components/` (tableau, détail de carte, formulaires…).
-  Tout appel à l’API passe par `src/lib/api-client.js`. `src/lib/` est aussi
-  partagé avec le serveur (validation du workspace, infos, releases Drive).
+  Tout appel à l’API passe par `src/lib/api-client.js` ; les composants lisent
+  et enregistrent avec `useApiResource` / `useApiAction` (`src/lib/use-api.js`)
+  et affichent leur retour avec `FormStatus`. Les droits sur le projet affiché
+  viennent de `useProjectAccess()` (`src/lib/project-access.js`). Styles par
+  zone dans `src/styles/`, couleurs communes en variables dans `base.css`.
+  `src/lib/` est aussi partagé avec le serveur (validation du workspace, infos,
+  releases Drive).
 - `server/` : API Node sans framework, montée dans Vite en dev (`vite.config.js`)
   et par `server/index.js` en production. `api.js` assemble la table de routes
   (`router.js`) décrite par domaine dans `server/routes/` ; `auth.js` gère
   sessions, clés et limites. Stockage SQLite via `node:sqlite` (`store.js`),
-  parcours agent dans `workflows.js`.
+  parcours agent dans `workflows.js`, assemblé depuis `server/workflows/`
+  (socle, réglages, agents, exécutions, actions du worker, GitHub).
 - `worker/` : worker IA séparé (Codex ou Claude Agent SDK), avec **son propre
-  `package.json`**. Profils d’exécution par dépôt dans `execution-profile.mjs`.
+  `package.json`**. Profils d’exécution par dépôt dans le registre déclaratif
+  `execution-profile.mjs` (dépôts, version, consignes, environnement).
 - `scripts/` : client agent de référence, sauvegarde/restauration, export HTML,
   Google Drive.
 - `public/openapi.json` : spécification de l’API, servie à `/openapi.json`.

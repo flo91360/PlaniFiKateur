@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Check, FolderKanban, Plus } from 'lucide-react';
 import '@fontsource/dm-sans/latin-400.css';
@@ -35,6 +35,7 @@ import { ListSettings, ProjectDetailsForm } from './components/EditForms.jsx';
 import Sidebar from './components/Sidebar.jsx';
 import SyncAlerts from './components/SyncAlerts.jsx';
 import Topbar from './components/Topbar.jsx';
+import { ProjectAccess, projectAccess } from './lib/project-access.js';
 
 const DEFAULT_AI = { engine: 'codex', model: '' };
 const NO_FILTERS = { query: '', statusFilter: 'all' };
@@ -140,6 +141,7 @@ function App() {
   const role = offlineMode
     ? 'manager'
     : workspace.access?.[project?.id] || (workspace.access && project ? 'manager' : 'viewer');
+  const access = useMemo(() => projectAccess(role), [role]);
   const selected = project?.cards.find(c => c.id === selectedId);
   const cardFollowers = useCardFollowers({ projectId: project?.id, enabled: !offlineMode && ready && !needsLogin });
   const [projectAi, setProjectAi] = useProjectAi(project?.id, ready);
@@ -299,7 +301,6 @@ function App() {
             key={project.id}
             project={project}
             user={workspace.user}
-            role={role}
             onAiConfigured={setProjectAi}
             onAccessChanged={() => workspace.refresh({ whileEditing: true })}
           />
@@ -316,7 +317,6 @@ function App() {
             attachmentBytes={attachmentSize(projects)}
             lists={project?.lists || []}
             listId={modal.listId}
-            canLaunch={role === 'manager'}
             onCancel={close}
             onSubmit={values => {
               ({ project: createProject, list: createList, card: createCard })[kind](values);
@@ -424,143 +424,141 @@ function App() {
     );
   const kind = modalKind(modal);
   return (
-    <div className="app-shell">
-      <Sidebar
-        projects={projects}
-        currentId={project?.id}
-        user={workspace.user}
-        offline={offlineMode}
-        open={sidebar}
-        onClose={() => setSidebar(false)}
-        onChooseProject={chooseProject}
-        onOpenModal={setModal}
-      />
-      <main>
-        <Topbar
-          projectName={project?.name}
-          saveStatus={saveStatus}
+    <ProjectAccess.Provider value={access}>
+      <div className="app-shell">
+        <Sidebar
+          projects={projects}
+          currentId={project?.id}
           user={workspace.user}
           offline={offlineMode}
-          attentionCount={attention.length}
-          unreadCount={notifications.unread}
-          onOpenSidebar={() => setSidebar(true)}
+          open={sidebar}
+          onClose={() => setSidebar(false)}
+          onChooseProject={chooseProject}
           onOpenModal={setModal}
         />
-        <div className="page-content">
-          {!offlineMode && (
-            <SyncAlerts
-              syncError={workspace.syncError}
-              saveStatus={saveStatus}
-              saveError={workspace.saveError}
-              saveNotice={workspace.saveNotice}
-              onDismissNotice={workspace.dismissSaveNotice}
-              onRefresh={workspace.refresh}
-              onExport={() => exportWithAlert(projects)}
-              onReload={() => setModal('reload')}
-              onRetrySave={workspace.retrySave}
-            />
-          )}
-          {project ? (
-            <>
-              <ProjectHeader
-                project={project}
-                offline={offlineMode}
-                canDelete={role === 'manager'}
-                readOnly={role === 'viewer'}
-                onOpenSettings={() => setModal('project-settings')}
-                onEdit={() => setModal('edit-project')}
-                onDelete={() => setModal({ type: 'delete-project', projectId: project.id })}
-              />
-              <Board
-                key={project.id}
-                project={project}
-                readOnly={role === 'viewer'}
-                followers={cardFollowers}
-                work={workStatus}
-                filters={filters}
-                onFilters={setFilters}
-                dragging={dragging}
-                onDragging={setDragging}
-                onMoveCard={(cardId, listId) => {
-                  updateCard(cardId, { listId });
-                  setNotice('Carte déplacée');
-                }}
-                onOpenCard={setSelectedId}
-                onAddCard={listId => setModal({ type: 'card', listId })}
-                onAddList={() => setModal('list')}
-                onEditList={listId => setModal({ type: 'edit-list', listId })}
-              />
-            </>
-          ) : (
-            <div className="empty-workspace">
-              <FolderKanban size={36} />
-              <h1>Aucun projet pour le moment</h1>
-              <p>Créez un projet pour organiser vos idées.</p>
-              <button className="primary-button" onClick={() => setModal('project')}>
-                <Plus size={16} />
-                Créer un projet
-              </button>
-            </div>
-          )}
-        </div>
-      </main>
-      {notice && (
-        <div className="toast" role="status">
-          <Check size={16} />
-          {notice}
-        </div>
-      )}
-      {offlineMode && saveStatus === 'error' && (
-        <div className="storage-warning" role="alert">
-          Les modifications restent en mémoire, mais ne pourront pas être conservées après fermeture. Vérifiez les
-          autorisations de stockage de votre navigateur.
-        </div>
-      )}
-      {modal && (
-        <Dialog wide={kind === 'card'} title={dialogTitles[kind] || dialogTitles.info} onClose={() => setModal(null)}>
-          <ErrorBoundary resetKey={kind}>{renderDialog(kind)}</ErrorBoundary>
-        </Dialog>
-      )}
-      {selected && (
-        <ErrorBoundary
-          resetKey={selected.id}
-          fallback={() => (
-            <Dialog title="Détail de la carte" onClose={() => setSelectedId(null)}>
-              <DisplayError message="Le détail de cette carte n’a pas pu s’afficher.">
-                <button className="secondary-button" onClick={() => setSelectedId(null)}>
-                  Fermer
-                </button>
-              </DisplayError>
-            </Dialog>
-          )}
-        >
-          <CardDetail
-            engine={projectAi.engine}
-            role={role}
-            attachmentBytes={attachmentSize(projects, selected.id)}
-            onWorkflowRefresh={() => workspace.refresh({ whileEditing: true })}
-            offline={offlineMode}
-            projectId={project.id}
-            user={workspace.user}
+        <main>
+          <Topbar
+            projectName={project?.name}
             saveStatus={saveStatus}
-            card={selected}
-            lists={project.lists}
-            position={(() => {
-              const siblings = project.cards.filter(c => c.listId === selected.listId);
-              return { index: siblings.indexOf(selected), count: siblings.length };
-            })()}
-            onReorder={delta => reorderCard(selected.id, delta)}
-            onClose={() => setSelectedId(null)}
-            onUpdate={patch => updateCard(selected.id, patch)}
-            onDelete={() => {
-              updateProject(p => ({ ...p, cards: p.cards.filter(c => c.id !== selected.id) }));
-              setSelectedId(null);
-              setNotice('Carte supprimée');
-            }}
+            user={workspace.user}
+            offline={offlineMode}
+            attentionCount={attention.length}
+            unreadCount={notifications.unread}
+            onOpenSidebar={() => setSidebar(true)}
+            onOpenModal={setModal}
           />
-        </ErrorBoundary>
-      )}
-    </div>
+          <div className="page-content">
+            {!offlineMode && (
+              <SyncAlerts
+                syncError={workspace.syncError}
+                saveStatus={saveStatus}
+                saveError={workspace.saveError}
+                saveNotice={workspace.saveNotice}
+                onDismissNotice={workspace.dismissSaveNotice}
+                onRefresh={workspace.refresh}
+                onExport={() => exportWithAlert(projects)}
+                onReload={() => setModal('reload')}
+                onRetrySave={workspace.retrySave}
+              />
+            )}
+            {project ? (
+              <>
+                <ProjectHeader
+                  project={project}
+                  offline={offlineMode}
+                  onOpenSettings={() => setModal('project-settings')}
+                  onEdit={() => setModal('edit-project')}
+                  onDelete={() => setModal({ type: 'delete-project', projectId: project.id })}
+                />
+                <Board
+                  key={project.id}
+                  project={project}
+                  followers={cardFollowers}
+                  work={workStatus}
+                  filters={filters}
+                  onFilters={setFilters}
+                  dragging={dragging}
+                  onDragging={setDragging}
+                  onMoveCard={(cardId, listId) => {
+                    updateCard(cardId, { listId });
+                    setNotice('Carte déplacée');
+                  }}
+                  onOpenCard={setSelectedId}
+                  onAddCard={listId => setModal({ type: 'card', listId })}
+                  onAddList={() => setModal('list')}
+                  onEditList={listId => setModal({ type: 'edit-list', listId })}
+                />
+              </>
+            ) : (
+              <div className="empty-workspace">
+                <FolderKanban size={36} />
+                <h1>Aucun projet pour le moment</h1>
+                <p>Créez un projet pour organiser vos idées.</p>
+                <button className="primary-button" onClick={() => setModal('project')}>
+                  <Plus size={16} />
+                  Créer un projet
+                </button>
+              </div>
+            )}
+          </div>
+        </main>
+        {notice && (
+          <div className="toast" role="status">
+            <Check size={16} />
+            {notice}
+          </div>
+        )}
+        {offlineMode && saveStatus === 'error' && (
+          <div className="storage-warning" role="alert">
+            Les modifications restent en mémoire, mais ne pourront pas être conservées après fermeture. Vérifiez les
+            autorisations de stockage de votre navigateur.
+          </div>
+        )}
+        {modal && (
+          <Dialog wide={kind === 'card'} title={dialogTitles[kind] || dialogTitles.info} onClose={() => setModal(null)}>
+            <ErrorBoundary resetKey={kind}>{renderDialog(kind)}</ErrorBoundary>
+          </Dialog>
+        )}
+        {selected && (
+          <ErrorBoundary
+            resetKey={selected.id}
+            fallback={() => (
+              <Dialog title="Détail de la carte" onClose={() => setSelectedId(null)}>
+                <DisplayError message="Le détail de cette carte n’a pas pu s’afficher.">
+                  <button className="secondary-button" onClick={() => setSelectedId(null)}>
+                    Fermer
+                  </button>
+                </DisplayError>
+              </Dialog>
+            )}
+          >
+            <CardDetail
+              engine={projectAi.engine}
+              attachmentBytes={attachmentSize(projects, selected.id)}
+              onWorkflowRefresh={() => workspace.refresh({ whileEditing: true })}
+              offline={offlineMode}
+              projectId={project.id}
+              user={workspace.user}
+              saveStatus={saveStatus}
+              card={selected}
+              lists={project.lists}
+              position={(() => {
+                const siblings = project.cards.filter(c => c.listId === selected.listId);
+                return { index: siblings.indexOf(selected), count: siblings.length };
+              })()}
+              onReorder={delta => reorderCard(selected.id, delta)}
+              onClose={() => setSelectedId(null)}
+              onUpdate={patch => updateCard(selected.id, patch)}
+              onDelete={() => {
+                updateProject(p => ({ ...p, cards: p.cards.filter(c => c.id !== selected.id) }));
+                setSelectedId(null);
+                setNotice('Carte supprimée');
+              }}
+            />
+          </ErrorBoundary>
+        )}
+      </div>
+    </ProjectAccess.Provider>
   );
 }
 

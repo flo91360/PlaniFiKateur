@@ -18,6 +18,7 @@ import Status, { StatusOptions, priorities } from './Status.jsx';
 import { cardLinks } from '../lib/infos.js';
 import { workBadge } from '../lib/use-work-status.js';
 import { version as appVersion } from '../../package.json';
+import { useProjectAccess } from '../lib/project-access.js';
 
 export const cardMatches = (card, { query, statusFilter }) =>
   (statusFilter === 'all' || card.status === statusFilter) &&
@@ -150,8 +151,8 @@ export default function Board({
   onAddCard,
   onAddList,
   onEditList = () => {},
-  readOnly = false,
 }) {
+  const { readOnly } = useProjectAccess();
   const [dropList, setDropList] = useState(null);
   const filtering = filters.query || filters.statusFilter !== 'all';
   const visible = project.cards.filter(card => cardMatches(card, filters));
