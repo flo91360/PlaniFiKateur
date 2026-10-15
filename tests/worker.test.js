@@ -880,6 +880,31 @@ test('a pending PR is revised against new main and only its new tested SHA can m
     f.calls.some(c => c.command.includes('--force') || c.command.includes('--force-with-lease')),
     false,
   );
+  // Le résultat IA publié est repris : seuls la version et les tests sont refaits sur main à jour.
+  assert.equal(f.modelCalls.length, 1);
+  assert.equal(f.calls.filter(c => c.command[1] === '--test').length, 2);
+  assert.ok(f.current().updates.some(u => /main a avancé.*sans nouvel appel au modèle/.test(u.text)));
+});
+
+test('when updating a PR against new main breaks the tests, the model fixes them with the failure', async t => {
+  let runs = 0;
+  const f = await fixture(t, {
+    execute: async command => {
+      if (command[1] === '--test' && ++runs === 2) return { code: 1, output: 'AssertionError: main incompatible' };
+    },
+  });
+  f.prepare();
+  await f.worker.tick();
+  await writeFile(join(f.source, 'readme.md'), 'Another change');
+  await f.git(['add', '.']);
+  await f.git(['commit', '-m', 'Advance main']);
+  await f.git(['push', 'origin', 'main']);
+  f.setBehind(true);
+  const updated = await f.worker.tick();
+  f.setBehind(false);
+  assert.equal(updated.status, 'merging', f.logs.join('\n'));
+  assert.equal(f.modelCalls.length, 2);
+  assert.match(f.modelCalls[1].feedback, /main incompatible/);
 });
 
 const answer = f => {
@@ -976,6 +1001,7 @@ test('a changelog conflict with main is resolved by the worker, which rewrites i
   assert.equal(changelog.split(`<!-- planifikateur:${run.id} -->`).length, 2);
   assert.match(changelog, new RegExp(`## 1\\.0\\.2 — .+\\n<!-- planifikateur:${run.id} -->`));
   assert.ok(f.modelCalls.every(call => !/conflit/i.test(call.feedback || '')));
+  assert.equal(f.modelCalls.length, 1);
 });
 
 test('a checkout stuck in an operation the worker cannot resume is recloned from GitHub', async t => {
@@ -1665,4 +1691,33 @@ test('the worker runs its installed preset commands, whatever commands the site 
   assert.equal(profile.workflow.file, 'ci.yml');
   assert.ok(!JSON.stringify(profile).includes('evil'));
   assert.throws(() => installedProfile({ preset: 'inconnu' }), /Profil/);
+});
+
+test('a corrupt local state file is set aside without blocking the other tasks', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'planifikateur-state-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const logs = [];
+  const state = createState(root, { log: message => logs.push(message) });
+  await state.put({ id: 'healthy-job', phase: 'merging' });
+  await writeFile(join(root, 'state', 'broken-job.json'), '{"id":"broken-job","phase":');
+  assert.deepEqual(await state.all(), [{ id: 'healthy-job', phase: 'merging' }]);
+  assert.equal(await state.get('broken-job'), null);
+  assert.equal(await readFile(join(root, 'state', 'broken-job.json.corrupt'), 'utf8'), '{"id":"broken-job","phase":');
+  assert.ok(logs.some(line => line.includes('broken-job : état local illisible')));
+});
+
+test('a task interrupted on the site is no longer running locally, so a worker update is not held back', async t => {
+  const f = await fixture(t, {
+    model: async () => {
+      throw new Error('Modèle indisponible');
+    },
+  });
+  assert.equal((await f.worker.processTask(f.prepare())).status, 'interrupted');
+  assert.equal(f.current().state, 'interrupted');
+  const job = await f.state.get(f.current().id);
+  assert.equal(job.phase, 'interrupted');
+  // Worker arrêté avant d’avoir enregistré l’arrêt : l’état local est resté « running ».
+  await f.state.put({ ...job, phase: 'running' });
+  await f.worker.tick();
+  assert.equal((await f.state.get(job.id)).phase, 'interrupted');
 });

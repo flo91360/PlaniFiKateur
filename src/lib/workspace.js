@@ -2,13 +2,19 @@ export const STATUSES = ['draft', 'ready', 'progress', 'clarify', 'review', 'flo
 import { efforts } from '../../worker/ai-settings.mjs';
 import { validateDriveRelease } from './drive-release.js';
 const priorities = ['low', 'normal', 'high'];
+// Pièces jointes : par fichier, par carte et par projet (un projet chargé ne bloque pas les autres).
+export const ATTACHMENT_LIMITS = Object.freeze({
+  files: 10,
+  file: 1024 * 1024,
+  card: 2 * 1024 * 1024,
+  project: 20 * 1024 * 1024,
+});
 
 // `attachmentData: false` accepte les pièces jointes sans contenu : c’est ainsi que le serveur
 // envoie le tableau au navigateur (le contenu se télécharge par sa route).
 export function validateWorkspace(projects, { attachmentData = true } = {}) {
   if (!Array.isArray(projects)) throw new Error('Une liste de projets est requise.');
   const ids = new Set();
-  let attachmentBytes = 0;
   const fail = message => {
     throw new Error(message);
   };
@@ -57,7 +63,9 @@ export function validateWorkspace(projects, { attachmentData = true } = {}) {
       return { id: id(l.id, `${path}.lists.id`), name: text(l.name, `${path}.lists.name`, 140, true), color: l.color };
     });
     const listIds = new Set(lists.map(l => l.id));
+    let projectBytes = 0;
     const cards = array(p.cards, `${path}.cards`, 5000).map(c => {
+      let cardBytes = 0;
       object(c, `${path}.cards`);
       if (!listIds.has(c.listId)) fail(`${path}.cards.listId : liste inexistante.`);
       if (!STATUSES.includes(c.status) || !priorities.includes(c.priority))
@@ -80,12 +88,12 @@ export function validateWorkspace(projects, { attachmentData = true } = {}) {
         ...(c.downloads
           ? { downloads: validateDriveRelease(c.downloads, c.downloads.repository, c.downloads.version) }
           : {}),
-        attachments: array(c.attachments ?? [], 'attachments', 10).map(a => {
+        attachments: array(c.attachments ?? [], 'attachments', ATTACHMENT_LIMITS.files).map(a => {
           object(a, 'attachment');
           const attachmentId = id(a.id, 'attachment.id');
           const name = text(a.name, 'attachment.name', 255, true);
           if (/[\x00-\x1f\x7f/\\]/.test(name)) fail('Nom de pièce jointe invalide.');
-          if (!Number.isInteger(a.size) || a.size < 1 || a.size > 1024 * 1024)
+          if (!Number.isInteger(a.size) || a.size < 1 || a.size > ATTACHMENT_LIMITS.file)
             fail('Chaque fichier doit peser entre 1 octet et 1 Mo.');
           const data =
             !attachmentData && a.data === undefined ? undefined : text(a.data, 'attachment.data', 1398104, true);
@@ -96,8 +104,11 @@ export function validateWorkspace(projects, { attachmentData = true } = {}) {
               (data.length / 4) * 3 - (data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0) !== a.size)
           )
             fail('Contenu de pièce jointe invalide.');
-          attachmentBytes += a.size;
-          if (attachmentBytes > 2 * 1024 * 1024) fail('Les pièces jointes de tous les projets dépassent 2 Mo.');
+          cardBytes += a.size;
+          projectBytes += a.size;
+          if (cardBytes > ATTACHMENT_LIMITS.card) fail('Les pièces jointes d’une carte ne peuvent dépasser 2 Mo.');
+          if (projectBytes > ATTACHMENT_LIMITS.project)
+            fail('Les pièces jointes d’un projet ne peuvent dépasser 20 Mo.');
           const type = text(a.type, 'attachment.type', 100, true);
           if (!/^[a-zA-Z0-9.+-]+\/[a-zA-Z0-9.+-]+$/.test(type)) fail('Type de pièce jointe invalide.');
           return { id: attachmentId, name, type, size: a.size, ...(data === undefined ? {} : { data }) };

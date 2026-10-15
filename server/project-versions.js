@@ -55,7 +55,7 @@ export function releaseVersion(data) {
 
 export function createVersionSync(
   store,
-  { transport = fetch, intervalMs = 15 * 60000, token = '', start = true } = {},
+  { transport = fetch, intervalMs = 15 * 60000, token = '', start = true, onError = console.error } = {},
 ) {
   let running = false,
     closed = false;
@@ -151,6 +151,10 @@ export function createVersionSync(
           // Retain the last known version; a GitHub failure must not block the site.
         }
       }
+    } catch (error) {
+      // Lancé par un minuteur : une erreur locale (base indisponible…) est signalée sans arrêter
+      // le serveur, et la synchronisation reprend au tour suivant.
+      onError(`PlaniFiKateur : actualisation des versions GitHub impossible (${error.message}).`);
     } finally {
       running = false;
     }

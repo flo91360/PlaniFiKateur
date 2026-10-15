@@ -6,13 +6,15 @@ import { commandEnvironment } from './commands.mjs';
 import { parseModelResult } from './model-result.mjs';
 import { presetRules } from './execution-profile.mjs';
 
-export async function codexSessionModel(home, threadId) {
-  if (!/^[a-zA-Z0-9_-]{1,128}$/.test(threadId || '')) return null;
+// Lecture du journal de session Codex (CODEX_HOME/sessions) : modèle réellement utilisé et
+// consommation cumulée de la conversation (dernier « token_count »). Le texte n’en sort jamais.
+export async function codexSession(home, threadId) {
+  const session = { model: null, usage: null };
+  if (!/^[a-zA-Z0-9_-]{1,128}$/.test(threadId || '')) return session;
   try {
     const directory = join(home, 'sessions');
     const filename = (await readdir(directory, { recursive: true })).find(file => file.endsWith(`${threadId}.jsonl`));
-    if (!filename) return null;
-    let model = null;
+    if (!filename) return session;
     for await (const line of createInterface({
       input: createReadStream(join(directory, filename)),
       crlfDelay: Infinity,
@@ -20,14 +22,22 @@ export async function codexSessionModel(home, threadId) {
       try {
         const entry = JSON.parse(line);
         if (['turn_context', 'session_meta'].includes(entry.type) && typeof entry.payload?.model === 'string')
-          model = entry.payload.model;
+          session.model = entry.payload.model;
+        const total =
+          entry.type === 'event_msg' && entry.payload?.type === 'token_count' && entry.payload.info?.total_token_usage;
+        if (total && typeof total === 'object')
+          session.usage = {
+            inputTokens: Number(total.input_tokens) || 0,
+            cachedInputTokens: Number(total.cached_input_tokens) || 0,
+            outputTokens: Number(total.output_tokens) || 0,
+          };
       } catch {}
     }
-    return model;
-  } catch {
-    return null;
-  }
+  } catch {}
+  return session;
 }
+
+export const codexSessionModel = async (home, threadId) => (await codexSession(home, threadId)).model;
 
 export const resultSchema = {
   type: 'object',
@@ -120,30 +130,48 @@ export function createCodexRunner(config, dependencies = {}) {
       const input = images.length
         ? [{ type: 'text', text: prompt }, ...images.map(file => ({ type: 'local_image', path: file.path }))]
         : prompt;
-      const { events } = await thread.runStreamed(input, { outputSchema: resultSchema, signal });
       let response = '',
         completed = false,
+        reported = false,
         threadId = job.threadId;
-      for await (const event of events) {
-        if (event.type === 'thread.started') {
-          threadId = event.thread_id;
-          await onThread(event.thread_id);
+      // Consommation de la conversation avant ce tour : un tour en échec ou interrompu ne rapporte
+      // pas sa consommation, qui se déduit alors du journal de session.
+      const before = threadId ? (await codexSession(config.codexHome, threadId)).usage : null;
+      try {
+        const { events } = await thread.runStreamed(input, { outputSchema: resultSchema, signal });
+        for await (const event of events) {
+          if (event.type === 'thread.started') {
+            threadId = event.thread_id;
+            await onThread(event.thread_id);
+          }
+          if (event.type === 'item.completed' && event.item.type === 'agent_message') response = event.item.text;
+          if (event.type === 'turn.failed' || event.type === 'error')
+            throw new Error('L’exécution Codex a échoué. Vérifiez sa connexion et les logs privés du service.');
+          if (event.type === 'turn.completed') {
+            completed = true;
+            if (event.usage) {
+              reported = true;
+              onUsage?.({
+                inputTokens: event.usage.input_tokens,
+                cachedInputTokens: event.usage.cached_input_tokens,
+                outputTokens: event.usage.output_tokens,
+              });
+            }
+          }
         }
-        if (event.type === 'item.completed' && event.item.type === 'agent_message') response = event.item.text;
-        if (event.type === 'turn.failed' || event.type === 'error')
-          throw new Error('L’exécution Codex a échoué. Vérifiez sa connexion et les logs privés du service.');
-        if (event.type === 'turn.completed') {
-          completed = true;
-          if (event.usage)
-            onUsage?.({
-              inputTokens: event.usage.input_tokens,
-              cachedInputTokens: event.usage.cached_input_tokens,
-              outputTokens: event.usage.output_tokens,
-            });
+      } finally {
+        if (!reported && threadId) {
+          const after = (await codexSession(config.codexHome, threadId)).usage;
+          if (after) {
+            const spent = Object.fromEntries(
+              Object.entries(after).map(([field, value]) => [field, Math.max(0, value - (before?.[field] || 0))]),
+            );
+            if (Object.values(spent).some(Boolean)) onUsage?.(spent);
+          }
         }
       }
       if (!completed) throw new Error('Codex s’est arrêté sans résultat.');
-      const effective = await codexSessionModel(config.codexHome, threadId);
+      const { model: effective } = await codexSession(config.codexHome, threadId);
       if (effective || model)
         await onRuntime?.({ engine: 'codex', model: effective || model, effort: ai.effort || '' });
       return parseModelResult(response);

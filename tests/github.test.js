@@ -639,6 +639,24 @@ test('an inaccessible pull request is reported once and does not stop the catch-
   assert.equal((await patient.refresh()).checked, 0);
 });
 
+test('a local failure during the GitHub catch-up is reported instead of crashing the server', async () => {
+  const { createGithubSync } = await import('../server/github-sync.js');
+  const errors = [];
+  const broken = {
+    workflows: {
+      mergingPullRequests() {
+        throw new Error('base indisponible');
+      },
+    },
+  };
+  const sync = createGithubSync(broken, { start: false, onError: message => errors.push(message) });
+  assert.deepEqual(await sync.refresh(), { checked: 0 });
+  assert.match(errors[0], /vérification des PR GitHub impossible \(base indisponible\)/);
+  // Le tour suivant peut reprendre : le verrou d’exécution a été libéré.
+  await sync.refresh();
+  assert.equal(errors.length, 2);
+});
+
 test('the worker reads failed job logs from the temporary link without sending its token there', async () => {
   const calls = [];
   const client = createGithubClient('worker-token', async (url, options = {}) => {

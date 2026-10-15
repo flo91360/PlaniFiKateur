@@ -1,4 +1,4 @@
-# Parcours agent par projet — v0.1.49
+# Parcours agent par projet — v0.1.50
 
 Un seul agent actif, sans délégation. Le site pilote les demandes et confirme la fusion GitHub ;
 l’agent s’exécute dans un service externe. Le [worker Codex](worker.md) fournit ce
@@ -51,7 +51,7 @@ demande confirmation à sa fermeture (aussitôt pour une pièce jointe ou l’ef
 avec la possibilité de rétablir la demande. La confirmation de suppression de la
 carte signale aussi l’annulation.
 Les transitions humaines exigent une version à jour pour éviter deux validations
-contradictoires. Depuis la v0.1.49, les droits par projet s’appliquent : confier une carte à
+contradictoires. Depuis la v0.1.50, les droits par projet s’appliquent : confier une carte à
 l’agent (statut « Prête à démarrer » ou « Confier à l’agent »), valider son résultat et demander
 des corrections sont réservés aux **responsables** du projet et aux administrateurs ; les
 contributeurs peuvent répondre à ses questions et annuler une exécution. Voir
@@ -104,7 +104,7 @@ Les actions d’agent :
 | `submit` | `{version, leaseToken, summary, checks, links: [], pullRequest: {url, headSha}, reviewRequired?}` | Soumettre une PR pour fusion automatique |
 | `interrupt` | `{version, leaseToken, message}` | Signaler un problème et rendre la tâche reprenable |
 
-Depuis la v0.1.49, `progress`, `question`, `submit` et `interrupt` acceptent aussi `usage` : la consommation cumulée du modèle depuis la réservation (`inputTokens`, dont `cachedInputTokens`, `outputTokens`, `costUsd` si le moteur le fournit, `durationMs`). Chaque réservation ouvre une tentative dans `attempts` (début, fin, consommation) ; la lecture des exécutions d’une carte ajoute `usage`, leur total (tentatives, tokens, coût connu, durée).
+Depuis la v0.1.50, `progress`, `question`, `submit` et `interrupt` acceptent aussi `usage` : la consommation cumulée du modèle depuis la réservation (`inputTokens`, dont `cachedInputTokens`, `outputTokens`, `costUsd` si le moteur le fournit, `durationMs`). Chaque réservation ouvre une tentative dans `attempts` (début, fin, consommation) ; la lecture des exécutions d’une carte ajoute `usage`, leur total (tentatives, tokens, coût connu, durée).
 
 `reviewRequired` liste les contrôles de la fusion que la PR modifie : workflows GitHub, scripts
 npm, fichiers de configuration des tests déclarés par le profil (`reviewPaths`). Le worker

@@ -351,3 +351,16 @@ test('Changelog recovers historical release notes, updates without duplicates an
     store.read().projects.find(p => p.id === first.id),
   );
 });
+
+test('a local failure while refreshing versions is reported instead of crashing the server', async () => {
+  const errors = [];
+  const broken = {
+    refreshInfos() {
+      throw new Error('base indisponible');
+    },
+  };
+  const sync = createVersionSync(broken, { start: false, onError: message => errors.push(message) });
+  await sync.refresh();
+  sync.close();
+  assert.match(errors[0], /versions GitHub impossible \(base indisponible\)/);
+});

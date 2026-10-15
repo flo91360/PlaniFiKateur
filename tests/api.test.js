@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { createStore } from '../server/store.js';
 import { createAppServer } from '../server/index.js';
 import { readConfig } from '../server/config.js';
-import { clientAddress } from '../server/auth.js';
+import { clientAddress, createAuth } from '../server/auth.js';
 import { seedAccount, testEmail, testPassword, loginRequest } from './helpers/accounts.mjs';
 
 async function fixture(t, config = {}, filename = ':memory:') {
@@ -251,7 +251,7 @@ test('login attempts are rate limited per address and per account', async t => {
       headers: { 'Content-Type': 'application/json', ...headers },
       body: JSON.stringify({ email, password: 'wrong' }),
     });
-  // Un même compte : 10 essais par minute, quelle que soit l’adresse.
+  // Un même compte depuis une même adresse : 10 essais par minute.
   for (let i = 0; i < 10; i++) assert.equal((await attempt('owner@example.test')).status, 401);
   assert.equal((await attempt('owner@example.test')).status, 429);
   // Une même adresse : 20 essais par minute, tous comptes confondus.
@@ -275,6 +275,18 @@ test('behind a trusted proxy, each client address has its own login limit', () =
   assert.equal(readConfig({}).trustProxy, 0);
   assert.equal(readConfig({ PLANIFIKATEUR_TRUST_PROXY: '2' }).trustProxy, 2);
   assert.throws(() => readConfig({ PLANIFIKATEUR_TRUST_PROXY: 'oui' }), /TRUST_PROXY/);
+});
+
+test('repeated attempts on an account from one address do not lock out its owner elsewhere', () => {
+  const auth = createAuth({}, { trustProxy: 1 });
+  const from = address => ({ headers: { 'x-forwarded-for': address }, socket: { remoteAddress: '10.0.0.1' } });
+  for (let i = 0; i < 10; i++) auth.loginLimit(from('198.51.100.7'), 'owner@example.test');
+  assert.throws(() => auth.loginLimit(from('198.51.100.7'), 'owner@example.test'), { code: 'too_many_attempts' });
+  // Le titulaire, depuis son adresse, peut toujours se connecter.
+  auth.loginLimit(from('203.0.113.4'), 'owner@example.test');
+  // Une attaque répartie sur de nombreuses adresses reste plafonnée pour ce compte.
+  for (let i = 0; i < 89; i++) auth.loginLimit(from(`192.0.2.${i}`), 'owner@example.test');
+  assert.throws(() => auth.loginLimit(from('192.0.2.200'), 'owner@example.test'), { code: 'too_many_attempts' });
 });
 
 test('public binding requires separate owner and agent keys', () => {

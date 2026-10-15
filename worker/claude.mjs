@@ -5,6 +5,14 @@ import { commandEnvironment } from './commands.mjs';
 import { resultSchema, taskPrompt, prepareAttachments } from './codex.mjs';
 import { parseModelResult } from './model-result.mjs';
 
+// Consommation d’un appel au modèle (message de l’assistant ou résultat final) au format du site.
+const tokens = usage => ({
+  inputTokens:
+    (usage.input_tokens || 0) + (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0),
+  cachedInputTokens: usage.cache_read_input_tokens || 0,
+  outputTokens: usage.output_tokens || 0,
+});
+
 export function createClaudeRunner(config, dependencies = {}) {
   return {
     async run({ run, job, cwd, signal, onThread, onRuntime, onUsage, feedback, environment }) {
@@ -89,24 +97,22 @@ export function createClaudeRunner(config, dependencies = {}) {
           return { behavior: 'allow', updatedInput: input };
         },
       };
+      // Sans résultat final (question, échec, arrêt), la consommation est celle des messages déjà
+      // reçus, comptés une fois par message ; le coût reste alors inconnu.
+      const messages = new Map(),
+        started = Date.now();
+      let reported = false;
       try {
         for await (const event of query({ prompt: taskPrompt(run, feedback, attachments), options })) {
+          if (event.type === 'assistant' && event.message?.id && event.message.usage)
+            messages.set(event.message.id, event.message.usage);
           if (event.type === 'system' && event.subtype === 'init') {
             await onThread(event.session_id);
             if (event.model) await onRuntime?.({ engine: 'claude-code', model: event.model, effort: ai.effort || '' });
           }
           if (event.type === 'result' && event.usage) {
-            const usage = event.usage;
-            onUsage?.({
-              inputTokens:
-                (usage.input_tokens || 0) +
-                (usage.cache_read_input_tokens || 0) +
-                (usage.cache_creation_input_tokens || 0),
-              cachedInputTokens: usage.cache_read_input_tokens || 0,
-              outputTokens: usage.output_tokens || 0,
-              costUsd: event.total_cost_usd,
-              durationMs: event.duration_ms,
-            });
+            reported = true;
+            onUsage?.({ ...tokens(event.usage), costUsd: event.total_cost_usd, durationMs: event.duration_ms });
           }
           if (event.type === 'result') {
             if (event.subtype !== 'success' || event.is_error)
@@ -124,6 +130,12 @@ export function createClaudeRunner(config, dependencies = {}) {
         throw error;
       } finally {
         signal?.removeEventListener('abort', abort);
+        if (!reported && messages.size) {
+          const spent = { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0, durationMs: Date.now() - started };
+          for (const usage of messages.values())
+            for (const [field, value] of Object.entries(tokens(usage))) spent[field] += value;
+          onUsage?.(spent);
+        }
       }
     },
   };

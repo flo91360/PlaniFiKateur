@@ -51,9 +51,16 @@ export function createAuth(store, { ownerToken = '', readToken = '', secureCooki
     return user;
   };
   const loginLimit = createLimiter(20, 'too_many_attempts', 'Trop de tentatives. Réessayez dans une minute.');
-  // Un même compte visé depuis plusieurs adresses reste limité.
+  // Tentatives sur un compte, comptées par adresse : un tiers ne peut pas bloquer la connexion
+  // de son titulaire depuis une autre adresse.
   const accountLimit = createLimiter(
     10,
+    'too_many_attempts',
+    'Trop de tentatives pour ce compte. Réessayez dans une minute.',
+  );
+  // Plafond plus large pour un même compte, toutes adresses confondues (attaque répartie).
+  const accountWideLimit = createLimiter(
+    100,
     'too_many_attempts',
     'Trop de tentatives pour ce compte. Réessayez dans une minute.',
   );
@@ -90,8 +97,11 @@ export function createAuth(store, { ownerToken = '', readToken = '', secureCooki
       return agent;
     },
     loginLimit(req, email = '') {
-      loginLimit(clientAddress(req, trustProxy));
-      if (email) accountLimit(email);
+      const address = clientAddress(req, trustProxy);
+      loginLimit(address);
+      if (!email) return;
+      accountLimit(JSON.stringify([address, email]));
+      accountWideLimit(email);
     },
     // Chaque reformulation consomme le quota de l’abonnement Claude : limite par compte.
     refineLimit: createLimiter(
