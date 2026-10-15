@@ -23,7 +23,8 @@ comptes, sauvegardes, Google Drive, multi-projets).
   Google Drive.
 - `public/openapi.json` : spécification de l’API, servie à `/openapi.json`.
 - `tests/*.test.js` : tests `node:test` (serveur et worker) ;
-  `tests/browser/` : Playwright, projets ordinateur et mobile.
+  `tests/browser/` : Playwright, projet ordinateur ; le projet mobile ne rejoue
+  que les tests marqués `@mobile`.
 
 ## Commandes
 

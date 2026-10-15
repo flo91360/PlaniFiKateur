@@ -15,6 +15,8 @@ export default defineConfig({
   },
   projects: [
     { name: 'desktop', use: { viewport: { width: 1440, height: 1000 } } },
-    { name: 'mobile', use: { viewport: { width: 390, height: 844 } } },
+    // Le mobile ne rejoue que les parcours d’affichage marqués @mobile (menu des projets, création,
+    // rôles) : le reste de la suite vérifie une logique indépendante de la largeur d’écran.
+    { name: 'mobile', grep: /@mobile/, use: { viewport: { width: 390, height: 844 } } },
   ],
 });
