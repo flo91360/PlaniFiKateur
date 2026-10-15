@@ -8,7 +8,8 @@ export const unfinished = run => !!run && !['done', 'cancelled'].includes(run.st
 // sinon toutes les 5 secondes.
 // `current` est l’exécution en cours, ou la dernière terminée. `managed` verrouille le statut
 // et l’effort tant qu’une exécution est prise en charge ; `ai` décrit l’IA réellement utilisée.
-// `onRefresh` est appelé après chaque lecture réussie pour actualiser le tableau.
+// `onRefresh` est appelé après chaque lecture réussie pour actualiser le tableau ; `loaded` indique
+// si une première lecture a abouti.
 export function useCardExecutions({ projectId, cardId, offline, onRefresh }) {
   const [runs, setRuns] = useState(null);
   const refresh = useRef(onRefresh);
@@ -42,6 +43,8 @@ export function useCardExecutions({ projectId, cardId, offline, onRefresh }) {
   }, [offline, load, live]);
   const current = runs ? runs.find(unfinished) || runs[0] || null : null;
   return {
+    // Faux tant que la première lecture n’a pas abouti : rien n’est encore connu de la carte.
+    loaded: offline || runs !== null,
     runs: runs || [],
     current,
     managed: runs === null ? !offline : runs.some(run => unfinished(run) && (run.state !== 'ready' || !!run.agent)),

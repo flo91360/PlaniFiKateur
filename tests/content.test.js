@@ -214,3 +214,39 @@ test('projects, lists, cards and comments have their own routes', async t => {
   assert.equal((await call('DELETE', `/projects/${project.id}`)).status, 404);
   assert.equal((await call('PUT', '/projects', {})).status, 405);
 });
+
+test('with partial, a refused change is reported and the others are saved', async t => {
+  const { store, call, project, card } = await fixture(t);
+  // m1 n’a pas d’auteur connu : personne ne peut le modifier (403 comment_forbidden).
+  const events = [];
+  store.subscribe(event => events.push(event));
+  const changes = [
+    { type: 'card.update', projectId: project.id, cardId: card.id, fields: { title: 'Titre gardé' } },
+    { type: 'comment.update', projectId: project.id, cardId: card.id, commentId: 'm1', text: 'Réécrit' },
+    { type: 'card.update', projectId: project.id, cardId: card.id, fields: { title: '' } },
+    { type: 'card.delete', projectId: project.id, cardId: 'absente' },
+    { type: 'tag.add', projectId: project.id, cardId: card.id, tag: 'Gardée' },
+  ];
+  const without = await call('PATCH', '/workspace', { changes });
+  assert.equal(without.status, 403, 'Sans partial, tout le lot est refusé.');
+  assert.equal(store.read().projects[0].cards.find(item => item.id === card.id).title, card.title);
+  const response = await call('PATCH', '/workspace', { changes, partial: true });
+  assert.equal(response.status, 200);
+  const saved = response.body.data.projects[0].cards.find(item => item.id === card.id);
+  assert.equal(saved.title, 'Titre gardé');
+  assert.ok(saved.tags.includes('Gardée'));
+  assert.deepEqual(
+    response.body.data.rejected.map(item => [item.index, item.code]),
+    [
+      [1, 'comment_forbidden'],
+      [2, 'invalid_workspace'],
+    ],
+  );
+  assert.deepEqual(
+    response.body.data.skipped.map(item => [item.index, item.reason]),
+    [[3, 'missing']],
+  );
+  assert.notEqual(saved.comments.find(item => item.id === 'm1').text, 'Réécrit');
+  assert.ok(events.some(event => event.type === 'workspace'));
+  assert.equal((await call('PATCH', '/workspace', { changes: [], partial: 'oui' })).status, 400);
+});

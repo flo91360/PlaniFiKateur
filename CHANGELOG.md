@@ -2,10 +2,20 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
-## 0.1.33 — 2026-10-14
-<!-- planifikateur:e036cf0d-da0b-451a-9e2d-557226d2f8ed -->
+## 0.1.35 — 2026-10-15
+<!-- planifikateur:etape-8b-actualisation-par-projet -->
 
-- **Bandeau** : J'ai corrigé l'échec de mise en forme dans `tests/worker.test.js`, sans pouvoir le vérifier : les commandes shell échouent toujours ici (« bwrap: Can't mount proc »). Je n'ai donc relancé ni Prettier ni les tests. La ligne en cause était un `assert.deepEqual(...)` sur une seule ligne. Prettier impose un argument par ligne quand un appel à plusieurs arguments contient un appel avec une fonction fléchée (ici `files.map(file => file.name)`). Je l'ai écrit sur plusieurs lignes. J'ai relu les autres fichiers modifiés : aucun ne contient ce cas. Rappel de la livraison : **Action du bouton** : il lance bien l'exécution IA. « Confier à l'agent » (ou « Relancer l'agent ») crée l'exécution et passe la carte au statut « Prête à démarrer ». **1. Bandeau dès la création** : le formulaire de création d'une carte affiche le bandeau « Exécution IA » avec le bouton « Créer et confier à l'agent ». Ce bouton crée la carte au statut « Prête à démarrer », puis le worker la prend en charge. Tant qu'aucune exécution n'existe, le bandeau du détail l'indique. **2. Bouton cliquable** : dans la création comme dans le détail, le bouton est actif dès que la description saisie n'est pas vide. Il n'est plus nécessaire d'enregistrer la carte avant. Un clic l'enregistre, attend la confirmation du serveur puis la confie à l'agent. Si l'enregistrement échoue, un message d'erreur s'affiche et rien n'est lancé. **3. Fin des doublons** : - **Serveur** : l'avancement, le résultat, les contrôles GitHub, la fusion et les interruptions ne sont plus publiés comme commentaires. - **Discussion** : elle ne reçoit plus que les questions de l'agent et les réponses. - **Bandeau** : il affiche en plus les vérifications, les livrables, les fichiers joints et un « Journal de l'agent » repliable et daté. - **Question en attente** : elle n'est plus répétée dans le bandeau, et la discussion ne montre plus son rappel d'attente quand le bandeau est visible. - **Anciennes cartes** : les commentaires d'activité déjà publiés
+- **Actualisation par projet** : Un changement dans un projet ne fait plus relire tout le tableau aux autres navigateurs : seul ce projet est relu, et un projet masqué n’est jamais annoncé. L’enregistrement ne renvoie plus que les projets modifiés. « À traiter », le suivi des cartes et l’abonnement d’une carte sont relus sur les événements qui les concernent, et non plus à chaque frappe.
+
+## 0.1.34 — 2026-10-14
+<!-- planifikateur:etape-8a-lectures-et-pieces-jointes -->
+
+- **Tableau allégé et lectures ciblées** : Le tableau envoyé au navigateur n’inclut plus le contenu des pièces jointes : elles s’affichent et se téléchargent par leur propre route, et l’export JSON les récupère sur le serveur. Les droits, les notifications et les cartes se lisent sans relire tout le tableau, l’historique et l’écriture des modifications sont plus rapides : avec 900 cartes, une modification passe de 181 à 96 ms et le tableau de 4,8 à 2,2 Mo.
+
+## 0.1.33 — 2026-10-14
+<!-- planifikateur:etape-7-modifications-robustes -->
+
+- **Modifications robustes** : Une modification refusée par le serveur est retirée de la page avec un message expliquant pourquoi, et les autres sont enregistrées : la page ne se fige plus. Critères, pièces jointes et étiquettes s’enregistrent élément par élément, si bien que deux personnes qui cochent la même checklist gardent toutes deux leur coche. Une erreur d’affichage montre un message au lieu d’une page blanche, et le panneau d’exécution indique son chargement au lieu de proposer trop tôt de confier la carte à l’agent.
 
 ## 0.1.32 — 2026-10-14
 <!-- planifikateur:etape-6-fiabilite-worker -->

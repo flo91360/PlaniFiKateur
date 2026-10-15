@@ -1,8 +1,19 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Bell, BellOff, UserPlus } from 'lucide-react';
 import { apiData } from '../lib/api-client.js';
+import { useServerEvent } from '../lib/use-server-events.js';
 
-export default function CardSubscription({ projectId, cardId, saveStatus }) {
+// Suivi de la carte : relu à l’ouverture, puis quand un abonnement de la carte ou le contenu de son
+// projet change (un commentaire fait suivre la carte à son auteur).
+export default function CardSubscription({ projectId, cardId }) {
+  const [version, setVersion] = useState(0);
+  useServerEvent((type, data) => {
+    if (
+      (type === 'subscriptions' && data.cardId === cardId) ||
+      (type === 'workspace' && (!data.projectIds || data.projectIds.includes(projectId)))
+    )
+      setVersion(value => value + 1);
+  });
   const [following, setFollowing] = useState(null),
     [members, setMembers] = useState(null);
   const [selected, setSelected] = useState(''),
@@ -33,7 +44,7 @@ export default function CardSubscription({ projectId, cardId, saveStatus }) {
       if (!controller.signal.aborted) setError(cause.message);
     });
     return () => controller.abort();
-  }, [read, saveStatus, busy]);
+  }, [read, version, busy]);
   useEffect(() => {
     setFollowing(null);
     setMembers(null);

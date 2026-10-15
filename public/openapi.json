@@ -4584,6 +4584,27 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "attachments",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "data"
+              ]
+            },
+            "description": "data : inclut le contenu (base64) des pièces jointes, pour l’export JSON. Sans ce paramètre, les pièces jointes n’ont que id, name, type et size."
+          },
+          {
+            "name": "projects",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifiants séparés par des virgules (100 au plus) : relecture partielle de ces projets, annoncés par le flux d’événements. access reste complet."
           }
         ],
         "responses": {
@@ -4769,6 +4790,18 @@
                     "items": {
                       "$ref": "#/components/schemas/Change"
                     }
+                  },
+                  "partial": {
+                    "type": "boolean",
+                    "description": "Enregistre les modifications acceptées et liste les autres dans rejected, au lieu de refuser tout le lot."
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "all",
+                      "changed"
+                    ],
+                    "description": "changed : la réponse ne contient que les projets visés par le lot (projectIds, fromRevision), sauf si le lot crée, supprime ou réordonne des projets."
                   }
                 }
               }
@@ -7158,6 +7191,66 @@
           }
         }
       }
+    },
+    "/api/v1/projects/{projectId}/cards/{cardId}/attachments/{attachmentId}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ProjectId"
+        },
+        {
+          "$ref": "#/components/parameters/CardId"
+        },
+        {
+          "name": "attachmentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Contenu d’une pièce jointe",
+        "description": "Le tableau envoyé au navigateur ne contient que le nom, le type et la taille des pièces jointes. Les images (PNG, JPEG, GIF, WebP) sont servies en ligne pour l’aperçu ; tout autre fichier est téléchargé en application/octet-stream, sous une politique de sécurité qui interdit son interprétation.",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Contenu du fichier.",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session requise.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Projet invisible, ou pièce jointe inexistante dans cette carte (attachment_not_found).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -8228,7 +8321,14 @@
               "card.order",
               "comment.create",
               "comment.update",
-              "comment.delete"
+              "comment.delete",
+              "checklist.create",
+              "checklist.update",
+              "checklist.delete",
+              "attachment.create",
+              "attachment.delete",
+              "tag.add",
+              "tag.remove"
             ]
           },
           "projectId": {
@@ -8287,6 +8387,23 @@
             "items": {
               "type": "string"
             }
+          },
+          "itemId": {
+            "type": "string"
+          },
+          "attachmentId": {
+            "type": "string"
+          },
+          "item": {
+            "type": "object",
+            "description": "Critère : id, text, done."
+          },
+          "attachment": {
+            "type": "object",
+            "description": "Pièce jointe : id, name, type, size, data (base64)."
+          },
+          "tag": {
+            "type": "string"
           }
         }
       },
@@ -8350,6 +8467,41 @@
                 "manager"
               ]
             }
+          },
+          "rejected": {
+            "type": "array",
+            "description": "Avec partial : modifications refusées, avec leur index, leur type et le code et le message d’erreur.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "index": {
+                  "type": "integer"
+                },
+                "type": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "projectIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Avec scope=changed : projets renvoyés."
+          },
+          "fromRevision": {
+            "type": "integer",
+            "description": "Avec scope=changed : révision lue au début de l’enregistrement."
           }
         }
       },

@@ -63,12 +63,17 @@ export function contentRoutes({ store, config, guards }) {
       guard: guards.account,
       methods: {
         async PATCH(ctx) {
-          const { changes } = only(await ctx.body(), ['changes']);
+          const { changes, partial = false, scope = 'all' } = only(await ctx.body(), ['changes', 'partial', 'scope']);
           if (!Array.isArray(changes))
             throw httpError(400, 'invalid_change', 'Une liste de modifications est requise.');
-          const { skipped, ...workspace } = apply(ctx, changes);
+          if (typeof partial !== 'boolean') throw httpError(400, 'invalid_change', 'partial : booléen attendu.');
+          if (!['all', 'changed'].includes(scope))
+            throw httpError(400, 'invalid_change', 'scope : « all » ou « changed » attendu.');
+          // `partial` : les modifications refusées sont listées dans `rejected`, les autres enregistrées.
+          // Le tableau renvoyé n’inclut pas le contenu des pièces jointes (voir leur route).
+          const { skipped, rejected, ...workspace } = apply(ctx, changes, { partial, scope, attachmentData: false });
           ctx.res.setHeader('ETag', `"${workspace.revision}"`);
-          ctx.send(200, { data: { ...workspace, skipped } });
+          ctx.send(200, { data: { ...workspace, skipped, ...(partial ? { rejected } : {}) } });
         },
       },
     },

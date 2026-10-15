@@ -104,7 +104,7 @@ Le bouton **Notifications** (cloche) de la barre supérieure affiche, avec un ba
 - l’ajoute au suivi d’une carte ou change ses droits sur un projet ;
 - fait avancer l’agent sur une de ces cartes : question, résultat ou PR, contrôles GitHub, fusion, interruption, annulation, corrections demandées ou fusion approuvée.
 
-Les notifications arrivent en direct par le flux d’événements (événement `notifications`, envoyé seulement à leurs destinataires), et se consultent par `GET /api/v1/notifications` (`meta.unread`, `meta.lastReadId`) puis `POST /api/v1/notifications/read` avec `{ upTo }`. Elles proviennent de l’historique et suivent donc sa rétention. Il n’y a pas encore d’envoi par e-mail ni de préférences par type d’action.
+Les notifications arrivent en direct par le flux d’événements (événement `notifications`, envoyé seulement à leurs destinataires), et se consultent par `GET /api/v1/notifications` (`meta.unread`, `meta.lastReadId`) puis `POST /api/v1/notifications/read` avec `{ upTo }`. Elles proviennent de l’historique et suivent donc sa rétention ; depuis la v0.1.34, un index par compte (table `notifications`, rempli depuis l’historique à la mise à jour) évite de parcourir tout l’historique à chaque lecture. Il n’y a pas encore d’envoi par e-mail ni de préférences par type d’action.
 
 ## Sauvegardes
 

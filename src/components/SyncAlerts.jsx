@@ -1,9 +1,27 @@
 import React from 'react';
 
 // Actualisation ou sauvegarde serveur en échec : les modifications restent dans la page.
-export default function SyncAlerts({ syncError, saveStatus, saveError, onRefresh, onExport, onReload, onRetrySave }) {
+export default function SyncAlerts({
+  syncError,
+  saveStatus,
+  saveError,
+  saveNotice,
+  onRefresh,
+  onExport,
+  onReload,
+  onRetrySave,
+  onDismissNotice,
+}) {
   return (
     <>
+      {saveNotice && (
+        <div className="sync-warning" role="alert">
+          <p>{saveNotice} Vos autres modifications sont enregistrées.</p>
+          <button className="secondary-button" onClick={onDismissNotice}>
+            Compris
+          </button>
+        </div>
+      )}
       {syncError && (
         <div className="sync-warning" role="status">
           <p>{syncError}</p>

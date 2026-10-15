@@ -2,23 +2,30 @@ import { useEffect, useRef, useState } from 'react';
 import { apiData } from './api-client.js';
 import { useServerConnected, useServerEvent } from './use-server-events.js';
 
-export function useCardFollowers({ project, enabled, saveStatus, selectedId, modal }) {
+// Suivi des cartes d’un projet : relu quand un abonnement change ou quand le contenu du projet
+// change (un commentaire fait suivre la carte), sinon toutes les minutes ; 5 s sans flux.
+export function useCardFollowers({ projectId, enabled }) {
   const [snapshot, setSnapshot] = useState(null);
   const live = useServerConnected();
   const reload = useRef(() => {});
   useServerEvent((type, data) => {
-    if (type === 'ready' || (type === 'subscriptions' && data.projectId === project?.id)) reload.current();
+    if (
+      type === 'ready' ||
+      (type === 'subscriptions' && data.projectId === projectId) ||
+      (type === 'workspace' && (!data.projectIds || data.projectIds.includes(projectId)))
+    )
+      reload.current();
   });
   useEffect(() => {
-    if (!enabled || !project?.id) return;
+    if (!enabled || !projectId) return;
     const controller = new AbortController();
     let loading = false;
     const refresh = async () => {
       if (loading || document.visibilityState === 'hidden') return;
       loading = true;
       try {
-        const followers = await apiData(`projects/${project.id}/card-followers`, { signal: controller.signal });
-        if (!controller.signal.aborted) setSnapshot({ projectId: project.id, followers });
+        const followers = await apiData(`projects/${projectId}/card-followers`, { signal: controller.signal });
+        if (!controller.signal.aborted) setSnapshot({ projectId, followers });
       } catch {
         // Keep the last known followers until the next successful refresh.
       } finally {
@@ -37,6 +44,6 @@ export function useCardFollowers({ project, enabled, saveStatus, selectedId, mod
       window.removeEventListener('focus', refresh);
       document.removeEventListener('visibilitychange', refresh);
     };
-  }, [project, enabled, saveStatus, selectedId, modal, live]);
-  return enabled && project?.id && snapshot?.projectId === project.id ? snapshot.followers : {};
+  }, [projectId, enabled, live]);
+  return enabled && projectId && snapshot?.projectId === projectId ? snapshot.followers : {};
 }

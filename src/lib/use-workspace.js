@@ -8,6 +8,8 @@ import { applyChanges, diffWorkspace } from './workspace-changes.js';
 import { useServerConnected, useServerEvent } from './use-server-events.js';
 
 const STORAGE = 'planifikateur.workspace.v1';
+// Le serveur envoie les pièces jointes sans leur contenu, téléchargé à la demande.
+export const SERVER_FORM = { attachmentData: false };
 export const offlineMode = globalThis.__PLANIFIKATEUR_OFFLINE__ === true || globalThis.location?.protocol === 'file:';
 function readLocal() {
   try {
@@ -31,10 +33,15 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
   const [saveStatus, setSaveStatus] = useState('saved');
   const [saveError, setSaveError] = useState('');
   const [syncError, setSyncError] = useState('');
+  // Modifications refusées ou ignorées par le serveur lors du dernier enregistrement : le reste est
+  // enregistré et la page continue de s’actualiser ; ce message explique ce qui n’a pas été gardé.
+  const [saveNotice, setSaveNotice] = useState('');
   // Rôle du compte sur chaque projet visible (viewer, editor, manager) ; null hors connexion.
   const [access, setAccess] = useState(null);
   const paused = useRef(pauseRefresh),
-    refreshing = useRef(false);
+    refreshing = useRef(false),
+    // Une actualisation demandée pendant un enregistrement ou une autre lecture est faite ensuite.
+    pending = useRef(false);
   paused.current = pauseRefresh;
   const current = useRef(projects),
     saved = useRef(projects),
@@ -54,7 +61,7 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
         return;
       }
       const workspace = await request('workspace');
-      const clean = validateWorkspace(workspace.projects);
+      const clean = validateWorkspace(workspace.projects, SERVER_FORM);
       setAccess(workspace.access || {});
       current.current = clean;
       saved.current = clean;
@@ -70,24 +77,28 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
       setLoadError(error.message);
     }
   }, []);
-  const refresh = useCallback(async ({ whileEditing = false } = {}) => {
+  // `only` : relecture des seuls projets annoncés par le flux ({ projectIds, revision } attendue) ;
+  // à défaut, ou si le serveur a avancé entre-temps, tout le tableau est relu.
+  const refresh = useCallback(async ({ whileEditing = false, only = null } = {}) => {
     if (
       offlineMode ||
       !initialized.current ||
       (!whileEditing && paused.current) ||
-      saving.current ||
-      refreshing.current ||
-      current.current !== saved.current ||
       document.visibilityState === 'hidden'
     )
       return;
+    if (saving.current || refreshing.current || current.current !== saved.current) {
+      pending.current = true;
+      return;
+    }
+    pending.current = false;
     const baseRevision = revision.current;
     refreshing.current = true;
     try {
-      const remote = await request('workspace', {
-        headers: { 'If-None-Match': `"${baseRevision}"` },
-        signal: AbortSignal.timeout(10000),
-      });
+      const remote = await request(
+        only ? `workspace?projects=${only.projectIds.map(encodeURIComponent).join(',')}` : 'workspace',
+        { headers: { 'If-None-Match': `"${baseRevision}"` }, signal: AbortSignal.timeout(10000) },
+      );
       // A read may complete after the user begins editing or after a newer save.
       if (
         (!whileEditing && paused.current) ||
@@ -96,8 +107,20 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
         revision.current !== baseRevision
       )
         return;
-      if (remote && remote.revision > baseRevision) {
-        const clean = validateWorkspace(remote.projects);
+      if (remote && only) {
+        const merged =
+          remote.revision === only.revision &&
+          mergeProjects(saved.current, validateWorkspace(remote.projects, SERVER_FORM), only.projectIds);
+        if (!merged) pending.current = true;
+        else {
+          current.current = merged;
+          saved.current = merged;
+          revision.current = remote.revision;
+          setState(merged);
+          setAccess(remote.access || {});
+        }
+      } else if (remote && remote.revision > baseRevision) {
+        const clean = validateWorkspace(remote.projects, SERVER_FORM);
         current.current = clean;
         saved.current = clean;
         revision.current = remote.revision;
@@ -113,8 +136,11 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
       );
     } finally {
       refreshing.current = false;
+      if (pending.current) setTimeout(() => void refreshRef.current?.(), 0);
     }
   }, []);
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
   useEffect(() => {
     if (!offlineMode) void load();
   }, [load]);
@@ -122,7 +148,14 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
   // que de filet de sécurité, sauf si le flux est coupé ou si la dernière lecture a échoué.
   const live = useServerConnected();
   useServerEvent((type, data) => {
-    if (type === 'ready' || (type === 'workspace' && data.revision > revision.current)) void refresh();
+    if (type === 'ready') void refresh();
+    else if (type === 'workspace' && data.revision > revision.current)
+      // Changement limité à quelques projets, juste après notre révision : eux seuls sont relus.
+      void refresh(
+        data.projectIds && data.fromRevision === revision.current
+          ? { only: { projectIds: data.projectIds, revision: data.revision } }
+          : {},
+      );
   });
   useEffect(() => {
     if (offlineMode || !ready || pauseRefresh) return;
@@ -161,13 +194,21 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
           setState(saved.current);
           continue;
         }
+        const sentFrom = revision.current;
         const data = await apiData('workspace', {
           method: 'PATCH',
-          data: { changes },
+          data: { changes, partial: true, scope: 'changed' },
           fallback: 'Le serveur ne répond pas.',
         });
-        const canonical = validateWorkspace(data.projects);
-        revision.current = data.revision;
+        setSaveNotice(describeRefusals(data));
+        // Le serveur ne renvoie que les projets visés par le lot (`projectIds`) : ils remplacent
+        // ceux de l’état enregistré. Si d’autres sessions ont écrit depuis la dernière lecture
+        // (`fromRevision` différente), la révision reste en arrière et tout le tableau sera relu.
+        const returned = validateWorkspace(data.projects, SERVER_FORM);
+        const canonical = data.projectIds ? mergeProjects(saved.current, returned, data.projectIds) : returned;
+        if (!canonical) throw new Error('Réponse du serveur incohérente. Rechargez la page.');
+        if (data.projectIds && data.fromRevision !== sentFrom) pending.current = true;
+        else revision.current = data.revision;
         saved.current = canonical;
         setAccess(data.access || {});
         // Les modifications faites pendant l’envoi sont rejouées sur l’état renvoyé par le serveur.
@@ -183,6 +224,7 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
       setSaveError(error.message);
     } finally {
       saving.current = false;
+      if (pending.current && current.current === saved.current) void refreshRef.current();
     }
   }, []);
   useEffect(() => {
@@ -241,6 +283,8 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
     saveStatus,
     saveError,
     syncError,
+    saveNotice,
+    dismissSaveNotice: () => setSaveNotice(''),
     refresh,
     retrySave: flush,
     reload: load,
@@ -251,7 +295,59 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
   };
 }
 
-export function exportWorkspace(projects) {
+// Remplace dans `base` les projets `ids` par ceux de `projects` (absents : retirés, car supprimés ou
+// devenus invisibles). Renvoie null si un projet inconnu de `base` apparaît : il faut tout relire.
+export function mergeProjects(base, projects, ids) {
+  const fresh = new Map(projects.map(project => [project.id, project]));
+  if (projects.some(project => !base.some(item => item.id === project.id))) return null;
+  const wanted = new Set(ids);
+  return base.flatMap(project =>
+    wanted.has(project.id) ? (fresh.has(project.id) ? [fresh.get(project.id)] : []) : [project],
+  );
+}
+
+// Message pour les modifications refusées (droits, contenu) ou ignorées (élément supprimé ailleurs).
+export function describeRefusals({ rejected = [], skipped = [] } = {}) {
+  const parts = [];
+  if (rejected.length) {
+    const reasons = [...new Set(rejected.map(item => item.message).filter(Boolean))].slice(0, 3);
+    parts.push(
+      `${rejected.length === 1 ? 'Une modification a été refusée' : `${rejected.length} modifications ont été refusées`} et retirée${rejected.length === 1 ? '' : 's'} de la page${reasons.length ? ` : ${reasons.join(' ')}` : '.'}`,
+    );
+  }
+  const missing = skipped.filter(item => item.reason === 'missing').length;
+  if (missing)
+    parts.push(
+      `${missing === 1 ? 'Une modification visait' : `${missing} modifications visaient`} un élément supprimé entre-temps dans une autre session.`,
+    );
+  return parts.join(' ');
+}
+
+// Export JSON réimportable : en mode connecté, le contenu des pièces jointes (absent du tableau
+// affiché) est relu sur le serveur. Les modifications locales non enregistrées sont conservées.
+export async function exportWorkspace(projects) {
+  if (projects.some(project => project.cards.some(card => (card.attachments || []).some(file => !file.data)))) {
+    let full;
+    try {
+      full = await request('workspace?attachments=data');
+    } catch {
+      throw new Error('Le contenu des pièces jointes est indisponible pour l’export. Réessayez dans un instant.');
+    }
+    const data = new Map(
+      full.projects.flatMap(project =>
+        project.cards.flatMap(card => (card.attachments || []).map(file => [file.id, file.data])),
+      ),
+    );
+    projects = projects.map(project => ({
+      ...project,
+      cards: project.cards.map(card => ({
+        ...card,
+        attachments: (card.attachments || [])
+          .map(file => (file.data ? file : { ...file, data: data.get(file.id) }))
+          .filter(file => file.data),
+      })),
+    }));
+  }
   const blob = new Blob([JSON.stringify({ version: 1, projects }, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -260,3 +356,5 @@ export function exportWorkspace(projects) {
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+// Lance l’export depuis un bouton : une erreur est signalée sans interrompre la page.
+export const exportWithAlert = projects => void exportWorkspace(projects).catch(error => window.alert(error.message));

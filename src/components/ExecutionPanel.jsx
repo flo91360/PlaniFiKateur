@@ -229,6 +229,10 @@ export default function ExecutionPanel({
           )}
           <Journal run={run} />
         </>
+      ) : !execution.loaded ? (
+        <p className="execution-detail" aria-busy="true">
+          Chargement de l’exécution IA…
+        </p>
       ) : cardStatus === 'ready' ? (
         <p className="execution-detail">
           Carte prête à démarrer : le worker la prendra en charge à sa prochaine consultation.
@@ -268,7 +272,7 @@ export default function ExecutionPanel({
         />
       ) : (
         <div className="execution-actions">
-          {!active && canLaunch && (
+          {!active && canLaunch && execution.loaded && (
             <button
               className="primary-button"
               disabled={busy || !canStart}

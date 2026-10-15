@@ -17,6 +17,20 @@ import { migrateWorkspace, readWorkspace, writeWorkspace } from './workspace-tab
 import { applyChanges, ChangeError } from '../src/lib/workspace-changes.js';
 import { allows, createAccess, MEMBER_ROLES, requirements, ROLES } from './access.js';
 
+// Projets visés par un lot de modifications, ou null si la liste des projets elle-même change.
+const changedProjects = changes => {
+  if (!Array.isArray(changes)) return null;
+  const ids = new Set();
+  for (const change of changes) {
+    if (['project.create', 'project.delete', 'project.order'].includes(change?.type)) return null;
+    if (typeof change?.projectId === 'string') ids.add(change.projectId);
+  }
+  return [...ids];
+};
+
+// Erreur qui refuse une demande (4xx), par opposition à une panne du serveur.
+const refusal = error => error?.status >= 400 && error.status < 500;
+
 // Un projet, une liste ou une carte présent avant et absent après ?
 export const removesContent = (before, after) => {
   const ids = projects =>
@@ -77,6 +91,18 @@ export function createStore(filename, { backupDirectory } = {}) {
     CREATE TABLE IF NOT EXISTS drive_repositories (repository TEXT PRIMARY KEY, data TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS notification_reads (user_id TEXT PRIMARY KEY, last_id INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS user_preferences (user_id TEXT PRIMARY KEY, accent TEXT NOT NULL);`);
+  // Destinataires de chaque action notifiée, indexés par compte (v0.1.34) : la boîte d’un compte se
+  // lit sans parcourir tout l’historique. Remplie une fois depuis l’historique à sa création.
+  const notificationsTable = !db
+    .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'notifications'")
+    .get();
+  db.exec(
+    'CREATE TABLE IF NOT EXISTS notifications (user_id TEXT NOT NULL, activity_id INTEGER NOT NULL, PRIMARY KEY(user_id, activity_id))',
+  );
+  if (notificationsTable)
+    db.exec(
+      `INSERT OR IGNORE INTO notifications SELECT r.value, a.id FROM (SELECT id, payload FROM activity WHERE ${NOTIFIED_SQL}) a, json_each(a.payload, '$.recipientIds') r`,
+    );
   const created =
     db
       .prepare('INSERT OR IGNORE INTO workspace VALUES (1, 1, ?, ?)')
@@ -108,6 +134,17 @@ export function createStore(filename, { backupDirectory } = {}) {
   const emit = event => {
     if (!queued) return deliver([event]);
     const key = JSON.stringify([event.type, event.projectId, event.cardId, event.executionId, event.userIds]);
+    // Plusieurs révisions dans une transaction : un seul événement, depuis la première révision,
+    // qui cite tous les projets touchés (ou aucun si l’une d’elles concernait tout le tableau).
+    const previous = queued.get(key);
+    if (event.type === 'workspace' && previous)
+      event = {
+        ...event,
+        fromRevision: previous.fromRevision,
+        ...(previous.projectIds && event.projectIds
+          ? { projectIds: [...new Set([...previous.projectIds, ...event.projectIds])] }
+          : { projectIds: undefined }),
+      };
     queued.set(key, event);
   };
   const transaction = fn => {
@@ -126,31 +163,59 @@ export function createStore(filename, { backupDirectory } = {}) {
       throw error;
     }
   };
-  const readProjects = () => readWorkspace(db);
+  // Chaque lecture retient le nombre d’écritures déjà faites : une écriture qui part d’un état lu
+  // depuis, sans écriture intermédiaire, calcule ses différences en mémoire (writeWorkspace).
+  let writes = 0,
+    touched = new Set();
+  const snapshots = new WeakMap();
+  const readProjects = () => {
+    const projects = readWorkspace(db);
+    snapshots.set(projects, writes);
+    return projects;
+  };
   // Toute écriture du contenu augmente la révision (sauf `revision: false`, quand une écriture
   // suivante de la même transaction s’en charge) : les navigateurs actualisent leur tableau.
-  const writeProjects = (projects, date = new Date().toISOString(), { revision = true } = {}) => {
-    writeWorkspace(db, projects);
+  // `previous` : état lu juste avant (readProjects), si aucune autre écriture n’a eu lieu depuis.
+  const writeProjects = (projects, date = new Date().toISOString(), { revision = true, previous = null } = {}) => {
+    const { projectIds, structural } = writeWorkspace(
+      db,
+      projects,
+      previous && snapshots.get(previous) === writes ? previous : null,
+    );
+    writes++;
+    // Projets touchés depuis le dernier événement de la transaction (une écriture sans révision
+    // les transmet à la suivante).
+    for (const id of projectIds) touched.add(id);
+    if (structural) touched.structural = true;
     if (!revision) return;
     db.prepare('UPDATE workspace SET revision = revision + 1, updated_at = ? WHERE id = 1').run(date);
-    emit({ type: 'workspace', revision: db.prepare('SELECT revision FROM workspace WHERE id = 1').get().revision });
+    // Les navigateurs ne relisent que les projets cités ; sans `projectIds` (liste des projets
+    // changée, ou rien d’identifiable), ils relisent tout le tableau.
+    const ids = [...touched];
+    const current = db.prepare('SELECT revision FROM workspace WHERE id = 1').get().revision;
+    emit({
+      type: 'workspace',
+      revision: current,
+      fromRevision: current - 1,
+      ...(touched.structural || !ids.length ? {} : { projectIds: ids }),
+    });
+    touched = new Set();
   };
   const synchronizeInfos = () => {
     const previous = readProjects();
     const projects = previous.map(project => withInfos(project, versionFor(project.id)));
     // Comment migrations may reorder properties without changing their values.
     // Only an actual Infos change should increment the workspace revision.
-    if (!isDeepStrictEqual(projects, previous)) writeProjects(validateWorkspace(projects));
+    if (!isDeepStrictEqual(projects, previous)) writeProjects(validateWorkspace(projects), undefined, { previous });
   };
   const audit = (actor, action, payload = {}, revision = null) => {
     // Les destinataires d’une action notifiée la voient arriver aussitôt dans leur boîte.
-    if (
+    const notified =
       NOTIFIED.includes(action) &&
       !(action === 'comment.created' && payload.executionId) &&
-      payload.recipientIds?.length
-    )
-      emit({ type: 'notifications', userIds: payload.recipientIds });
-    return db
+      payload.recipientIds?.length;
+    if (notified) emit({ type: 'notifications', userIds: payload.recipientIds });
+    const inserted = db
       .prepare(
         'INSERT INTO activity(date,actor_id,actor_name,action,project_id,card_id,revision,payload) VALUES(?,?,?,?,?,?,?,?)',
       )
@@ -164,10 +229,20 @@ export function createStore(filename, { backupDirectory } = {}) {
         revision,
         JSON.stringify(payload),
       );
+    if (notified)
+      for (const userId of new Set(payload.recipientIds))
+        db.prepare('INSERT OR IGNORE INTO notifications VALUES (?, ?)').run(userId, inserted.lastInsertRowid);
+    return inserted;
+  };
+  // Rétention : l’historique ancien part avec ses notifications.
+  const purgeActivity = before => {
+    const removed = db.prepare('DELETE FROM activity WHERE date < ?').run(before).changes;
+    if (removed) db.exec('DELETE FROM notifications WHERE activity_id NOT IN (SELECT id FROM activity)');
+    return removed;
   };
   const userById = id => db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   const findCard = (projectId, cardId) => {
-    const project = readProjects().find(p => p.id === projectId);
+    const [project] = readWorkspace(db, { projectIds: [projectId] });
     const card = project?.cards.find(c => c.id === cardId);
     if (!card) fail(404, 'card_not_found', 'Carte inexistante dans ce projet.');
     return { project, card };
@@ -315,10 +390,35 @@ export function createStore(filename, { backupDirectory } = {}) {
     const { downloads, readme, changelog, ...rest } = card;
     return rest;
   };
-  const sanitize = change => {
-    if (change?.type === 'card.create') return { ...change, card: withoutSystemFields(change.card) };
+  // Le navigateur reçoit les pièces jointes sans leur contenu : une pièce jointe déjà connue
+  // (même identifiant) qu’il renvoie sans `data` retrouve le contenu enregistré.
+  const withData = (attachments, stored) =>
+    Array.isArray(attachments)
+      ? attachments.map(file =>
+          file && typeof file === 'object' && file.data === undefined && stored().has(file.id)
+            ? { ...file, data: stored().get(file.id) }
+            : file,
+        )
+      : attachments;
+  const withCardData = (card, stored) =>
+    card && typeof card === 'object' && 'attachments' in card
+      ? { ...card, attachments: withData(card.attachments, stored) }
+      : card;
+  const sanitize = (change, stored) => {
+    if (change?.type === 'card.create')
+      return { ...change, card: withCardData(withoutSystemFields(change.card), stored) };
     if (change?.type === 'project.create' && Array.isArray(change.project?.cards))
-      return { ...change, project: { ...change.project, cards: change.project.cards.map(withoutSystemFields) } };
+      return {
+        ...change,
+        project: {
+          ...change.project,
+          cards: change.project.cards.map(card => withCardData(withoutSystemFields(card), stored)),
+        },
+      };
+    if (change?.type === 'card.update' && change.fields && typeof change.fields === 'object')
+      return { ...change, fields: withCardData(change.fields, stored) };
+    if (change?.type === 'attachment.create')
+      return { ...change, attachment: withData([change.attachment], stored)[0] };
     return change;
   };
   // Contrôle des droits puis application d’un lot de modifications sur `before`.
@@ -335,7 +435,14 @@ export function createStore(filename, { backupDirectory } = {}) {
     const lookup = { cardStatus: (projectId, cardId) => cardOf(projectId, cardId)?.status ?? null };
     const allowed = [],
       hidden = [];
-    changes = changes.map(sanitize);
+    let stored = null;
+    const attachmentData = () =>
+      (stored ??= new Map(
+        before.projects.flatMap(project =>
+          project.cards.flatMap(card => (card.attachments || []).map(file => [file.id, file.data])),
+        ),
+      ));
+    changes = changes.map(change => sanitize(change, attachmentData));
     changes.forEach((change, index) => {
       if (change?.type === 'project.create' && access.isDeleted(change.project?.id))
         fail(
@@ -410,10 +517,9 @@ export function createStore(filename, { backupDirectory } = {}) {
   const commit = (before, clean, actor, { restore = false, settings = null } = {}) => {
     const date = new Date().toISOString();
     workflows.reconcile(before.projects, clean, actor, restore);
-    const events = restore
-      ? [{ action: 'workspace.restored' }]
-      : attributeChanges(validateWorkspace(before.projects), clean, actor, date);
-    writeProjects(clean, date);
+    // before.projects vient de readWorkspace : il est déjà sous forme canonique.
+    const events = restore ? [{ action: 'workspace.restored' }] : attributeChanges(before.projects, clean, actor, date);
+    writeProjects(clean, date, { previous: before.projects });
     const kept = new Set(clean.map(project => project.id));
     for (const project of before.projects) if (!kept.has(project.id)) forgetProject(project.id);
     if (restore)
@@ -627,8 +733,7 @@ export function createStore(filename, { backupDirectory } = {}) {
     purge({ activityDays = 0, executionDays = 0, now = Date.now() } = {}) {
       const cutoff = days => new Date(now - days * 86400000).toISOString();
       return transaction(() => ({
-        activity:
-          activityDays > 0 ? db.prepare('DELETE FROM activity WHERE date < ?').run(cutoff(activityDays)).changes : 0,
+        activity: activityDays > 0 ? purgeActivity(cutoff(activityDays)) : 0,
         executions: executionDays > 0 ? workflows.purge(cutoff(executionDays)) : 0,
       }));
     },
@@ -646,15 +751,45 @@ export function createStore(filename, { backupDirectory } = {}) {
       return { projects: readProjects(), revision: row.revision, updatedAt: row.updated_at };
     },
     // Tableau vu par un compte : seulement ses projets, avec son rôle sur chacun (`access`).
-    readFor(user) {
-      const workspace = this.read();
-      const roles = access.map(
-        user,
-        workspace.projects.map(project => project.id),
-      );
+    // `attachmentData: false` : pièces jointes sans leur contenu, pour le navigateur.
+    // `projectIds` : seulement ces projets (relecture partielle), `access` restant complet.
+    readFor(user, { attachmentData = true, projectIds = null } = {}) {
+      const workspace =
+        attachmentData && !projectIds
+          ? this.read()
+          : {
+              ...db.prepare('SELECT revision, updated_at AS updatedAt FROM workspace WHERE id = 1').get(),
+              projects: readWorkspace(db, { attachmentData, projectIds }),
+            };
+      const roles = projectIds
+        ? this.accessOf(user)
+        : access.map(
+            user,
+            workspace.projects.map(project => project.id),
+          );
       return { ...workspace, projects: workspace.projects.filter(project => roles[project.id]), access: roles };
     },
     projectRole: (user, projectId) => access.role(user, projectId),
+    // Une pièce jointe d’une carte, avec son contenu (base64), ou null.
+    attachment(projectId, cardId, attachmentId) {
+      return (
+        db
+          .prepare(
+            'SELECT a.name, a.type, a.size, a.data FROM attachments a JOIN cards c ON c.id = a.card_id WHERE a.id = ? AND c.id = ? AND c.project_id = ?',
+          )
+          .get(attachmentId, cardId, projectId) || null
+      );
+    },
+    // Rôle d’un compte sur chacun des projets qu’il voit, sans lire le contenu du tableau.
+    accessOf(user) {
+      return access.map(
+        user,
+        db
+          .prepare('SELECT id FROM projects ORDER BY position')
+          .all()
+          .map(row => row.id),
+      );
+    },
     mergeApproval: projectId => access.mergeApproval(projectId),
     configureMergeApproval(projectId, data, actor) {
       return transaction(() => {
@@ -675,7 +810,8 @@ export function createStore(filename, { backupDirectory } = {}) {
     },
     // Exige un rôle minimal sur un projet ; un projet masqué est signalé comme inexistant.
     requireProject(user, projectId, role = 'viewer') {
-      const current = this.read().projects.some(project => project.id === projectId) && access.role(user, projectId);
+      const current =
+        !!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId) && access.role(user, projectId);
       if (!current) fail(404, 'project_not_found', 'Projet inexistant.');
       if (!allows(current, role))
         fail(
@@ -765,21 +901,78 @@ export function createStore(filename, { backupDirectory } = {}) {
     // Applique des modifications fines (voir src/lib/workspace-changes.js) sur l’état courant,
     // sans exiger de révision. Les modifications dont la cible a disparu sont ignorées et
     // renvoyées dans `skipped` ; avec `strict`, elles annulent tout.
-    change(changes, actor, { strict = false } = {}) {
+    // `attachmentData: false` : le tableau renvoyé omet le contenu des pièces jointes.
+    // `scope: 'changed'` : seuls les projets visés par le lot sont renvoyés (`projectIds`), avec
+    // la révision lue au départ (`fromRevision`) ; tout le tableau si la liste des projets change.
+    change(changes, actor, { strict = false, partial = false, attachmentData = true, scope = 'all' } = {}) {
       return transaction(() => {
         const before = this.read();
-        const { clean, skipped } = planChanges(before, changes, actor, strict);
-        // Rien à enregistrer (modifications ignorées ou déjà appliquées) : la révision ne bouge pas.
-        if (JSON.stringify(clean) !== JSON.stringify(before.projects)) commit(before, clean, actor);
-        return { ...this.readFor(actor), skipped };
+        const targets = scope === 'changed' ? changedProjects(changes) : null;
+        const respond = extra => ({
+          ...this.readFor(actor, { attachmentData, projectIds: targets }),
+          ...(targets ? { projectIds: targets, fromRevision: before.revision } : {}),
+          ...extra,
+        });
+        if (!partial) {
+          const { clean, skipped } = planChanges(before, changes, actor, strict);
+          // Rien à enregistrer (modifications ignorées ou déjà appliquées) : la révision ne bouge pas.
+          if (JSON.stringify(clean) !== JSON.stringify(before.projects)) commit(before, clean, actor);
+          return respond({ skipped });
+        }
+        // `partial` : une modification refusée (droits, contenu invalide, statut piloté par l’agent)
+        // n’empêche pas les autres. Le lot est d’abord tenté en entier ; s’il est refusé, chaque
+        // modification est rejouée seule, dans l’ordre, et les refus sont renvoyés dans `rejected`.
+        const attempt = (name, callback) => {
+          db.exec(`SAVEPOINT ${name}`);
+          // Les événements d’une tentative annulée ne doivent pas être diffusés.
+          const events = new Map(queued);
+          try {
+            const result = callback();
+            db.exec(`RELEASE ${name}`);
+            return { result };
+          } catch (error) {
+            db.exec(`ROLLBACK TO ${name}`);
+            db.exec(`RELEASE ${name}`);
+            queued = events;
+            if (!refusal(error)) throw error;
+            return { error };
+          }
+        };
+        const apply = (state, batch) => {
+          const { clean, skipped } = planChanges(state, batch, actor, false);
+          if (JSON.stringify(clean) !== JSON.stringify(state.projects)) commit(state, clean, actor);
+          return skipped;
+        };
+        const whole = attempt('batch', () => apply(before, changes));
+        if (!whole.error) return respond({ skipped: whole.result, rejected: [] });
+        if (!Array.isArray(changes)) throw whole.error;
+        const skipped = [],
+          rejected = [];
+        changes.forEach((change, index) => {
+          const one = attempt('one', () => apply(this.read(), [change]));
+          if (one.error)
+            rejected.push({ index, type: change?.type ?? null, code: one.error.code, message: one.error.message });
+          else skipped.push(...one.result.map(item => ({ ...item, index })));
+        });
+        return respond({ skipped, rejected });
       });
     },
     // Vérifie des modifications sans les enregistrer (mêmes refus que `change`) et indique si
     // elles suppriment un élément : la sauvegarde de sécurité n’est faite qu’à cette condition.
-    previewChanges(changes, actor, { strict = false } = {}) {
+    // En mode `partial`, seules les modifications acceptées comptent.
+    previewChanges(changes, actor, { strict = false, partial = false } = {}) {
       const before = this.read();
-      const { clean } = planChanges(before, changes, actor, strict);
-      return { removes: removesContent(before.projects, clean) };
+      if (!partial)
+        return { removes: removesContent(before.projects, planChanges(before, changes, actor, strict).clean) };
+      let state = before;
+      for (const change of Array.isArray(changes) ? changes : []) {
+        try {
+          state = { ...state, projects: planChanges(state, [change], actor, false).clean };
+        } catch (error) {
+          if (!refusal(error)) throw error;
+        }
+      }
+      return { removes: removesContent(before.projects, state.projects) };
     },
     hasUsers() {
       return !!db.prepare('SELECT 1 FROM users LIMIT 1').get();
@@ -874,6 +1067,7 @@ export function createStore(filename, { backupDirectory } = {}) {
         db.prepare('DELETE FROM card_subscriptions WHERE user_id = ?').run(id);
         access.forgetUser(id);
         db.prepare('DELETE FROM notification_reads WHERE user_id = ?').run(id);
+        db.prepare('DELETE FROM notifications WHERE user_id = ?').run(id);
         db.prepare('DELETE FROM user_preferences WHERE user_id = ?').run(id);
         db.prepare('DELETE FROM users WHERE id = ?').run(id);
         audit(actor, 'account.deleted', { userId: id, userName: user.name });
@@ -922,12 +1116,12 @@ export function createStore(filename, { backupDirectory } = {}) {
     // Notifications d’un compte : actions qui le concernent sur les projets qu’il voit, les plus
     // récentes d’abord, avec le nombre de non lues (après le dernier identifiant marqué comme lu).
     notifications(user, { limit = 30 } = {}) {
-      const visible = JSON.stringify(Object.keys(this.readFor(user).access));
-      const where = `${NOTIFIED_SQL} AND EXISTS (SELECT 1 FROM json_each(payload, '$.recipientIds') WHERE value = ?) AND (project_id IS NULL OR project_id IN (SELECT value FROM json_each(?)))`;
+      const visible = JSON.stringify(Object.keys(this.accessOf(user)));
+      const from = `FROM notifications n JOIN activity a ON a.id = n.activity_id WHERE n.user_id = ? AND (a.project_id IS NULL OR a.project_id IN (SELECT value FROM json_each(?)))`;
       const lastReadId =
         db.prepare('SELECT last_id FROM notification_reads WHERE user_id = ?').get(user.id)?.last_id ?? 0;
       const items = db
-        .prepare(`SELECT * FROM activity WHERE ${where} ORDER BY id DESC LIMIT ?`)
+        .prepare(`SELECT a.* ${from} ORDER BY n.activity_id DESC LIMIT ?`)
         .all(user.id, visible, limit)
         .map(row => {
           const { projectName, cardTitle, details, executionId } = JSON.parse(row.payload);
@@ -946,7 +1140,7 @@ export function createStore(filename, { backupDirectory } = {}) {
           };
         });
       const unread = db
-        .prepare(`SELECT COUNT(*) AS n FROM activity WHERE ${where} AND id > ?`)
+        .prepare(`SELECT COUNT(*) AS n ${from} AND n.activity_id > ?`)
         .get(user.id, visible, lastReadId).n;
       return { items, unread, lastReadId };
     },

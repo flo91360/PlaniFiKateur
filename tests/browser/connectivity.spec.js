@@ -144,8 +144,9 @@ test('two browsers editing the same board merge their changes without a conflict
   const context = await browser.newContext();
   const other = await context.newPage();
   await login(other, appServer);
-  // Le second navigateur ne s’actualise plus : ses modifications partent d’un tableau périmé.
-  await other.route('**/api/v1/workspace', route =>
+  // Le second navigateur ne s’actualise plus (lectures complètes ou par projet) : ses
+  // modifications partent d’un tableau périmé.
+  await other.route(/\/api\/v1\/workspace(\?|$)/, route =>
     route.request().method() === 'GET' ? route.abort() : route.continue(),
   );
   const card = seed[0].cards[0];
@@ -173,6 +174,28 @@ test('two browsers editing the same board merge their changes without a conflict
     await request.get(`${appServer}/api/v1/projects/${seed[0].id}/cards/${card.id}`, { headers })
   ).json();
   expect(saved.data).toMatchObject({ title: 'Titre choisi par le premier', priority: 'low' });
+  await context.close();
+});
+
+test('a change made elsewhere is read back for its project only', async ({ page, browser, appServer }) => {
+  await login(page, appServer);
+  const context = await browser.newContext();
+  const other = await context.newPage();
+  await login(other, appServer);
+  await expect(other.locator('.project-heading h1')).toHaveText(seed[0].name);
+  // Laisser le flux d’événements se connecter avant d’observer les lectures.
+  await other.waitForTimeout(500);
+  const reads = [];
+  other.on('request', request => {
+    const url = new URL(request.url());
+    if (url.pathname === '/api/v1/workspace' && request.method() === 'GET') reads.push(url.search);
+  });
+  const card = seed[0].cards[0];
+  await page.getByRole('heading', { name: card.title, exact: true }).click();
+  await page.getByLabel('Titre de la carte', { exact: true }).fill('Titre annoncé en direct');
+  await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+  await expect(other.getByRole('heading', { name: 'Titre annoncé en direct', exact: true })).toBeVisible();
+  expect(reads).toEqual([`?projects=${seed[0].id}`]);
   await context.close();
 });
 
@@ -219,6 +242,85 @@ test('a failed save preserves edits and can be retried', async ({ page, request,
     await request.get(`${appServer}/api/v1/projects`, { headers: { Authorization: `Bearer ${readToken}` } })
   ).json();
   expect(data.some(p => p.name === 'Projet conservé')).toBe(true);
+});
+
+test('a refused change is explained and removed from the page without blocking later saves', async ({
+  page,
+  request,
+  appServer,
+}) => {
+  await login(page, appServer);
+  // Le serveur refuse la seule modification du lot : réponse réelle, complétée de ce refus.
+  await page.route('**/api/v1/workspace', async route => {
+    if (route.request().method() !== 'PATCH') return route.continue();
+    const sent = route.request().postDataJSON();
+    expect(sent.partial).toBe(true);
+    const response = await route.fetch({ postData: JSON.stringify({ changes: [], partial: true }) });
+    const json = await response.json();
+    json.data.rejected = sent.changes.map((change, index) => ({
+      index,
+      type: change.type,
+      code: 'project_forbidden',
+      message: 'Votre rôle sur ce projet ne permet que la lecture.',
+    }));
+    await route.fulfill({ response, json });
+  });
+  await newProject(page, 'Projet refusé');
+  const notice = page.getByRole('alert').filter({ hasText: 'Une modification a été refusée' });
+  await expect(notice).toContainText('ne permet que la lecture');
+  await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+  await expect(
+    page.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /Projet refusé/ }),
+  ).toHaveCount(0);
+  await page.unroute('**/api/v1/workspace');
+  await notice.getByRole('button', { name: 'Compris', exact: true }).click();
+  await expect(notice).toHaveCount(0);
+  await newProject(page, 'Projet accepté');
+  await expect(page.getByRole('heading', { name: 'Projet accepté', exact: true })).toBeVisible();
+  await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+  const { data } = await (
+    await request.get(`${appServer}/api/v1/projects`, { headers: { Authorization: `Bearer ${readToken}` } })
+  ).json();
+  expect(data.map(project => project.name)).toContain('Projet accepté');
+  expect(data.map(project => project.name)).not.toContain('Projet refusé');
+});
+
+test('saved attachments are previewed and downloaded from their route, not carried by the board', async ({
+  page,
+  appServer,
+}) => {
+  await login(page, appServer);
+  const card = seed[0].cards[2];
+  // PNG 1×1 transparent.
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+    'base64',
+  );
+  await page.getByRole('heading', { name: card.title, exact: true }).click();
+  await page.getByLabel('Ajouter des fichiers', { exact: true }).setInputFiles([
+    { name: 'capture.png', mimeType: 'image/png', buffer: png },
+    { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('Notes de réunion') },
+  ]);
+  await expect(page.getByRole('link', { name: 'notes.txt', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+  await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+  const board = await page.request.get(`${appServer}/api/v1/workspace`);
+  const saved = (await board.json()).projects[0].cards.find(item => item.id === card.id).attachments;
+  expect(saved.map(file => [file.name, 'data' in file])).toEqual([
+    ['capture.png', false],
+    ['notes.txt', false],
+  ]);
+  await page.reload();
+  await expect(page.locator('.project-heading h1')).toHaveText(seed[0].name);
+  await page.getByRole('heading', { name: card.title, exact: true }).click();
+  const preview = page.getByRole('img', { name: 'Aperçu de capture.png', exact: true });
+  await expect(preview).toHaveAttribute('src', /\/attachments\//);
+  await expect.poll(() => preview.evaluate(image => image.naturalWidth)).toBe(1);
+  const downloading = page.waitForEvent('download');
+  await page.getByRole('link', { name: 'notes.txt', exact: true }).click();
+  const download = await downloading;
+  expect(download.suggestedFilename()).toBe('notes.txt');
+  expect(readFileSync(await download.path(), 'utf8')).toBe('Notes de réunion');
 });
 
 test('JSON import adds local cards to the API without replacing existing projects', async ({

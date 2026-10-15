@@ -76,7 +76,7 @@ La spécification **OpenAPI 3.1** est servie à `/openapi.json` et conservée da
 
 ## Synchronisation de l’interface
 
-Les routes `/api/v1/session` et `/api/v1/workspace` sont réservées à l’interface. GET session indique le compte connecté et si le premier compte administrateur doit être créé ; il n’établit pas de session anonyme. Avec un compte connecté, GET session renvoie aussi `preferences`, les préférences d’affichage de ce compte (voir ci-dessous). POST session reçoit `{ "email": "…", "password": "…" }` ; DELETE termine la session. GET workspace fournit les projets visibles par le compte, la révision et `access`, le rôle du compte sur chacun (`viewer`, `editor`, `manager`).
+Les routes `/api/v1/session` et `/api/v1/workspace` sont réservées à l’interface. GET session indique le compte connecté et si le premier compte administrateur doit être créé ; il n’établit pas de session anonyme. Avec un compte connecté, GET session renvoie aussi `preferences`, les préférences d’affichage de ce compte (voir ci-dessous). POST session reçoit `{ "email": "…", "password": "…" }` ; DELETE termine la session. GET workspace fournit les projets visibles par le compte, la révision et `access`, le rôle du compte sur chacun (`viewer`, `editor`, `manager`). Depuis la v0.1.34, les pièces jointes y figurent sans leur contenu (`id`, `name`, `type`, `size`) : il se télécharge par `GET /api/v1/projects/{projectId}/cards/{cardId}/attachments/{attachmentId}`, et `GET /api/v1/workspace?attachments=data` l’inclut pour l’export JSON. Une pièce jointe renvoyée sans `data` dans une modification garde le contenu enregistré sous son identifiant ; une pièce jointe nouvelle doit l’inclure.
 
 ### Apparence personnelle
 
@@ -96,7 +96,7 @@ Toutes ces routes exigent une **session personnelle** de la même origine ; une 
 
 | Route | Usage |
 | --- | --- |
-| `PATCH /api/v1/workspace` | Lot de modifications fines, appliqué en une transaction ; réponse `{ "data": { projects, revision, updatedAt, skipped } }` |
+| `PATCH /api/v1/workspace` | Lot de modifications fines, appliqué en une transaction ; réponse `{ "data": { projects, revision, updatedAt, skipped, rejected? } }`, pièces jointes sans contenu |
 | `POST /api/v1/projects` | `{ name, description?, emoji?, color?, lists? }` ; trois listes par défaut et les cartes Infos ; réponse 201 |
 | `PATCH /api/v1/projects/{projectId}` | `{ name?, description?, emoji?, color? }` |
 | `DELETE /api/v1/projects/{projectId}` | Supprime le projet, ses listes et ses cartes |
@@ -107,6 +107,7 @@ Toutes ces routes exigent une **session personnelle** de la même origine ; une 
 | `PATCH /api/v1/projects/{projectId}/cards/{cardId}` | Mêmes champs, tous facultatifs ; seuls les champs envoyés changent |
 | `DELETE /api/v1/projects/{projectId}/cards/{cardId}` | Supprime la carte, ses commentaires et ses pièces jointes |
 | `POST /api/v1/projects/{projectId}/cards/{cardId}/comments` | `{ text }` ; réponse 201 avec le commentaire signé par le serveur |
+| `GET /api/v1/projects/{projectId}/cards/{cardId}/attachments/{attachmentId}` | Contenu d’une pièce jointe (lecteur du projet) : images PNG, JPEG, GIF et WebP affichées en ligne, autres fichiers téléchargés en `application/octet-stream` avec `Content-Security-Policy: sandbox` |
 
 Les routes par élément répondent 404 (`change_missing`) quand l’élément n’existe pas et 400 pour un champ inconnu ou un contenu invalide. Les cartes renvoyées ont la même forme qu’en consultation (projet et nom de liste). Modifier la demande d’une carte (titre, description, étiquettes, critères, pièces jointes ou effort) annule son exécution IA en cours ; changer le statut d’une carte prise en charge renvoie 409 (`managed_status`).
 
@@ -119,8 +120,11 @@ Dans `PATCH /api/v1/workspace`, chaque modification a un `type` :
 | `card.create`, `card.update`, `card.delete` | `projectId` puis `card`, ou `cardId` et `fields` (`listId`, `title`, `description`, `status`, `priority`, `aiEffort`, `tags`, `checklist`, `attachments`) |
 | `comment.create`, `comment.update`, `comment.delete` | `projectId`, `cardId` puis `comment` (`id`, `text`), ou `commentId` et `text` |
 | `project.order`, `list.order`, `card.order` | `projectIds`, ou `projectId` et `listIds` / `cardIds` |
+| `checklist.create`, `checklist.update`, `checklist.delete` | `projectId`, `cardId` puis `item` (`id`, `text`, `done`), ou `itemId` et `fields` (`text`, `done`) |
+| `attachment.create`, `attachment.delete` | `projectId`, `cardId` puis `attachment` (`id`, `name`, `type`, `size`, `data`), ou `attachmentId` |
+| `tag.add`, `tag.remove` | `projectId`, `cardId` et `tag` |
 
-Dans `fields`, `null` retire un champ facultatif (`aiEffort`). Un ordre ne déplace que les éléments cités : ceux ajoutés entre-temps par une autre session gardent leur place. Une modification dont la cible a disparu (carte supprimée ailleurs, par exemple), qui recrée un élément existant ou qui supprime une liste encore utilisée est ignorée et listée dans `skipped` avec son `index` et sa raison (`missing`, `exists`, `not_empty`). Le lot entier est refusé (400) si une modification est mal formée ou si le tableau obtenu est invalide. Le module `src/lib/workspace-changes.js` calcule ces modifications (`diffWorkspace`) et les applique (`applyChanges`).
+Dans `fields`, `null` retire un champ facultatif (`aiEffort`). Un ordre ne déplace que les éléments cités : ceux ajoutés entre-temps par une autre session gardent leur place. Une modification dont la cible a disparu (carte supprimée ailleurs, par exemple), qui recrée un élément existant ou qui supprime une liste encore utilisée est ignorée et listée dans `skipped` avec son `index` et sa raison (`missing`, `exists`, `not_empty`). Le lot entier est refusé (400) si une modification est mal formée ou si le tableau obtenu est invalide (403 ou 409 pour un refus de droits ou de statut). Avec `"partial": true`, les modifications acceptées sont enregistrées et les autres listées dans `rejected` (`index`, `type`, `code`, `message`) : c’est ce qu’envoie l’interface, qui retire alors de la page les modifications refusées et l’explique dans un message, sans bloquer les enregistrements suivants. Les critères, pièces jointes et étiquettes se modifient élément par élément (`checklist.*`, `attachment.*`, `tag.*`) : deux sessions qui cochent des critères différents de la même carte gardent toutes deux leur coche. Les remplacer en entier par `card.update` reste possible ; l’interface ne le fait que lorsqu’elle en change l’ordre. Le module `src/lib/workspace-changes.js` calcule ces modifications (`diffWorkspace`) et les applique (`applyChanges`).
 
 ## Récupérer des projets locaux
 
@@ -132,12 +136,20 @@ Les anciennes copies HTML restent indépendantes : les projets de votre navigate
 
 `GET /api/v1/workspace` accepte `If-None-Match: "révision"` et renvoie **304 sans corps** si la révision est inchangée. L’authentification du compte est vérifiée même pour cette réponse.
 
+Depuis la v0.1.35, les échanges se font projet par projet :
+
+- `GET /api/v1/workspace?projects=a,b` ne renvoie que ces projets (ceux que le compte voit), avec la révision et `access` complet.
+- Un événement `workspace` dont `fromRevision` est la révision connue du navigateur ne fait relire que les projets de `projectIds` ; sinon (événement manqué, liste des projets changée), tout le tableau est relu.
+- Un changement dans un projet masqué n’est pas annoncé aux comptes qui ne le voient pas.
+- `PATCH /api/v1/workspace` avec `"scope": "changed"` ne renvoie que les projets visés par le lot (`projectIds`, et `fromRevision`, la révision lue au départ) ; tout le tableau quand le lot crée, supprime ou réordonne des projets. L’interface fusionne ces projets dans son état et relit tout le tableau si d’autres écritures ont eu lieu entre-temps.
+- « À traiter », le suivi des cartes et l’abonnement d’une carte sont relus sur les événements qui les concernent, plus à chaque frappe.
+
 Le site reste à jour grâce au flux **`GET /api/v1/events`** (Server-Sent Events, session personnelle) :
 
 | Événement | Données | Envoyé |
 | --- | --- | --- |
 | `ready` | `{ revision }` | À la connexion et à chaque reconnexion |
-| `workspace` | `{ revision }` | Après chaque enregistrement du tableau, par une personne, l’agent ou GitHub |
+| `workspace` | `{ revision, fromRevision?, projectIds? }` | Après chaque enregistrement du tableau, par une personne, l’agent ou GitHub ; `projectIds` cite les projets modifiés que le compte voit (absent si la liste des projets elle-même a changé) |
 | `work` | `{ projectId, cardId, executionId, state }` | Après chaque étape d’une exécution IA |
 | `subscriptions` | `{ projectId, cardId }` | Après un changement de suivi d’une carte |
 | `notifications` | `{}` | Au compte destinataire, quand une notification arrive ou qu’il les marque comme lues |

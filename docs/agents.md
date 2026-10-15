@@ -1,4 +1,4 @@
-# Parcours agent par projet — v0.1.33
+# Parcours agent par projet — v0.1.35
 
 Un seul agent actif, sans délégation. Le site pilote les demandes et confirme la fusion GitHub ;
 l’agent s’exécute dans un service externe. Le [worker Codex](worker.md) fournit ce
@@ -12,10 +12,7 @@ service : il doit être installé, connecté puis lancé séparément du site.
 2. Dans **Paramètres du projet**, configurer le dépôt GitHub et l’accès de l’agent.
    Ces paramètres s’appliquent à toutes les cartes de ce projet.
 3. Passer la carte au statut **Prête à démarrer**, ou cliquer **Confier à l’agent**
-   dans le panneau **Exécution IA** du détail (ou **Créer et confier à l’agent**
-   dans ce même panneau, affiché dès le formulaire de création). Le bouton est
-   actif dès que la description est renseignée : la carte est enregistrée avant
-   d’être confiée. Le worker la détecte lors de sa
+   dans le panneau **Exécution IA** du détail. Le worker la détecte lors de sa
    prochaine consultation et le serveur crée automatiquement son exécution avec
    le dépôt du projet.
 4. L’agent prend la tâche et signale son avancement. Une question fait apparaître
@@ -26,13 +23,11 @@ service : il doit être installé, connecté puis lancé séparément du site.
 5. Le résultat passe en attente de tests et de fusion GitHub. La PR se fusionne
    automatiquement après les contrôles requis, puis le webhook termine la carte.
    L’avancement, le résultat, le lien vers la PR et la confirmation de fusion
-   apparaissent uniquement dans le panneau **Exécution IA** ; la discussion ne
-   contient que les échanges entre l’agent et les personnes (questions, réponses).
+   apparaissent dans la discussion de la carte.
 
 Le panneau **Exécution IA** du détail de la carte résume l’exécution en cours :
-étapes (prête, réalisation, PR et tests, terminée), dernier message, résultat
-(vérifications, livrables, fichiers joints), lien vers la PR, état des contrôles
-GitHub, journal de l’agent, moteur, modèle et effort. Il propose les actions
+étapes (prête, réalisation, PR et tests, terminée), dernier message, lien vers la
+PR, état des contrôles GitHub, moteur, modèle et effort. Il propose les actions
 humaines disponibles à cette étape :
 
 - **Annuler l’exécution**, avec un motif, tant qu’elle n’est pas terminée ;
@@ -55,7 +50,7 @@ demande confirmation à sa fermeture (aussitôt pour une pièce jointe ou l’ef
 avec la possibilité de rétablir la demande. La confirmation de suppression de la
 carte signale aussi l’annulation.
 Les transitions humaines exigent une version à jour pour éviter deux validations
-contradictoires. Depuis la v0.1.33, les droits par projet s’appliquent : confier une carte à
+contradictoires. Depuis la v0.1.35, les droits par projet s’appliquent : confier une carte à
 l’agent (statut « Prête à démarrer » ou « Confier à l’agent »), valider son résultat et demander
 des corrections sont réservés aux **responsables** du projet et aux administrateurs ; les
 contributeurs peuvent répondre à ses questions et annuler une exécution. Voir
@@ -230,8 +225,7 @@ réussir. Le demandeur est attribué à la personne ayant marqué la carte prêt
 Les exécutions prêtes ou interrompues sont réutilisées sans perdre leur historique.
 Une carte repassée à un autre statut avant sa prise en charge quitte la file.
 Le `POST` de préparation reste disponible pour les anciens clients, mais n’est
-plus nécessaire dans le parcours normal. La **Discussion** de la carte contient les questions et les réponses ; le suivi de
-l’agent figure dans le panneau **Exécution IA**.
+plus nécessaire dans le parcours normal. La **Discussion** de la carte contient les questions et le suivi.
 Un nouveau commentaire humain dans une carte « À préciser » répond à la dernière
 question et relance la même exécution. Un commentaire dans un autre état reste
 un commentaire ordinaire. Modifier un ancien commentaire ne relance pas la tâche.

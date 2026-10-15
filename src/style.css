@@ -2534,3 +2534,10 @@ textarea::placeholder {
 .attention-panel li button:disabled {
   cursor: default;
 }
+
+/* Garde-fou d’affichage (ErrorBoundary) : message au lieu d’une page blanche. */
+.display-error-page {
+  max-width: 640px;
+  margin: 64px auto;
+  padding: 0 16px;
+}

@@ -80,7 +80,9 @@ test('the event stream announces committed board, execution and subscription cha
     changes: [{ type: 'card.update', projectId: project.id, cardId: card.id, fields: { title: 'Annoncé' } }],
   });
   const { revision } = (await saved.json()).data;
-  assert.deepEqual(await stream.next('workspace'), { revision });
+  // L’événement cite le projet modifié et la révision de départ : les navigateurs à jour ne
+  // relisent que ce projet.
+  assert.deepEqual(await stream.next('workspace'), { revision, fromRevision: revision - 1, projectIds: [project.id] });
   // Une écriture refusée n’est jamais annoncée.
   const before = stream.events.length;
   assert.equal(
@@ -130,4 +132,33 @@ test('closing the server ends open streams instead of waiting for them', async (
   assert.ok(Date.now() - started < 2000);
   assert.equal((await reader.read()).done, true);
   store.close();
+});
+
+test('a change in a hidden project is not announced, and announcements only cite visible projects', async t => {
+  const { store, user, base, call, listen } = await fixture(t);
+  const { hashPassword } = await import('../server/accounts.js');
+  const { token } = store.inviteUser({ name: 'Bob', email: 'bob@example.test' }, user);
+  store.acceptInvitation(token, 'Bob', await hashPassword('bob-mot-de-passe-123'));
+  store.configureProjectAccess('website', { memberRole: 'none' }, user);
+  const response = await fetch(`${base}/api/v1/session`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'bob@example.test', password: 'bob-mot-de-passe-123' }),
+  });
+  const bob = await listen({ Cookie: response.headers.get('set-cookie').split(';')[0] });
+  await bob.next('ready');
+  const update = (projectId, cardId, title) =>
+    call('PATCH', '/workspace', { changes: [{ type: 'card.update', projectId, cardId, fields: { title } }] });
+  const hidden = store.read().projects.find(project => project.id === 'website').cards[0];
+  await update('website', hidden.id, 'Secret');
+  // Un changement visible ensuite : Bob le reçoit, sans jamais avoir reçu le précédent.
+  await update('planifikateur', 'c1', 'Visible');
+  const event = await bob.next('workspace');
+  assert.deepEqual(event.projectIds, ['planifikateur']);
+  assert.equal(
+    bob.events.filter(item => item.type === 'workspace').length,
+    1,
+    'Le changement du projet masqué ne lui est pas annoncé.',
+  );
+  assert.equal(event.fromRevision, event.revision - 1);
 });
