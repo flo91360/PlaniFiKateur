@@ -239,6 +239,7 @@ function mergeFixture(change = {}) {
   const calls = [];
   const request = async (path, method = 'GET', data) => {
     calls.push({ path, method, data });
+    if (method === 'DELETE') return null;
     if (path.includes('/merge')) return { merged: true, sha: 'c'.repeat(40) };
     if (path.includes('/jobs?')) return { jobs, total_count: jobs.length };
     if (path.endsWith('/ci.yml')) return { id: 2 };
@@ -256,6 +257,34 @@ test('automatic merger checks both suites and merges exactly the tested head com
   const result = await mergeAgentPullRequest({ repository, runId: 12, request: f.request, eligible: async () => true });
   assert.equal(result.merged, true);
   assert.deepEqual(f.calls.find(c => c.method === 'PUT').data, { sha, merge_method: 'squash' });
+  assert.equal(f.calls.at(-1).method, 'DELETE');
+  assert.equal(f.calls.at(-1).path, `/repos/${repository}/git/refs/heads/agent/menu`);
+});
+test('a branch that cannot be deleted after merging does not turn the merge into a failure', async () => {
+  const f = mergeFixture();
+  const logs = [];
+  const request = async (path, method, data) => {
+    if (method === 'DELETE') throw Object.assign(new Error('refusé'), { status: 403 });
+    return f.request(path, method, data);
+  };
+  const result = await mergeAgentPullRequest({
+    repository,
+    runId: 12,
+    request,
+    eligible: async () => true,
+    log: line => logs.push(line),
+  });
+  assert.equal(result.merged, true);
+  assert.match(logs.at(-1), /conservée/);
+});
+test('the automatic merger never deletes the target branch itself', async () => {
+  const f = mergeFixture({ run: { head_branch: 'main' } });
+  f.pr.base.ref = 'main';
+  await mergeAgentPullRequest({ repository, runId: 12, request: f.request, eligible: async () => true });
+  assert.equal(
+    f.calls.some(c => c.method === 'DELETE'),
+    false,
+  );
 });
 test('the GitHub client creates a missing delivery label once and retries attaching it to the PR', async () => {
   const calls = [];

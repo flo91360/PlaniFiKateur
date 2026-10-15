@@ -23,8 +23,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         },
         ...(data ? { body: JSON.stringify(data) } : {}),
       });
-      if (!response.ok) throw new Error(`GitHub a refusé ${method} ${path.split('?')[0]} (${response.status}).`);
-      return response.json();
+      if (!response.ok)
+        throw Object.assign(new Error(`GitHub a refusé ${method} ${path.split('?')[0]} (${response.status}).`), {
+          status: response.status,
+        });
+      return response.status === 204 ? null : response.json();
     };
     const eligible = async ({ repository, number, sha }) => {
       if (!process.env.PLANIFIKATEUR_URL || !process.env.PLANIFIKATEUR_AGENT_TOKEN)

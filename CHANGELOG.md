@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.37 — 2026-10-15
+<!-- planifikateur:suppression-branches-fusionnees -->
+
+- **Suppression des branches fusionnées** : Le worker supprime la branche d'une PR agent dès qu'il l'a fusionnée, pour ne plus accumuler de branches mortes sur GitHub.
+
 ## 0.1.36 — 2026-10-15
 <!-- planifikateur:e036cf0d-da0b-451a-9e2d-557226d2f8ed -->
 
