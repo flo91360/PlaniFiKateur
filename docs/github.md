@@ -1,7 +1,7 @@
-# PR d’agent : tests puis fusion automatique — v0.1.35
+# PR d’agent : tests puis fusion automatique — v0.1.36
 
 Toutes les nouvelles tâches sont livrées par PR GitHub avec fusion automatique,
-sans sélection du mode de livraison. Depuis la v0.1.35, un responsable peut exiger
+sans sélection du mode de livraison. Depuis la v0.1.36, un responsable peut exiger
 dans **Paramètres du projet → Validation avant fusion** que chaque PR soit en plus
 approuvée depuis la carte (**Approuver la fusion**) : `merge-eligibility` répond
 alors `approval_required` tant que le commit testé n’est pas approuvé, et une
@@ -46,6 +46,8 @@ Le worker effectue directement une fusion squash via l’API GitHub. Il ne
 dépend pas du réglage natif **Allow auto-merge**. Son token doit pouvoir lire les
 Actions et écrire le contenu, les issues et les pull requests.
 Les règles de branche restent appliquées : un refus GitHub ne sera pas contourné.
+Après la fusion, il supprime la branche de la PR (jamais la branche cible) ; un
+refus de suppression est seulement journalisé et ne remet pas la fusion en cause.
 
 Le workflow `.github/workflows/agent-merge.yml` reste un mécanisme complémentaire
 optionnel, avec les mêmes vérifications dans `worker/merge.mjs`. Pour l’utiliser,
@@ -137,7 +139,7 @@ webhook `pull_request` fermé avec `merged: true`, la bonne PR et le bon commit,
 signé avec le secret, la fait passer **Terminée — PR fusionnée**. Les événements
 répétés sont sans effet ; fermer une PR sans fusion ne termine pas la carte.
 En cas de webhook perdu (redéploiement du site, panne de livraison), le serveur
-rattrape seul la situation depuis la v0.1.35 : toutes les 5 minutes, pour chaque
+rattrape seul la situation depuis la v0.1.36 : toutes les 5 minutes, pour chaque
 PR de l’agent en attente depuis plus de 3 minutes, il relit la PR et les
 exécutions de son workflow auprès de l’API GitHub, avec
 `PLANIFIKATEUR_GITHUB_TOKEN` (nécessaire pour un dépôt privé), et applique les

@@ -78,5 +78,14 @@ export async function mergeAgentPullRequest({
   });
   if (!merged.merged) throw new Error('GitHub n’a pas fusionné la PR.');
   log(`PR #${pr.number} fusionnée après réussite des contrôles requis.`);
+  // GitHub keeps the head branch unless the repository deletes it automatically:
+  // remove it ourselves, without ever failing a merge that already succeeded.
+  if (run.head_branch !== profile.branch)
+    try {
+      await request(`${root}/git/refs/heads/${run.head_branch.split('/').map(encodeURIComponent).join('/')}`, 'DELETE');
+      log(`Branche ${run.head_branch} supprimée après fusion.`);
+    } catch (error) {
+      if (error.status !== 422) log(`Branche ${run.head_branch} conservée : ${error.message}`);
+    }
   return { merged: true, number: pr.number, sha: merged.sha };
 }
