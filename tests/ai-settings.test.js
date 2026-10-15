@@ -104,6 +104,36 @@ test('project engine/model and card effort are isolated and frozen at first clai
   }
 });
 
+test('a card without effort gets the medium effort its detail shows, unless the worker ignores AI settings', () => {
+  const store = createStore(':memory:'),
+    actor = { id: 'owner', name: 'Florian' };
+  try {
+    const snapshot = store.read(),
+      [first] = snapshot.projects,
+      [card, other] = first.cards;
+    delete card.aiEffort;
+    delete other.aiEffort;
+    store.write(snapshot.projects, snapshot.revision, actor);
+    store.workflows.configureGithub(first.id, 'owner/first', actor);
+    const { agent } = store.workflows.configureAgent({ name: 'Agent', projectIds: [first.id] }, actor);
+    let run = store.workflows.prepare(first.id, card.id, {}, actor);
+    run = store.workflows.agentAction(
+      first.id,
+      card.id,
+      run.id,
+      'claim',
+      { version: run.version, aiSettingsSupported: true, engines: ['codex', 'claude-code'] },
+      agent,
+    );
+    assert.deepEqual(run.ai, { engine: 'codex', model: '', effort: 'medium' });
+    let legacy = store.workflows.prepare(first.id, other.id, {}, actor);
+    legacy = store.workflows.agentAction(first.id, other.id, legacy.id, 'claim', { version: legacy.version }, agent);
+    assert.deepEqual(legacy.ai, { engine: 'codex', model: '', effort: '' });
+  } finally {
+    store.close();
+  }
+});
+
 test('Codex receives the frozen model and effort and extracts the actual model without exposing session text', async t => {
   const root = await mkdtemp(join(tmpdir(), 'planifikateur-codex-ai-'));
   t.after(() => rm(root, { recursive: true, force: true }));

@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { apiData } from '../lib/api-client.js';
-import { efforts, effortLabels } from '../../worker/ai-settings.mjs';
+import { efforts, effortLabels, defaultEffort } from '../../worker/ai-settings.mjs';
 import { aiModels } from '../lib/ai-models.js';
 import { useApiAction, useApiResource } from '../lib/use-api.js';
 import FormStatus from './FormStatus.jsx';
 
-export function EffortSelect({ engine = 'codex', value = 'medium', onChange, disabled = false }) {
+export function EffortSelect({ engine = 'codex', value = defaultEffort, onChange, disabled = false }) {
   const levels = (efforts[engine] || efforts.codex).filter(Boolean);
-  const selectedValue = value || 'medium';
+  const selectedValue = value || defaultEffort;
   return (
     <label>
       Effort IA

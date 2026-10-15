@@ -4,7 +4,7 @@ import { fail } from '../http.js';
 import { canTransition, legacyPublicationQuestion, transition } from '../execution-states.js';
 import { tokenHash } from '../accounts.js';
 import { validateWorkspace } from '../../src/lib/workspace.js';
-import { validateAi, efforts } from '../../worker/ai-settings.mjs';
+import { validateAi, efforts, defaultEffort } from '../../worker/ai-settings.mjs';
 import { defaultExecutionProfile } from '../../worker/execution-profile.mjs';
 import { LEASE_MS, source, text } from './core.js';
 import { validateUsage } from './usage.js';
@@ -23,9 +23,9 @@ export function createAgentActions(
   const requireCapabilities = (run, data, projectId) => {
     if (!run.ai) {
       const ai = run.agent ? { engine: 'codex', model: '' } : projectAi(projectId),
-        effort = run.cardSnapshot.aiEffort || '';
+        chosen = run.cardSnapshot.aiEffort || '';
       if (
-        (ai.engine !== 'codex' || ai.model || effort) &&
+        (ai.engine !== 'codex' || ai.model || chosen) &&
         (!data.aiSettingsSupported || !data.engines?.includes(ai.engine))
       )
         fail(
@@ -33,6 +33,9 @@ export function createAgentActions(
           'worker_update_required',
           'Mettez à jour le worker pour utiliser les paramètres IA du projet et de la carte.',
         );
+      // Une carte sans effort reçoit celui que son détail affiche, si le worker sait l’appliquer ;
+      // une ancienne exécution déjà prise par un agent garde le défaut du moteur.
+      const effort = chosen || (!run.agent && data.aiSettingsSupported ? defaultEffort : '');
       if (!efforts[ai.engine].includes(effort))
         fail(400, 'invalid_effort', 'Cet effort n’est pas pris en charge par le moteur du projet.');
       run.ai = { ...ai, effort };

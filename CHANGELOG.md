@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.48 — 2026-10-15
+<!-- planifikateur:effort-moyen-par-defaut -->
+
+- **Effort Moyen appliqué aux cartes sans effort** : Une carte sans effort enregistré affichait Moyen dans son détail mais l’agent travaillait avec l’effort par défaut du fournisseur. Le serveur applique désormais Moyen à la prise en charge, comme l’affiche la carte.
+
 ## 0.1.47 — 2026-10-15
 <!-- planifikateur:controles-annules-silencieux -->
 
