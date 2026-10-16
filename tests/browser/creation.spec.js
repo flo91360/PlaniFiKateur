@@ -39,7 +39,11 @@ for (const mode of ['standalone', 'sandbox-with-storage', 'sandbox-without-stora
     await expect(app.getByRole('dialog')).toHaveCount(0);
     await expect(app.getByRole('heading', { name: 'test', exact: true })).toBeVisible();
     await expect(app.locator('.project-title p')).toHaveText('test');
-    await expect(app.locator('.list-column')).toHaveCount(4);
+    // Trois listes par défaut, « Terminées » (vide) puis Infos.
+    await expect(app.locator('.list-column')).toHaveCount(5);
+    await expect(
+      app.locator('.list-column').nth(3).getByRole('heading', { name: 'Terminées', exact: true }),
+    ).toBeVisible();
     const infos = app.locator('.list-column').filter({ has: app.getByRole('heading', { name: 'Infos', exact: true }) });
     await expect(infos.locator('.card')).toHaveCount(3);
     await expect(infos.locator('.card h3')).toHaveText([
