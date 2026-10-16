@@ -7,6 +7,11 @@ Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, 
 
 - **Liste Terminées dans tous les projets** : La liste « Terminées » est présente dans chaque projet, même vide, juste avant Infos ; les nouveaux projets la reçoivent dès leur création.
 
+## 0.1.52 — 2026-10-16
+<!-- planifikateur:livraison-glisser-listes -->
+
+- **Listes à glisser-déposer** : Les listes d’un projet se réorganisent par glisser-déposer en saisissant leur en-tête ; un repère indique où la liste sera posée et le nouvel ordre est sauvegardé. Les boutons Vers la gauche / Vers la droite restent disponibles au clavier et au toucher.
+
 ## 0.1.51 — 2026-10-16
 <!-- planifikateur:liste-terminees -->
 
