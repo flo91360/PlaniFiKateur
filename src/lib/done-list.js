@@ -1,8 +1,8 @@
 import { isSystemCard } from './infos.js';
 
 // Liste « Terminées » d’un projet : les tâches terminées y sont rangées automatiquement, pour que
-// les autres listes ne gardent que le travail à faire. Elle apparaît avec la première tâche
-// terminée, juste avant la liste Infos ; une liste existante nommée « Terminées » est reprise.
+// les autres listes ne gardent que le travail à faire. Chaque projet l’a, même vide, juste avant
+// la liste Infos ; une liste existante nommée « Terminées » est reprise.
 export const DONE_LIST_NAME = 'Terminées';
 export const doneListId = projectId => `${projectId}-done`;
 const DONE_NAMES = ['terminées', 'terminees', 'terminée', 'terminés', 'terminé'];
@@ -12,12 +12,12 @@ export const findDoneList = project =>
 // Cartes Infos exceptées : elles restent dans leur liste.
 export const isFinished = (project, card) => card.status === 'done' && !isSystemCard(project.id, card.id);
 
-// Range les tâches terminées dans la liste « Terminées », créée si besoin. Renvoie le même projet
-// quand il n’y a rien à déplacer.
+// Ajoute la liste « Terminées » si elle manque et y range les tâches terminées. Renvoie le même
+// projet quand il n’y a rien à changer.
 export function withDoneList(project) {
   let list = findDoneList(project);
   const misplaced = card => isFinished(project, card) && card.listId !== list?.id;
-  if (!project.cards.some(misplaced)) return project;
+  if (list && !project.cards.some(misplaced)) return project;
   let lists = project.lists;
   if (!list) {
     list = { id: doneListId(project.id), name: DONE_LIST_NAME, color: 'green' };
@@ -27,6 +27,8 @@ export function withDoneList(project) {
   return {
     ...project,
     lists,
-    cards: project.cards.map(card => (misplaced(card) ? { ...card, listId: list.id } : card)),
+    cards: project.cards.some(misplaced)
+      ? project.cards.map(card => (misplaced(card) ? { ...card, listId: list.id } : card))
+      : project.cards,
   };
 }

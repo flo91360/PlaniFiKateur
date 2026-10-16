@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.53 — 2026-10-16
+<!-- planifikateur:liste-terminees-toujours -->
+
+- **Liste Terminées dans tous les projets** : La liste « Terminées » est présente dans chaque projet, même vide, juste avant Infos ; les nouveaux projets la reçoivent dès leur création.
+
 ## 0.1.51 — 2026-10-16
 <!-- planifikateur:liste-terminees -->
 

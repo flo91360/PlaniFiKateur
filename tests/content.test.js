@@ -163,7 +163,7 @@ test('projects, lists, cards and comments have their own routes', async t => {
   const project = created.body.data;
   assert.deepEqual(
     project.lists.map(l => l.name),
-    ['Améliorations', 'Nouvelles idées', 'Bugs', 'Infos'],
+    ['Améliorations', 'Nouvelles idées', 'Bugs', 'Terminées', 'Infos'],
   );
   assert.ok(
     project.cards.some(c => c.id === `${project.id}-readme`),

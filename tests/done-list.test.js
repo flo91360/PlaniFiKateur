@@ -39,9 +39,15 @@ test('finished tasks move to a « Terminées » list created before Infos, other
   // Les cartes Infos, au statut « Terminée », restent dans leur liste.
   assert.ok(next.cards.filter(item => item.id.startsWith('p-')).every(item => item.listId === 'p-infos'));
   assert.equal(withDoneList(next), next);
-  // Sans tâche terminée, le projet est inchangé et la liste n’est pas créée.
+  // Sans tâche terminée, la liste est créée vide et les cartes ne bougent pas.
   const empty = { id: 'q', lists: [{ id: 'l', name: 'Bugs', color: 'orange' }], cards: [card('c', 'l', 'draft')] };
-  assert.equal(withDoneList(empty), empty);
+  const withList = withDoneList(empty);
+  assert.deepEqual(
+    withList.lists.map(list => list.id),
+    ['l', doneListId('q')],
+  );
+  assert.equal(withList.cards, empty.cards);
+  assert.equal(withDoneList(withList), withList);
 });
 
 test('an existing list named « Terminées » is reused', () => {
@@ -99,6 +105,10 @@ test('a card set to done is moved by the server, and finished cards are filed on
     const migrated = store.read().projects.find(item => item.id === 'planifikateur');
     assert.equal(migrated.cards.find(item => item.id === 'c7').listId, doneListId('planifikateur'));
     assert.equal(migrated.cards.find(item => item.id === 'c8').listId, 'bugs');
+    // Un projet sans tâche terminée reçoit aussi sa liste, vide.
+    const website = store.read().projects.find(item => item.id === 'website');
+    assert.ok(website.lists.some(list => list.id === doneListId('website')));
+    assert.ok(!website.cards.some(item => item.listId === doneListId('website')));
   } finally {
     store.close();
   }

@@ -86,7 +86,7 @@
       },
       "post": {
         "summary": "Créer un projet",
-        "description": "Crée le projet avec ses listes (trois listes par défaut) et ses cartes Infos.",
+        "description": "Crée le projet avec ses listes (trois listes par défaut, plus la liste « Terminées ») et ses cartes Infos.",
         "security": [
           {
             "ownerSession": []
