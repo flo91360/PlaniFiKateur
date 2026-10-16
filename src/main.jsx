@@ -279,6 +279,17 @@ function App() {
       [lists[from], lists[to]] = [lists[to], lists[from]];
       return { ...p, lists };
     });
+  // Glisser-déposer : place la liste juste avant ou juste après la liste cible.
+  const moveListTo = (listId, targetId, after) =>
+    updateProject(p => {
+      const list = p.lists.find(l => l.id === listId);
+      if (!list || listId === targetId) return p;
+      const lists = p.lists.filter(l => l.id !== listId);
+      const target = lists.findIndex(l => l.id === targetId);
+      if (target < 0) return p;
+      lists.splice(target + (after ? 1 : 0), 0, list);
+      return lists.every((l, i) => l === p.lists[i]) ? p : { ...p, lists };
+    });
   const deleteList = listId => {
     updateProject(p =>
       p.cards.some(c => c.listId === listId) ? p : { ...p, lists: p.lists.filter(l => l.id !== listId) },
@@ -484,6 +495,10 @@ function App() {
                   onMoveCard={(cardId, listId) => {
                     updateCard(cardId, { listId });
                     setNotice('Carte déplacée');
+                  }}
+                  onMoveList={(listId, targetId, after) => {
+                    moveListTo(listId, targetId, after);
+                    setNotice('Liste déplacée');
                   }}
                   onOpenCard={setSelectedId}
                   onAddCard={listId => setModal({ type: 'card', listId })}

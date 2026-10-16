@@ -395,6 +395,28 @@ test('cards, lists and the project are rearranged and edited without drag and dr
   expect(names).not.toContain('Liste éphémère');
 });
 
+test('a list is dragged before another and its place is saved', async ({ page, appServer }) => {
+  await login(page, appServer);
+  const [first, second] = seed[0].lists;
+  const columns = page.locator('.list-column');
+  await expect(columns.nth(1).locator('.list-header h2')).toHaveText(second.name);
+  // Glisser l’en-tête de la deuxième liste sur la moitié gauche de la première.
+  const target = columns.nth(0);
+  const box = await target.boundingBox();
+  await columns
+    .nth(1)
+    .locator('.list-header')
+    .dragTo(target, { targetPosition: { x: 20, y: box.height / 2 } });
+  await expect(page.locator('.list-header h2').first()).toHaveText(second.name);
+  await expect(columns.nth(1).locator('.list-header h2')).toHaveText(first.name);
+  await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+  const board = await (await page.request.get(`${appServer}/api/v1/workspace`)).json();
+  const names = board.projects.find(item => item.id === seed[0].id).lists.map(list => list.name);
+  expect(names.slice(0, 2)).toEqual([second.name, first.name]);
+  await page.reload();
+  await expect(page.locator('.list-header h2').first()).toHaveText(second.name);
+});
+
 test('each project and card has its own address, kept on reload and closed by going back', async ({
   page,
   appServer,
