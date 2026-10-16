@@ -113,6 +113,18 @@
   background: var(--primary-soft);
   border-color: var(--primary-ring);
 }
+.list-column.list-dragging {
+  opacity: 0.5;
+}
+.list-column.drop-before {
+  box-shadow: -4px 0 0 var(--primary-ring);
+}
+.list-column.drop-after {
+  box-shadow: 4px 0 0 var(--primary-ring);
+}
+.list-header[draggable='true'] {
+  cursor: grab;
+}
 .list-header {
   display: flex;
   justify-content: space-between;

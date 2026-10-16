@@ -137,7 +137,8 @@ function CardPreview({ card, color, followers, work, dragging, readOnly, onDragS
   );
 }
 
-// Tableau d’un projet : recherche, filtre de statut et colonnes à glisser-déposer.
+// Tableau d’un projet : recherche, filtre de statut, cartes et listes à glisser-déposer.
+// `dragging` vaut { kind: 'card' | 'list', id } pendant un glisser-déposer.
 export default function Board({
   project,
   followers,
@@ -147,13 +148,17 @@ export default function Board({
   dragging,
   onDragging,
   onMoveCard,
+  onMoveList = () => {},
   onOpenCard,
   onAddCard,
   onAddList,
   onEditList = () => {},
 }) {
   const { readOnly } = useProjectAccess();
+  // Liste survolée : { id, side } où side vaut 'before' ou 'after' quand on déplace une liste.
   const [dropList, setDropList] = useState(null);
+  const draggedCard = dragging?.kind === 'card' ? dragging.id : null;
+  const draggedList = dragging?.kind === 'list' ? dragging.id : null;
   const filtering = filters.query || filters.statusFilter !== 'all';
   const visible = project.cards.filter(card => cardMatches(card, filters));
   const endDrag = () => {
@@ -177,7 +182,7 @@ export default function Board({
             ? `${visible.length} carte${visible.length > 1 ? 's' : ''} trouvée${visible.length > 1 ? 's' : ''}`
             : readOnly
               ? 'Lecture seule sur ce projet'
-              : 'Glissez les cartes, ou déplacez-les depuis leur détail'}
+              : 'Glissez les cartes et les listes, ou déplacez-les depuis leur détail'}
         </span>
       </div>
       <div className="board" aria-label="Tableau du projet">
@@ -186,11 +191,26 @@ export default function Board({
           return (
             <section
               key={list.id}
-              className={`list-column ${dropList === list.id ? 'drag-over' : ''}`}
+              className={[
+                'list-column',
+                draggedCard && dropList?.id === list.id && 'drag-over',
+                draggedList === list.id && 'list-dragging',
+                draggedList &&
+                  draggedList !== list.id &&
+                  dropList?.id === list.id &&
+                  (dropList.side === 'after' ? 'drop-after' : 'drop-before'),
+              ]
+                .filter(Boolean)
+                .join(' ')}
               onDragOver={e => {
-                if (dragging) {
+                if (draggedCard) {
                   e.preventDefault();
-                  setDropList(list.id);
+                  setDropList({ id: list.id });
+                } else if (draggedList) {
+                  e.preventDefault();
+                  const box = e.currentTarget.getBoundingClientRect();
+                  const side = e.clientX < box.left + box.width / 2 ? 'before' : 'after';
+                  if (dropList?.id !== list.id || dropList.side !== side) setDropList({ id: list.id, side });
                 }
               }}
               onDragLeave={e => {
@@ -198,11 +218,24 @@ export default function Board({
               }}
               onDrop={e => {
                 e.preventDefault();
-                if (dragging) onMoveCard(dragging, list.id);
+                if (draggedCard) onMoveCard(draggedCard, list.id);
+                else if (draggedList && dropList?.id === list.id && draggedList !== list.id)
+                  onMoveList(draggedList, list.id, dropList.side === 'after');
                 endDrag();
               }}
             >
-              <header className="list-header">
+              <header
+                className="list-header"
+                draggable={!readOnly}
+                title={readOnly ? undefined : 'Glissez pour déplacer la liste'}
+                onDragStart={e => {
+                  if (e.target !== e.currentTarget) return;
+                  onDragging({ kind: 'list', id: list.id });
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('text/plain', list.name);
+                }}
+                onDragEnd={endDrag}
+              >
                 <div>
                   <span className={`list-dot ${list.color}`} />
                   <h2>{list.name}</h2>
@@ -235,9 +268,9 @@ export default function Board({
                     color={list.color}
                     followers={followers[card.id] || []}
                     work={work[card.id]}
-                    dragging={dragging === card.id}
+                    dragging={draggedCard === card.id}
                     readOnly={readOnly}
-                    onDragStart={onDragging}
+                    onDragStart={id => onDragging({ kind: 'card', id })}
                     onDragEnd={endDrag}
                     onOpen={onOpenCard}
                   />
