@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.51 — 2026-10-16
+<!-- planifikateur:liste-terminees -->
+
+- **Liste Terminées automatique** : Les tâches terminées sont rangées automatiquement dans une nouvelle liste « Terminées » (à la main ou après la fusion de leur PR), pour que la liste Améliorations et les autres ne gardent que le travail à faire. Les cartes déjà terminées y sont déplacées au démarrage.
+
 ## 0.1.50 — 2026-10-16
 <!-- planifikateur:etape-12-fiabilite -->
 

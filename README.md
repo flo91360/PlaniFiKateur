@@ -128,9 +128,16 @@ Conserver également des copies hors du volume Railway.
 npm run export:preview
 ```
 
-`dist/PlaniFiKateur-apercu-v0.1.50.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
+`dist/PlaniFiKateur-apercu-v0.1.51.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
+
+La liste **Terminées** rassemble automatiquement les tâches terminées : une carte
+passée au statut « Terminée », à la main ou après la fusion de sa PR, y est déplacée
+pour que les autres listes ne gardent que le travail à faire. Elle apparaît avec la
+première tâche terminée du projet, juste avant la colonne Infos ; une liste déjà
+nommée « Terminées » est reprise. Les cartes déjà terminées y sont rangées au
+démarrage du serveur.
 
 La colonne **Info / Infos** contient une carte de version propre au dépôt associé
 au projet : son titre est le dernier tag publié et sa description indique sa date

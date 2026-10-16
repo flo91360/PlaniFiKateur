@@ -6,6 +6,7 @@ import { createAppServer } from '../server/index.js';
 import { seedAccount, loginRequest } from './helpers/accounts.mjs';
 import { mergeAgentPullRequest, requiredJobs } from '../scripts/merge-agent-pr.mjs';
 import { createGithubClient } from '../worker/clients.mjs';
+import { doneListId } from '../src/lib/done-list.js';
 
 const repository = 'flo91360/PlaniFiKateur',
   sha = 'a'.repeat(40),
@@ -129,6 +130,8 @@ test('only a signed GitHub merge closes a code task, with idempotency and histor
   assert.equal(done.state, 'done');
   assert.equal(done.submissions[0].decision.automatic, true);
   assert.equal(f.store.read().projects[0].cards[0].status, 'done');
+  // La tâche terminée par la fusion rejoint la liste « Terminées ».
+  assert.equal(f.store.read().projects[0].cards[0].listId, doneListId(f.project.id));
   const revision = f.store.getRevision();
   await f.webhook('pull_request', payload);
   assert.equal(f.store.getRevision(), revision);

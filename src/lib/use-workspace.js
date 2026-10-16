@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { withInfos } from './infos.js';
+import { withDoneList } from './done-list.js';
 import { seed } from '../data/demo.js';
 import { validateWorkspace } from './workspace.js';
 import { apiData, apiFetch } from './api-client.js';
@@ -13,7 +14,9 @@ export const SERVER_FORM = { attachmentData: false };
 export const offlineMode = globalThis.__PLANIFIKATEUR_OFFLINE__ === true || globalThis.location?.protocol === 'file:';
 function readLocal() {
   try {
-    return validateWorkspace(JSON.parse(localStorage.getItem(STORAGE))).map(project => withInfos(project));
+    return validateWorkspace(JSON.parse(localStorage.getItem(STORAGE))).map(project =>
+      withDoneList(withInfos(project)),
+    );
   } catch {
     return seed;
   }

@@ -9,6 +9,7 @@ import '@fontsource/manrope/latin-700.css';
 import '@fontsource/manrope/latin-800.css';
 import './style.css';
 import { withInfos } from './lib/infos.js';
+import { withDoneList } from './lib/done-list.js';
 import { createId as uid } from './lib/id.js';
 import { apiData } from './lib/api-client.js';
 import { applyAccent } from './lib/accents.js';
@@ -184,7 +185,8 @@ function App() {
       let changed = false;
       const next = ps.map(p => {
         if (p.id !== project.id) return p;
-        const updated = transform(p);
+        // Une tâche terminée rejoint aussitôt la liste « Terminées », comme sur le serveur.
+        const updated = withDoneList(transform(p));
         changed ||= updated !== p;
         return updated;
       });
