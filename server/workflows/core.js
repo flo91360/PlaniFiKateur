@@ -1,6 +1,7 @@
 import { fail } from '../http.js';
 import { CARD_STATUS, isTerminal, transition } from '../execution-states.js';
 import { defaultExecutionProfile } from '../../worker/execution-profile.mjs';
+import { withDoneList } from '../../src/lib/done-list.js';
 
 // Socle commun des exécutions : tables, lecture, enregistrement (avec le statut de la carte, la
 // discussion et l’historique) et contrôles partagés par les modules de server/workflows/.
@@ -149,7 +150,8 @@ export function createCore(db, { audit, findCard, readProjects, writeProjects, r
     }
     if (context && syncCard) {
       const projects = readProjects();
-      const card = projects.find(p => p.id === run.projectId).cards.find(c => c.id === run.cardId);
+      const index = projects.findIndex(p => p.id === run.projectId);
+      const card = projects[index].cards.find(c => c.id === run.cardId);
       card.status = CARD_STATUS[run.state];
       card.updatedAt = run.updatedAt;
       card.updatedBy = actor ? { id: actor.id, name: actor.name } : null;
@@ -158,6 +160,8 @@ export function createCore(db, { audit, findCard, readProjects, writeProjects, r
       // l’exécution, affichée par le bandeau « Exécution IA » de la carte.
       if (['question', 'answer'].includes(action) || (action === 'checks' && run.state === 'waiting'))
         questionComments(card, run);
+      // Tâche terminée (PR fusionnée, résultat accepté) : rangée dans la liste « Terminées ».
+      projects[index] = withDoneList(projects[index]);
       writeProjects(projects, run.updatedAt);
     }
     audit(actor, `work.${action}`, {

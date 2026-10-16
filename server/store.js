@@ -4,6 +4,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { withInfos } from '../src/lib/infos.js';
+import { withDoneList } from '../src/lib/done-list.js';
 import { seed } from '../src/data/demo.js';
 import { validateWorkspace } from '../src/lib/workspace.js';
 import { publicUser, tokenHash } from './accounts.js';
@@ -308,6 +309,13 @@ export function createStore(filename, { backupDirectory } = {}) {
     return { ...version, repository, changelog, ...(downloads ? { downloads: JSON.parse(downloads.data) } : {}) };
   };
   transaction(synchronizeInfos);
+  // Tâches terminées avant la liste « Terminées » : elles y sont rangées au démarrage.
+  transaction(() => {
+    const previous = readProjects();
+    const projects = previous.map(withDoneList);
+    if (projects.some((project, index) => project !== previous[index]))
+      writeProjects(validateWorkspace(projects), undefined, { previous });
+  });
   // Projets antérieurs aux droits par projet : règle par défaut, et leur créateur (d’après
   // l’historique) en devient responsable.
   transaction(() => {
@@ -508,7 +516,8 @@ export function createStore(filename, { backupDirectory } = {}) {
             : 'Déplacez ou supprimez d’abord les cartes de cette liste.',
       );
     try {
-      return { clean: validateWorkspace(result.projects), skipped };
+      // Une tâche passée au statut « Terminée » rejoint la liste « Terminées ».
+      return { clean: validateWorkspace(result.projects.map(withDoneList)), skipped };
     } catch (error) {
       fail(400, 'invalid_workspace', error.message);
     }
@@ -886,7 +895,7 @@ export function createStore(filename, { backupDirectory } = {}) {
       return transaction(() => {
         const before = this.read();
         if (before.revision !== revision) return null;
-        const clean = validateWorkspace(projects);
+        const clean = validateWorkspace(validateWorkspace(projects).map(withDoneList));
         const existing = new Set(before.projects.map(project => project.id));
         if (!restore && clean.some(project => !existing.has(project.id) && access.isDeleted(project.id)))
           fail(
