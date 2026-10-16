@@ -226,19 +226,21 @@ function App() {
 
   const createProject = values => {
     const id = uid();
-    const newProject = withInfos({
-      id,
-      name: values.title,
-      description: values.description || 'Votre prochaine grande idée commence ici.',
-      emoji: '◈',
-      color: '#e1e7cd',
-      lists: [
-        { id: uid(), name: 'Améliorations', color: 'green' },
-        { id: uid(), name: 'Nouvelles idées', color: 'purple' },
-        { id: uid(), name: 'Bugs', color: 'orange' },
-      ],
-      cards: [],
-    });
+    const newProject = withDoneList(
+      withInfos({
+        id,
+        name: values.title,
+        description: values.description || 'Votre prochaine grande idée commence ici.',
+        emoji: '◈',
+        color: '#e1e7cd',
+        lists: [
+          { id: uid(), name: 'Améliorations', color: 'green' },
+          { id: uid(), name: 'Nouvelles idées', color: 'purple' },
+          { id: uid(), name: 'Bugs', color: 'orange' },
+        ],
+        cards: [],
+      }),
+    );
     setProjects(ps => [...ps, newProject]);
     chooseProject(id);
     setNotice('Projet créé');
