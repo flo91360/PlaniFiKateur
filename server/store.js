@@ -4,7 +4,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { withInfos } from '../src/lib/infos.js';
-import { withDoneList } from '../src/lib/done-list.js';
+import { withProjectLists } from '../src/lib/discussion-list.js';
 import { seed } from '../src/data/demo.js';
 import { validateWorkspace } from '../src/lib/workspace.js';
 import { publicUser, tokenHash } from './accounts.js';
@@ -309,12 +309,16 @@ export function createStore(filename, { backupDirectory } = {}) {
     return { ...version, repository, changelog, ...(downloads ? { downloads: JSON.parse(downloads.data) } : {}) };
   };
   transaction(synchronizeInfos);
-  // Tâches terminées avant la liste « Terminées » : elles y sont rangées au démarrage.
+  // Projets antérieurs aux listes « Discussion » et « Terminées » : elles sont ajoutées au démarrage,
+  // les tâches terminées rangées et les cartes de discussion retirées de la file de l’agent.
   transaction(() => {
     const previous = readProjects();
-    const projects = previous.map(withDoneList);
-    if (projects.some((project, index) => project !== previous[index]))
-      writeProjects(validateWorkspace(projects), undefined, { previous });
+    const projects = previous.map(withProjectLists);
+    if (projects.some((project, index) => project !== previous[index])) {
+      const clean = validateWorkspace(projects);
+      workflows.withdrawDiscussion(clean, null);
+      writeProjects(clean, undefined, { previous });
+    }
   });
   // Projets antérieurs aux droits par projet : règle par défaut, et leur créateur (d’après
   // l’historique) en devient responsable.
@@ -517,7 +521,7 @@ export function createStore(filename, { backupDirectory } = {}) {
       );
     try {
       // Une tâche passée au statut « Terminée » rejoint la liste « Terminées ».
-      return { clean: validateWorkspace(result.projects.map(withDoneList)), skipped };
+      return { clean: validateWorkspace(result.projects.map(withProjectLists)), skipped };
     } catch (error) {
       fail(400, 'invalid_workspace', error.message);
     }
@@ -895,7 +899,7 @@ export function createStore(filename, { backupDirectory } = {}) {
       return transaction(() => {
         const before = this.read();
         if (before.revision !== revision) return null;
-        const clean = validateWorkspace(validateWorkspace(projects).map(withDoneList));
+        const clean = validateWorkspace(validateWorkspace(projects).map(withProjectLists));
         const existing = new Set(before.projects.map(project => project.id));
         if (!restore && clean.some(project => !existing.has(project.id) && access.isDeleted(project.id)))
           fail(

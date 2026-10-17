@@ -10,6 +10,7 @@ import LocalForm from './LocalForm.jsx';
 import Status, { PriorityOptions, StatusOptions } from './Status.jsx';
 import { EffortSelect } from './AiSettings.jsx';
 import { cardLinks, isSystemCard } from '../lib/infos.js';
+import { isDiscussionCard } from '../lib/discussion-list.js';
 import { createId as uid } from '../lib/id.js';
 import { parseTags } from '../lib/tags.js';
 import { unfinished, useCardExecutions } from '../lib/use-card-executions.js';
@@ -279,7 +280,9 @@ export default function CardDetail({
   // enregistrée sur le serveur juste avant d’être confiée à l’agent.
   const startHint = description.trim() ? '' : 'Rédigez la description : c’est la demande transmise à l’agent.';
   const stored = fieldsSaved && saveStatus === 'saved';
-  const executionShown = !offline && !isSystemCard(projectId, card.id);
+  // Une carte de la liste Discussion sert à échanger : elle n’est jamais confiée à l’agent.
+  const discussion = isDiscussionCard({ id: projectId, lists }, card);
+  const executionShown = !offline && !isSystemCard(projectId, card.id) && !discussion;
   const saveFailed = ['error', 'conflict'].includes(saveStatus);
   // Demandes « Confier à l’agent » en attente de l’enregistrement de la carte.
   const saveWaiters = useRef([]);
@@ -337,7 +340,11 @@ export default function CardDetail({
               value={description}
               onChange={e => setDescription(e.target.value)}
               onBlur={() => saveFields()}
-              placeholder="Décrivez la demande pour l’agent, le résultat attendu et les contraintes utiles…"
+              placeholder={
+                discussion
+                  ? 'Posez votre question sur le fonctionnement du projet ou une évolution à venir…'
+                  : 'Décrivez la demande pour l’agent, le résultat attendu et les contraintes utiles…'
+              }
             />
           </label>
           {!requestLocked && (
@@ -351,9 +358,11 @@ export default function CardDetail({
             />
           )}
           <p className="muted">
-            {requestLocked && !readOnly
-              ? 'Carte confiée à l’agent : seul un responsable peut encore modifier la demande. Repassez-la en « À explorer » pour la retravailler.'
-              : 'Cette description est l’objectif transmis à l’agent.'}
+            {discussion
+              ? 'Carte de discussion : une question pour échanger, aucune modification n’est effectuée. Répondez dans la discussion ci-dessous.'
+              : requestLocked && !readOnly
+                ? 'Carte confiée à l’agent : seul un responsable peut encore modifier la demande. Repassez-la en « À explorer » pour la retravailler.'
+                : 'Cette description est l’objectif transmis à l’agent.'}
           </p>
           {executionShown && (
             <ExecutionPanel
@@ -441,7 +450,7 @@ export default function CardDetail({
               value={card.status}
               onChange={e => onUpdate({ status: e.target.value })}
             >
-              <StatusOptions canLaunch={canLaunch} />
+              <StatusOptions canLaunch={canLaunch} discussion={discussion} />
             </select>
           </label>
           <EffortSelect

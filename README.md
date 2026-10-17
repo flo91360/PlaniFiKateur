@@ -128,7 +128,7 @@ Conserver également des copies hors du volume Railway.
 npm run export:preview
 ```
 
-`dist/PlaniFiKateur-apercu-v0.1.53.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
+`dist/PlaniFiKateur-apercu-v0.1.54.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 
@@ -138,6 +138,14 @@ pour que les autres listes ne gardent que le travail à faire. Chaque projet l�
 même vide, juste avant la colonne Infos ; une liste déjà nommée « Terminées » est
 reprise. Les cartes déjà terminées y sont rangées au
 démarrage du serveur.
+
+La liste **Discussion** sert à échanger sur le fonctionnement du projet et ses
+futures évolutions : la description d’une carte y est une question, jamais une
+demande de modification. Ces cartes ne sont jamais confiées à l’agent : le statut
+« Prête à démarrer » y est indisponible, et une carte déplacée dans Discussion
+quitte la file de l’agent (son exécution en cours est annulée). L’échange se fait
+dans la discussion de la carte. Chaque projet l’a, même vide, juste avant
+Terminées ; une liste déjà nommée « Discussion » est reprise.
 
 La colonne **Info / Infos** contient une carte de version propre au dépôt associé
 au projet : son titre est le dernier tag publié et sa description indique sa date

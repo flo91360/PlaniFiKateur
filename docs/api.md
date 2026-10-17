@@ -97,13 +97,13 @@ Toutes ces routes exigent une **session personnelle** de la même origine ; une 
 | Route | Usage |
 | --- | --- |
 | `PATCH /api/v1/workspace` | Lot de modifications fines, appliqué en une transaction ; réponse `{ "data": { projects, revision, updatedAt, skipped, rejected? } }`, pièces jointes sans contenu |
-| `POST /api/v1/projects` | `{ name, description?, emoji?, color?, lists? }` ; trois listes par défaut, la liste « Terminées » et les cartes Infos ; réponse 201 |
+| `POST /api/v1/projects` | `{ name, description?, emoji?, color?, lists? }` ; trois listes par défaut, les listes « Discussion » et « Terminées » et les cartes Infos ; réponse 201 |
 | `PATCH /api/v1/projects/{projectId}` | `{ name?, description?, emoji?, color? }` |
 | `DELETE /api/v1/projects/{projectId}` | Supprime le projet, ses listes et ses cartes |
 | `POST /api/v1/projects/{projectId}/lists` | `{ name, color? }` (`green`, `purple`, `orange`) ; réponse 201 |
 | `PATCH /api/v1/projects/{projectId}/lists/{listId}` | `{ name?, color? }` |
 | `DELETE /api/v1/projects/{projectId}/lists/{listId}` | Liste vide uniquement, sinon 409 (`change_not_empty`) |
-| `POST /api/v1/projects/{projectId}/cards` | `{ listId, title, description?, status?, priority?, aiEffort?, tags?, checklist?, attachments? }` ; réponse 201 |
+| `POST /api/v1/projects/{projectId}/cards` | `{ listId, title, description?, status?, priority?, aiEffort?, tags?, checklist?, attachments? }` ; réponse 201. Dans la liste Discussion, le statut `ready` devient `draft` : ces cartes ne sont jamais confiées à l’agent |
 | `PATCH /api/v1/projects/{projectId}/cards/{cardId}` | Mêmes champs, tous facultatifs ; seuls les champs envoyés changent |
 | `DELETE /api/v1/projects/{projectId}/cards/{cardId}` | Supprime la carte, ses commentaires et ses pièces jointes |
 | `POST /api/v1/projects/{projectId}/cards/{cardId}/comments` | `{ text }` ; réponse 201 avec le commentaire signé par le serveur |

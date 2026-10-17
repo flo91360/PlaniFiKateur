@@ -13,11 +13,16 @@ export const statuses = {
 };
 export const priorities = { low: 'Basse', normal: 'Normale', high: 'Haute' };
 
-// « Prête à démarrer » confie la carte à l’agent : réservé aux responsables du projet.
-export function StatusOptions({ canLaunch = true }) {
+// « Prête à démarrer » confie la carte à l’agent : réservé aux responsables du projet, et jamais
+// pour une carte de la liste Discussion (`discussion`).
+export function StatusOptions({ canLaunch = true, discussion = false }) {
   return Object.entries(statuses).map(([key, status]) => (
-    <option key={key} value={key} disabled={key === 'ready' && !canLaunch}>
-      {key === 'ready' && !canLaunch ? `${status.label} (responsables)` : status.label}
+    <option key={key} value={key} disabled={key === 'ready' && (!canLaunch || discussion)}>
+      {key === 'ready' && discussion
+        ? `${status.label} (hors Discussion)`
+        : key === 'ready' && !canLaunch
+          ? `${status.label} (responsables)`
+          : status.label}
     </option>
   ));
 }
