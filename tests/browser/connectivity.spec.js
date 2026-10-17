@@ -550,7 +550,7 @@ test('another browser receives changes automatically and unchanged polls do not 
   await context.close();
 });
 
-test('automatic refresh pauses while editing and preserves a draft during a concurrent change', async ({
+test('an open card keeps refreshing and preserves a draft during a concurrent change', async ({
   page,
   browser,
   appServer,
@@ -565,10 +565,11 @@ test('automatic refresh pauses while editing and preserves a draft during a conc
   await newProject(other, 'Changement pendant la saisie');
   await expect(other.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
   await page.clock.runFor(10100);
-  await expect(page.getByLabel('Description', { exact: true })).toHaveValue('Mon texte en cours de rédaction');
+  // Le tableau reste actualisé derrière la carte ouverte, sans toucher au champ en cours de saisie.
   await expect(
     page.getByRole('navigation', { name: 'Projets' }).getByRole('button', { name: /Changement pendant la saisie/ }),
-  ).toHaveCount(0);
+  ).toHaveCount(1);
+  await expect(page.getByLabel('Description', { exact: true })).toHaveValue('Mon texte en cours de rédaction');
   await page.getByRole('button', { name: 'Terminé', exact: true }).click();
   await page.clock.runFor(500);
   // La description est enregistrée par-dessus le changement de l’autre session, sans conflit.
@@ -2306,4 +2307,87 @@ test('adds another member to card followers and preserves their ability to unsub
   } finally {
     await bobContext.close();
   }
+});
+
+test.describe('reliable and accessible interface', () => {
+  test('closing a form with unsaved input asks before discarding it', async ({ page, appServer }) => {
+    await login(page, appServer);
+    await page.getByRole('button', { name: 'Ajouter une carte dans Bugs', exact: true }).click();
+    const form = page.getByRole('dialog', { name: 'Une nouvelle idée' });
+    // Sans saisie, Échap ferme directement.
+    await page.keyboard.press('Escape');
+    await expect(form).toHaveCount(0);
+    await page.getByRole('button', { name: 'Ajouter une carte dans Bugs', exact: true }).click();
+    await page.getByLabel('Titre de la carte', { exact: true }).fill('Idée à ne pas perdre');
+    await page.keyboard.press('Escape');
+    await expect(form.getByRole('alert')).toContainText('Votre saisie n’est pas enregistrée');
+    await expect(form.getByRole('button', { name: 'Continuer la saisie', exact: true })).toBeFocused();
+    await form.getByRole('button', { name: 'Continuer la saisie', exact: true }).click();
+    await expect(page.getByLabel('Titre de la carte', { exact: true })).toHaveValue('Idée à ne pas perdre');
+    await form.getByRole('button', { name: 'Fermer', exact: true }).click();
+    await form.getByRole('button', { name: 'Abandonner la saisie', exact: true }).click();
+    await expect(form).toHaveCount(0);
+  });
+
+  test('an unreadable execution history is reported with a retry instead of locking the card', async ({
+    page,
+    appServer,
+  }) => {
+    await login(page, appServer);
+    const card = seed[0].cards.find(item => !isSystemCard(seed[0].id, item.id));
+    await page.route('**/api/v1/projects/*/cards/*/work', route =>
+      route.fulfill({ status: 500, json: { error: { code: 'server_error', message: 'Erreur interne.' } } }),
+    );
+    await page.getByRole('heading', { name: card.title, exact: true }).click();
+    const panel = page.getByRole('region', { name: 'Exécution IA', exact: true });
+    await expect(panel.getByRole('alert')).toContainText('Exécutions IA de cette carte indisponibles');
+    await expect(panel.getByRole('button', { name: 'Confier à l’agent', exact: true })).toHaveCount(0);
+    await page.unroute('**/api/v1/projects/*/cards/*/work');
+    await panel.getByRole('button', { name: 'Réessayer', exact: true }).click();
+    await expect(panel.getByRole('alert')).toHaveCount(0);
+    await expect(panel.getByRole('button', { name: 'Confier à l’agent', exact: true })).toBeVisible();
+  });
+
+  test('an open card shows the comments of another session without being closed', async ({
+    page,
+    browser,
+    appServer,
+  }) => {
+    await login(page, appServer);
+    const card = seed[0].cards.find(item => !isSystemCard(seed[0].id, item.id));
+    const context = await browser.newContext();
+    const other = await context.newPage();
+    await login(other, appServer);
+    await page.getByRole('heading', { name: card.title, exact: true }).click();
+    await other.getByRole('heading', { name: card.title, exact: true }).click();
+    await other.getByLabel('Votre commentaire', { exact: true }).fill('Ajouté depuis un autre navigateur');
+    await other.getByRole('button', { name: 'Publier', exact: true }).click();
+    await expect(other.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+    await expect(page.getByRole('dialog', { name: 'Détail de la carte' })).toContainText(
+      'Ajouté depuis un autre navigateur',
+    );
+    await context.close();
+  });
+
+  test('board cards are articles opened by their title button', async ({ page, appServer }) => {
+    await login(page, appServer);
+    const card = seed[0].cards.find(item => !isSystemCard(seed[0].id, item.id));
+    const preview = page.getByRole('article').filter({ has: page.getByRole('heading', { name: card.title }) });
+    await expect(preview).toHaveCount(1);
+    await preview.getByRole('button', { name: card.title, exact: true }).focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('dialog', { name: 'Détail de la carte' })).toBeVisible();
+  });
+
+  test('the closed mobile menu is inert and Escape closes it', async ({ page, appServer }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await login(page, appServer);
+    const menu = page.locator('aside.sidebar');
+    await expect(menu).toHaveAttribute('inert', '');
+    await page.getByRole('button', { name: 'Ouvrir les projets', exact: true }).click();
+    await expect(menu).not.toHaveAttribute('inert', '');
+    await expect(menu.locator('a, button').first()).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveAttribute('inert', '');
+  });
 });

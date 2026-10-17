@@ -74,6 +74,22 @@
   white-space: pre-line;
   overflow-wrap: anywhere;
 }
+.execution-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--danger-surface);
+  font-size: 12px;
+}
+.execution-error p {
+  margin: 0;
+  flex: 1 1 220px;
+  overflow-wrap: anywhere;
+}
 .execution-links {
   display: flex;
   flex-wrap: wrap;

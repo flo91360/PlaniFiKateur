@@ -3,6 +3,7 @@ import { Bot, Plus } from 'lucide-react';
 import Attachments from './Attachments.jsx';
 import DescriptionAssistant from './DescriptionAssistant.jsx';
 import LocalForm from './LocalForm.jsx';
+import { useUnsavedChanges } from './Dialog.jsx';
 import { EffortSelect } from './AiSettings.jsx';
 import { PriorityOptions, StatusOptions } from './Status.jsx';
 import { parseTags } from '../lib/tags.js';
@@ -56,6 +57,7 @@ export default function CreationForm({
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const isCard = type === 'card';
+  useUnsavedChanges(!!(title.trim() || description.trim() || tags.trim() || comment.trim() || attachments.length));
   // Une carte de la liste Discussion est une question pour échanger, jamais confiée à l’agent.
   const discussion = isCard && isDiscussionCard({ id: projectId, lists }, { listId: target });
   const text = texts[type];

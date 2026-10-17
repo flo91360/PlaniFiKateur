@@ -20,7 +20,7 @@
   --sidebar-muted: #88a69a;
   --sidebar-accent: #a4dfc7;
   --border: #e2e9e6;
-  --muted: #83908b;
+  --muted: #646f6b;
   --text: #263b33;
   --page: #f7faf9;
   /* Couleurs communes : surfaces, bordures, textes et états. */
@@ -31,7 +31,7 @@
   --border-accent: #b0cbc0; /* bordure d’un élément actif */
   --text-soft: #395147; /* texte secondaire foncé */
   --text-muted: #5f736b; /* texte d’appoint */
-  --text-faint: #8ba59b; /* libellés discrets */
+  --text-faint: #5f7369; /* libellés discrets (contraste 4,5:1 minimum sur les fonds clairs) */
   --success-surface: #e7f1e8; /* fond d’une réussite */
   --warning-surface: #fdf8ea; /* fond d’un avertissement */
   --warning-soft: #fbf1dc; /* fond appuyé d’un avertissement */

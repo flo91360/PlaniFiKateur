@@ -130,7 +130,9 @@ function App() {
   const [modal, setModal] = useState(null);
   const [selectedId, setSelectedId] = useState(initialRoute?.cardId ?? null);
   const [dragging, setDragging] = useState(null);
-  const workspace = useWorkspace({ pauseRefresh: !!modal || !!selectedId || !!dragging });
+  // Une carte ouverte reste actualisée (commentaires, statut, fichiers d’autres personnes) : son
+  // détail ne remplace que les champs qui ne sont pas en cours de saisie.
+  const workspace = useWorkspace({ pauseRefresh: !!modal || !!dragging });
   const { projects, setProjects, ready, needsLogin, saveStatus } = workspace;
   const [projectId, setProjectId] = useState(initialRoute?.projectId ?? projects[0]?.id ?? null);
   const [filters, setFilters] = useState(NO_FILTERS);
@@ -553,6 +555,7 @@ function App() {
             )}
           >
             <CardDetail
+              key={selected.id}
               engine={projectAi.engine}
               attachmentBytes={attachmentSize(project, selected.id)}
               onWorkflowRefresh={() => workspace.refresh({ whileEditing: true })}

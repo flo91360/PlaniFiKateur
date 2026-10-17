@@ -81,8 +81,10 @@ function Priority({ value }) {
 function CardPreview({ card, color, followers, work, dragging, readOnly, onDragStart, onDragEnd, onOpen }) {
   const links = cardLinks(card);
   const badge = workBadge(work);
+  // Carte du tableau : un article dont le titre est le bouton d’ouverture (étendu à toute la carte),
+  // pour que les lecteurs d’écran annoncent son titre, ses étiquettes et son état séparément.
   const preview = (
-    <button
+    <article
       draggable={!readOnly}
       onDragStart={e => {
         onDragStart(card.id);
@@ -90,7 +92,6 @@ function CardPreview({ card, color, followers, work, dragging, readOnly, onDragS
         e.dataTransfer.setData('text/plain', card.id);
       }}
       onDragEnd={onDragEnd}
-      onClick={() => onOpen(card.id)}
       className={`card ${dragging ? 'dragging' : ''} ${links.length ? 'with-link' : ''}`}
     >
       <div className="card-tags">
@@ -101,7 +102,11 @@ function CardPreview({ card, color, followers, work, dragging, readOnly, onDragS
         ))}
         {!card.tags.length && <span className="untagged">Nouvelle idée</span>}
       </div>
-      <h3>{card.title}</h3>
+      <h3>
+        <button type="button" className="card-open" onClick={() => onOpen(card.id)}>
+          {card.title}
+        </button>
+      </h3>
       <p>{card.description || 'Ajoutez un peu de contexte à cette idée…'}</p>
       <Status value={card.status} />
       {badge && <span className={`work-badge ${badge.tone}`}>{badge.label}</span>}
@@ -121,7 +126,7 @@ function CardPreview({ card, color, followers, work, dragging, readOnly, onDragS
           </div>
         </div>
       </footer>
-    </button>
+    </article>
   );
   if (!links.length) return preview;
   return (
