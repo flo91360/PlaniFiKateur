@@ -247,6 +247,13 @@ export default function ExecutionPanel({
           )}
           <Journal run={run} />
         </>
+      ) : execution.error ? (
+        <div className="execution-error" role="alert">
+          <p>Exécutions IA de cette carte indisponibles : {execution.error}</p>
+          <button className="secondary-button" onClick={() => void execution.reload()}>
+            Réessayer
+          </button>
+        </div>
       ) : !execution.loaded ? (
         <p className="execution-detail" aria-busy="true">
           Chargement de l’exécution IA…
@@ -259,6 +266,11 @@ export default function ExecutionPanel({
         <p className="execution-detail">
           Aucune exécution pour cette carte. Passez-la au statut « Prête à démarrer » ou confiez-la directement à
           l’agent.
+        </p>
+      )}
+      {run && execution.error && (
+        <p className="muted" role="status">
+          Dernière actualisation impossible ({execution.error}) : l’état affiché peut dater. Nouvel essai automatique.
         </p>
       )}
       {execution.ai && (
@@ -291,7 +303,7 @@ export default function ExecutionPanel({
         />
       ) : (
         <div className="execution-actions">
-          {!active && !finished && canLaunch && execution.loaded && (
+          {!active && !finished && canLaunch && execution.loaded && !(execution.error && !run) && (
             <button
               className="primary-button"
               disabled={busy || !canStart}

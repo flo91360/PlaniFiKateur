@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import LocalForm from './LocalForm.jsx';
+import { useUnsavedChanges } from './Dialog.jsx';
 
 const LIST_COLORS = { green: 'Vert', purple: 'Violet', orange: 'Orange' };
 
@@ -7,6 +8,7 @@ const LIST_COLORS = { green: 'Vert', purple: 'Violet', orange: 'Orange' };
 export function ListSettings({ list, cardCount, index, count, onSave, onMove, onDelete, onClose }) {
   const [name, setName] = useState(list.name),
     [color, setColor] = useState(list.color);
+  useUnsavedChanges(name !== list.name || color !== list.color);
   const save = () => {
     if (!name.trim()) return;
     onSave({ name: name.trim(), color });
@@ -73,6 +75,12 @@ export function ProjectDetailsForm({ project, onSave, onClose }) {
     [description, setDescription] = useState(project.description),
     [emoji, setEmoji] = useState(project.emoji),
     [color, setColor] = useState(project.color.length === 4 ? expand(project.color) : project.color);
+  useUnsavedChanges(
+    name !== project.name ||
+      description !== project.description ||
+      emoji !== project.emoji ||
+      color !== (project.color.length === 4 ? expand(project.color) : project.color),
+  );
   const save = () => {
     if (!name.trim() || !emoji.trim()) return;
     onSave({ name: name.trim(), description: description.trim(), emoji: emoji.trim(), color });

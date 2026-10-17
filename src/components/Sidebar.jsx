@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ChevronRight, Layers3, Plus, Sparkles } from 'lucide-react';
 import { ideaCards } from '../lib/infos.js';
 import Avatar from './Avatar.jsx';
@@ -34,12 +34,42 @@ function AgentTip({ offline }) {
   );
 }
 
-// Navigation entre projets ; sur mobile, panneau ouvert par la barre supérieure.
+// Largeur où le panneau devient escamotable (même seuil que src/styles/responsive.css).
+const MOBILE = '(max-width: 700px)';
+function useMobile() {
+  const [mobile, setMobile] = useState(() => window.matchMedia?.(MOBILE).matches ?? false);
+  useEffect(() => {
+    const query = window.matchMedia?.(MOBILE);
+    if (!query) return;
+    const update = () => setMobile(query.matches);
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+  return mobile;
+}
+
+// Navigation entre projets ; sur mobile, panneau ouvert par la barre supérieure. Fermé, il est
+// hors de l’écran et inerte : ni le clavier ni les lecteurs d’écran n’y entrent. Ouvert, Échap le
+// referme.
 export default function Sidebar({ projects, currentId, user, offline, open, onClose, onChooseProject, onOpenModal }) {
+  const mobile = useMobile();
+  const panel = useRef(null);
+  useEffect(() => {
+    if (!open || !mobile) return;
+    panel.current?.querySelector('a, button')?.focus();
+    const close = e => e.key === 'Escape' && onClose();
+    document.addEventListener('keydown', close);
+    return () => document.removeEventListener('keydown', close);
+  }, [open, mobile, onClose]);
   return (
     <>
       {open && <div className="sidebar-backdrop" onClick={onClose} />}
-      <aside className={`sidebar ${open ? 'open' : ''}`}>
+      <aside
+        ref={panel}
+        className={`sidebar ${open ? 'open' : ''}`}
+        aria-label="Menu principal"
+        inert={mobile && !open ? true : undefined}
+      >
         <a
           className="brand"
           href="#"

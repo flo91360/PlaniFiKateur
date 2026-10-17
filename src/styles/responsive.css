@@ -74,7 +74,7 @@
     flex-basis: 115px;
   }
   .save-indicator {
-    font-size: 9px;
+    font-size: 10px;
   }
   .toast {
     left: calc(50% + 108px);
@@ -93,7 +93,7 @@
     gap: 6px;
   }
   .workspace-button small {
-    font-size: 8px;
+    font-size: 10px;
   }
   .workspace-button > svg {
     display: none;
@@ -203,7 +203,7 @@
     font-size: 11px;
   }
   .eyebrow {
-    font-size: 8px;
+    font-size: 10px;
   }
   .stats {
     margin-bottom: 20px;
@@ -212,7 +212,7 @@
     padding: 11px;
   }
   .stat div > span {
-    font-size: 8px;
+    font-size: 10px;
   }
   .stat strong {
     font-size: 21px;
@@ -240,7 +240,7 @@
   }
   .board-caption {
     margin: 14px 0;
-    font-size: 9px;
+    font-size: 10px;
   }
   .board {
     gap: 13px;
@@ -260,11 +260,11 @@
   }
   .tag,
   .status {
-    font-size: 9px;
+    font-size: 10px;
   }
   .card-meta,
   .priority {
-    font-size: 9px;
+    font-size: 10px;
   }
   .board-footer > span:last-child {
     display: none;
@@ -313,7 +313,7 @@
   }
   .detail-footer > span {
     max-width: 150px;
-    font-size: 8px;
+    font-size: 10px;
   }
   .creation-form {
     padding: 20px;

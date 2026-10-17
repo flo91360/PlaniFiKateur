@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { createStore } from '../server/store.js';
 import { createAppServer } from '../server/index.js';
 import { seedAccount, testEmail, testPassword } from './helpers/accounts.mjs';
@@ -141,4 +141,16 @@ test('the accent is stored with the account, follows it on every session and sta
   const deleted = await f.request(`/users/${bobId}`, { method: 'DELETE', cookie: admin });
   assert.equal(deleted.status, 200);
   assert.deepEqual(f.store.preferences(bobId), { accent: DEFAULT_ACCENT });
+});
+
+test('secondary texts stay readable on light surfaces and no text is smaller than 10 px', () => {
+  const styles = new URL('../src/styles/', import.meta.url);
+  const base = readFileSync(new URL('base.css', styles), 'utf8');
+  const variable = name => new RegExp(`--${name}: (#[0-9a-f]{6})`).exec(base)[1];
+  for (const name of ['muted', 'text-muted', 'text-faint', 'text-soft', 'text'])
+    for (const background of ['#ffffff', variable('page')])
+      readable(variable(name), background, `--${name} sur ${background}`);
+  for (const file of readdirSync(styles))
+    for (const [, size] of readFileSync(new URL(file, styles), 'utf8').matchAll(/font-size: ([\d.]+)px/g))
+      assert.ok(Number(size) >= 10, `${file} : police de ${size} px`);
 });

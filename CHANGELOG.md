@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.56 — 2026-10-17
+<!-- planifikateur:etape-13-interface-accessible -->
+
+- **Interface fiable et accessible** : Une carte ouverte reste actualisée (commentaires, statut et fichiers des autres sessions) sans toucher au champ en cours de saisie, et son détail repart de zéro en changeant de carte. Une lecture impossible des exécutions IA s’affiche avec un bouton Réessayer au lieu de bloquer le panneau et le statut. Fermer un formulaire non enregistré (Échap, clic à côté, croix) demande confirmation. Textes secondaires plus contrastés (4,5:1 minimum) et aucune police sous 10 px. Les cartes du tableau sont des articles ouverts par le bouton de leur titre ; le menu mobile fermé est inerte et Échap le referme.
+
 ## 0.1.55 — 2026-10-17
 <!-- planifikateur:agent-discussion -->
 
