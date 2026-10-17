@@ -6,6 +6,7 @@ import LocalForm from './LocalForm.jsx';
 import { EffortSelect } from './AiSettings.jsx';
 import { PriorityOptions, StatusOptions } from './Status.jsx';
 import { parseTags } from '../lib/tags.js';
+import { isDiscussionCard } from '../lib/discussion-list.js';
 import { useProjectAccess } from '../lib/project-access.js';
 
 const texts = {
@@ -55,6 +56,8 @@ export default function CreationForm({
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const isCard = type === 'card';
+  // Une carte de la liste Discussion est une question pour échanger, jamais confiée à l’agent.
+  const discussion = isCard && isDiscussionCard({ id: projectId, lists }, { listId: target });
   const text = texts[type];
   // `chosenStatus` : « ready » quand la carte est confiée à l’agent depuis le bandeau d’exécution.
   const create = chosenStatus => {
@@ -123,8 +126,12 @@ export default function CreationForm({
                 title={title}
                 listId={target}
               />
-              <p className="muted">La description sera la demande transmise à l’agent.</p>
-              {!offline && (
+              <p className="muted">
+                {discussion
+                  ? 'Carte de discussion : une question pour échanger sur le projet, aucune modification ne sera effectuée.'
+                  : 'La description sera la demande transmise à l’agent.'}
+              </p>
+              {!offline && !discussion && (
                 <section className="execution-panel" aria-label="Exécution IA">
                   <h3>
                     <Bot size={17} />
@@ -190,7 +197,7 @@ export default function CreationForm({
             <label>
               Statut
               <select aria-label="Statut" value={status} onChange={e => setStatus(e.target.value)}>
-                <StatusOptions canLaunch={canLaunch} />
+                <StatusOptions canLaunch={canLaunch} discussion={discussion} />
               </select>
             </label>
             <label>

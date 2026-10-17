@@ -3,6 +3,7 @@ import { fail } from '../http.js';
 import { CARD_STATUS, canTransition, isTerminal, legacyPublicationQuestion, transition } from '../execution-states.js';
 import { OPEN, source, text } from './core.js';
 import { usageSummary } from './usage.js';
+import { isDiscussionCard } from '../../src/lib/discussion-list.js';
 
 // Cycle de vie des exécutions côté personnes : préparation, file de l’agent, décisions humaines,
 // vues (carte, badges du tableau, « À traiter ») et cohérence avec les modifications du tableau.
@@ -30,7 +31,13 @@ export function createRuns(
     approvalNeeded(run, required) &&
     run.approval?.headSha !== run.submissions.at(-1)?.pullRequest?.headSha;
   const prepare = (projectId, cardId, data, actor) => {
-    const { card } = findCard(projectId, cardId);
+    const { project, card } = findCard(projectId, cardId);
+    if (isDiscussionCard(project, card))
+      fail(
+        409,
+        'discussion_card',
+        'Une carte de la liste Discussion sert à échanger : elle n’est pas confiée à l’agent.',
+      );
     if (db.prepare(`SELECT id FROM executions WHERE card_id=? AND ${OPEN}`).get(cardId))
       fail(409, 'active_execution', 'Une exécution existe déjà. Annulez-la avant de préparer une nouvelle demande.');
     if (data?.delivery !== undefined && data.delivery !== 'github')
@@ -78,7 +85,13 @@ export function createRuns(
         .map(row => row.card_id),
     );
     for (const card of project?.cards || []) {
-      if (card.status !== 'ready' || !card.description.trim() || activeCards.has(card.id)) continue;
+      if (
+        card.status !== 'ready' ||
+        !card.description.trim() ||
+        activeCards.has(card.id) ||
+        isDiscussionCard(project, card)
+      )
+        continue;
       const readiness = db
         .prepare(
           "SELECT actor_id,actor_name FROM activity WHERE card_id=? AND action='card.status_changed' AND json_extract(payload,'$.details.to')='ready' ORDER BY id DESC LIMIT 1",
@@ -89,6 +102,20 @@ export function createRuns(
         : card.updatedBy || card.createdBy || { id: 'system', name: 'Système' };
       if (!canLaunch(actor, projectId)) continue;
       prepare(projectId, card.id, {}, actor);
+    }
+  };
+  // Carte placée dans la liste « Discussion » : son exécution en cours est annulée, l’agent n’y
+  // modifie rien. Met à jour le statut des cartes de `projects`.
+  const withdrawDiscussion = (projects, actor) => {
+    for (const row of rows(OPEN)) {
+      const run = unpack(row),
+        project = projects.find(p => p.id === run.projectId),
+        card = project?.cards.find(c => c.id === run.cardId);
+      if (!project || !isDiscussionCard(project, card)) continue;
+      transition(run, 'cancel');
+      run.cancellation = 'Carte placée dans la liste Discussion : l’agent n’y effectue aucune modification.';
+      save(run, actor, 'cancel', { syncCard: false });
+      card.status = CARD_STATUS[run.state];
     }
   };
   // Décisions humaines : chaque action enregistre ce qu’elle porte avant la transition.
@@ -248,7 +275,9 @@ export function createRuns(
     },
     // Modification du tableau (`before` → `after`) : annule les exécutions dont la demande a changé,
     // refuse un statut piloté par l’agent, et prend une réponse en commentaire pour la question posée.
+    withdrawDiscussion,
     reconcile(before, after, actor, restore) {
+      if (!restore) withdrawDiscussion(after, actor);
       for (const row of rows(OPEN))
         if (!isTerminal(row.state)) {
           const run = unpack(row),

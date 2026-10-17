@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.54 — 2026-10-17
+<!-- planifikateur:liste-discussion -->
+
+- **Liste Discussion** : Chaque projet a une liste « Discussion », juste avant Terminées, pour échanger sur le fonctionnement du projet et ses futures évolutions. Ses cartes sont des questions : elles ne sont jamais confiées à l’agent (statut « Prête à démarrer » indisponible, exécution annulée si une carte y est déplacée) et aucune modification n’est effectuée.
+
 ## 0.1.53 — 2026-10-16
 <!-- planifikateur:liste-terminees-toujours -->
 

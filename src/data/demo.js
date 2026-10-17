@@ -1,5 +1,5 @@
 import { withInfos } from '../lib/infos.js';
-import { withDoneList } from '../lib/done-list.js';
+import { withProjectLists } from '../lib/discussion-list.js';
 
 export const seed = [
   {
@@ -146,4 +146,4 @@ export const seed = [
       },
     ],
   },
-].map(project => withDoneList(withInfos(project)));
+].map(project => withProjectLists(withInfos(project)));

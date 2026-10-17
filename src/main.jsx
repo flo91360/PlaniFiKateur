@@ -9,7 +9,7 @@ import '@fontsource/manrope/latin-700.css';
 import '@fontsource/manrope/latin-800.css';
 import './style.css';
 import { withInfos } from './lib/infos.js';
-import { withDoneList } from './lib/done-list.js';
+import { withProjectLists } from './lib/discussion-list.js';
 import { createId as uid } from './lib/id.js';
 import { apiData } from './lib/api-client.js';
 import { applyAccent } from './lib/accents.js';
@@ -185,8 +185,9 @@ function App() {
       let changed = false;
       const next = ps.map(p => {
         if (p.id !== project.id) return p;
-        // Une tâche terminée rejoint aussitôt la liste « Terminées », comme sur le serveur.
-        const updated = withDoneList(transform(p));
+        // Une tâche terminée rejoint aussitôt la liste « Terminées » et une carte de discussion quitte la
+        // file de l’agent, comme sur le serveur.
+        const updated = withProjectLists(transform(p));
         changed ||= updated !== p;
         return updated;
       });
@@ -226,7 +227,7 @@ function App() {
 
   const createProject = values => {
     const id = uid();
-    const newProject = withDoneList(
+    const newProject = withProjectLists(
       withInfos({
         id,
         name: values.title,

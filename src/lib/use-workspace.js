@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { withInfos } from './infos.js';
-import { withDoneList } from './done-list.js';
+import { withProjectLists } from './discussion-list.js';
 import { seed } from '../data/demo.js';
 import { validateWorkspace } from './workspace.js';
 import { apiData, apiFetch } from './api-client.js';
@@ -15,7 +15,7 @@ export const offlineMode = globalThis.__PLANIFIKATEUR_OFFLINE__ === true || glob
 function readLocal() {
   try {
     return validateWorkspace(JSON.parse(localStorage.getItem(STORAGE))).map(project =>
-      withDoneList(withInfos(project)),
+      withProjectLists(withInfos(project)),
     );
   } catch {
     return seed;
