@@ -128,7 +128,7 @@ Conserver également des copies hors du volume Railway.
 npm run export:preview
 ```
 
-`dist/PlaniFiKateur-apercu-v0.1.54.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
+`dist/PlaniFiKateur-apercu-v0.1.55.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 
@@ -141,11 +141,14 @@ démarrage du serveur.
 
 La liste **Discussion** sert à échanger sur le fonctionnement du projet et ses
 futures évolutions : la description d’une carte y est une question, jamais une
-demande de modification. Ces cartes ne sont jamais confiées à l’agent : le statut
-« Prête à démarrer » y est indisponible, et une carte déplacée dans Discussion
-quitte la file de l’agent (son exécution en cours est annulée). L’échange se fait
-dans la discussion de la carte. Chaque projet l’a, même vide, juste avant
-Terminées ; une liste déjà nommée « Discussion » est reprise.
+demande de modification. Le statut « Prête à démarrer » y est indisponible, et une
+carte déplacée dans Discussion quitte la file de l’agent (son exécution en cours
+est annulée). Quand un responsable pose la question, puis à chaque relance qu’il
+écrit en commentaire, le worker copie le dépôt en lecture seule et l’agent répond
+dans la discussion de la carte : ni branche, ni commit, ni PR, et la carte garde
+son statut et sa liste. Ces réponses utilisent un modèle plus léger (Haiku avec
+Claude Code, effort faible avec Codex). Chaque projet l’a, même vide, juste avant Terminées ; une
+liste déjà nommée « Discussion » est reprise.
 
 La colonne **Info / Infos** contient une carte de version propre au dépôt associé
 au projet : son titre est le dernier tag publié et sa description indique sa date

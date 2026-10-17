@@ -5,6 +5,25 @@ import { OPEN, source, text } from './core.js';
 import { usageSummary } from './usage.js';
 import { isDiscussionCard } from '../../src/lib/discussion-list.js';
 
+// Dernier message humain d’une carte de discussion : sa question (description), puis chaque relance
+// en commentaire. `answeredAfter` : l’agent a publié une réponse après ce message.
+export function pendingQuestion(card) {
+  if (!card.description.trim()) return null;
+  const messages = card.comments.filter(comment => comment.authorKind !== 'system' && comment.text.trim());
+  const index = messages.findLastIndex(comment => comment.authorKind !== 'agent');
+  const last = messages[index];
+  return {
+    trigger: last ? last.id : 'description',
+    author: last ? (last.authorId ? { id: last.authorId, name: last.author } : null) : card.createdBy || null,
+    answeredAfter: messages.slice(index + 1).some(comment => comment.authorKind === 'agent'),
+  };
+}
+
+// Réglages IA d’une réponse de discussion : un modèle plus léger que celui du projet, effort faible.
+// Claude Code passe sur Haiku ; Codex garde le modèle du projet, avec l’effort le plus bas utile.
+export const discussionAi = ai =>
+  ai.engine === 'claude-code' ? { engine: ai.engine, model: 'haiku', effort: 'low' } : { ...ai, effort: 'low' };
+
 // Cycle de vie des exécutions côté personnes : préparation, file de l’agent, décisions humaines,
 // vues (carte, badges du tableau, « À traiter ») et cohérence avec les modifications du tableau.
 export function createRuns(
@@ -23,7 +42,7 @@ export function createRuns(
     checkSource,
     approvalNeeded,
   },
-  { githubProject, executionProfile },
+  { githubProject, executionProfile, projectAi },
 ) {
   // PR en cours de fusion qui attend encore l’approbation d’un responsable.
   const awaitingApproval = (run, required) =>
@@ -75,6 +94,49 @@ export function createRuns(
     );
     return save(run, actor, 'prepared');
   };
+  // Question de la liste Discussion : l’agent lit le dépôt et répond dans la discussion de la carte,
+  // sans branche, commit ni PR. Une exécution par message humain (`trigger`), jamais relancée.
+  const prepareDiscussion = (project, card, pending, actor) => {
+    const repository = githubProject(project.id);
+    const run = {
+      delivery: 'github',
+      mode: 'discussion',
+      repository,
+      executionProfile: executionProfile(project.id),
+      ai: discussionAi(projectAi(project.id)),
+      id: randomUUID(),
+      projectId: project.id,
+      cardId: card.id,
+      state: 'ready',
+      version: 0,
+      requestSource: 'discussion',
+      trigger: pending.trigger,
+      objective: card.description,
+      criteria: '',
+      context: '',
+      // Échanges déjà publiés dans la carte, dans l’ordre, pour répondre à la dernière relance.
+      conversation: card.comments
+        .filter(comment => comment.authorKind !== 'system' && comment.text.trim())
+        .slice(-50)
+        .map(({ author, authorKind, text, date }) => ({ author, authorKind, text, date })),
+      requestedBy: { id: actor.id, name: actor.name },
+      createdAt: new Date().toISOString(),
+      source: source(card),
+      cardSnapshot: { ...card, comments: [] },
+      agent: null,
+      updates: [],
+      exchanges: [],
+      submissions: [],
+    };
+    db.prepare('INSERT INTO executions(id,project_id,card_id,state,version,data) VALUES(?,?,?,?,0,?)').run(
+      run.id,
+      run.projectId,
+      run.cardId,
+      run.state,
+      JSON.stringify(run),
+    );
+    return save(run, actor, 'prepared', { syncCard: false });
+  };
   // Cartes « Prêtes à démarrer » sans exécution : préparées pour l’agent si un responsable les a
   // rendues prêtes (défense en profondeur, la règle est aussi vérifiée à la modification).
   const prepareReadyCards = (project, projectId) => {
@@ -103,6 +165,22 @@ export function createRuns(
       if (!canLaunch(actor, projectId)) continue;
       prepare(projectId, card.id, {}, actor);
     }
+    // Questions de la liste Discussion posées par un responsable, une seule réponse par message.
+    for (const card of project?.cards || []) {
+      if (!isDiscussionCard(project, card) || activeCards.has(card.id)) continue;
+      const pending = pendingQuestion(card);
+      if (!pending?.author || !canLaunch(pending.author, projectId)) continue;
+      // Message déjà traité par une exécution ; sans exécution (purgées), une réponse publiée après
+      // lui suffit. Une relance écrite pendant une réponse en cours reste donc à traiter.
+      const handled = db
+        .prepare(
+          "SELECT json_extract(data, '$.trigger') AS trigger FROM executions WHERE card_id=? AND json_extract(data, '$.mode')='discussion'",
+        )
+        .all(card.id)
+        .map(row => row.trigger);
+      if (handled.includes(pending.trigger) || (!handled.length && pending.answeredAfter)) continue;
+      prepareDiscussion(project, card, pending, pending.author);
+    }
   };
   // Carte placée dans la liste « Discussion » : son exécution en cours est annulée, l’agent n’y
   // modifie rien. Met à jour le statut des cartes de `projects`.
@@ -111,7 +189,7 @@ export function createRuns(
       const run = unpack(row),
         project = projects.find(p => p.id === run.projectId),
         card = project?.cards.find(c => c.id === run.cardId);
-      if (!project || !isDiscussionCard(project, card)) continue;
+      if (!project || run.mode === 'discussion' || !isDiscussionCard(project, card)) continue;
       transition(run, 'cancel');
       run.cancellation = 'Carte placée dans la liste Discussion : l’agent n’y effectue aucune modification.';
       save(run, actor, 'cancel', { syncCard: false });
@@ -282,13 +360,21 @@ export function createRuns(
         if (!isTerminal(row.state)) {
           const run = unpack(row),
             card = after.find(p => p.id === run.projectId)?.cards.find(c => c.id === run.cardId);
-          if (restore || !card || source(card) !== run.source) {
+          const discussionMoved =
+            run.mode === 'discussion' &&
+            !isDiscussionCard(
+              after.find(p => p.id === run.projectId),
+              card,
+            );
+          if (restore || !card || source(card) !== run.source || discussionMoved) {
             transition(run, 'cancel');
             run.cancellation = restore
               ? 'Restauration du contenu : préparez une nouvelle demande.'
               : 'Carte supprimée, déplacée ou demande modifiée : préparez une nouvelle exécution.';
             save(run, actor, 'cancel', { syncCard: false });
-            if (card) card.status = CARD_STATUS[run.state];
+            if (card && run.mode !== 'discussion') card.status = CARD_STATUS[run.state];
+          } else if (run.mode === 'discussion') {
+            // Le statut d’une carte de discussion ne dépend pas de son exécution.
           } else if (run.state === 'ready' && card.status !== 'ready') {
             transition(run, 'cancel');
             run.cancellation = 'La carte a été retirée de la file par son changement de statut.';

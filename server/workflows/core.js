@@ -148,7 +148,16 @@ export function createCore(db, { audit, findCard, readProjects, writeProjects, r
     } catch (error) {
       if (error.status !== 404) throw error;
     }
-    if (context && syncCard) {
+    if (context && syncCard && run.mode === 'discussion') {
+      // Question de la liste Discussion : la carte garde son statut, seule la réponse de l’agent
+      // rejoint sa discussion.
+      if (action === 'submit') {
+        const projects = readProjects();
+        const card = projects.find(p => p.id === run.projectId).cards.find(c => c.id === run.cardId);
+        addComment(card, run, actor, `work-${run.id}-answer`, run.submissions.at(-1).summary, run.updatedAt);
+        writeProjects(projects, run.updatedAt);
+      }
+    } else if (context && syncCard) {
       const projects = readProjects();
       const index = projects.findIndex(p => p.id === run.projectId);
       const card = projects[index].cards.find(c => c.id === run.cardId);

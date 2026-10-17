@@ -1721,3 +1721,66 @@ test('a task interrupted on the site is no longer running locally, so a worker u
   await f.worker.tick();
   assert.equal((await f.state.get(job.id)).phase, 'interrupted');
 });
+
+test('a Discussion question is answered in its card from a read-only copy, without branch, push or PR', async t => {
+  const f = await fixture(t, {
+    model: async input => {
+      assert.equal(input.run.mode, 'discussion');
+      assert.match(await readFile(join(input.cwd, 'greet.mjs'), 'utf8'), /hello/);
+      const last = input.run.conversation.at(-1)?.text || input.run.objective;
+      return { status: 'result', summary: `Réponse à : ${last}`, question: '', files: [] };
+    },
+  });
+  const listId = `${f.project.id}-discussion`;
+  const question = {
+    id: 'question',
+    listId,
+    title: 'Salutation',
+    description: 'Que renvoie greet ?',
+    status: 'draft',
+    priority: 'normal',
+    tags: [],
+    comments: [],
+    checklist: [],
+  };
+  f.store.change([{ type: 'card.create', projectId: f.project.id, card: question }], f.user, { strict: true });
+  const card = () =>
+    f.store
+      .read()
+      .projects.find(project => project.id === f.project.id)
+      .cards.find(item => item.id === 'question');
+  assert.equal((await f.worker.tick()).status, 'answered');
+  assert.deepEqual(
+    card().comments.map(comment => [comment.authorKind, comment.text]),
+    [['agent', 'Réponse à : Que renvoie greet ?']],
+  );
+  // Une relance en commentaire reçoit sa propre réponse ; sans nouveau message, rien n’est relancé.
+  f.store.change(
+    [
+      {
+        type: 'comment.create',
+        projectId: f.project.id,
+        cardId: 'question',
+        comment: { id: 'r1', text: 'Et en anglais ?' },
+      },
+    ],
+    f.user,
+    { strict: true },
+  );
+  assert.equal((await f.worker.tick()).status, 'answered');
+  assert.equal((await f.worker.tick()).status, 'idle');
+  assert.equal(card().comments.at(-1).text, 'Réponse à : Et en anglais ?');
+  assert.equal(card().status, 'draft');
+  assert.equal(card().listId, listId);
+  assert.equal(f.modelCalls.length, 2);
+  assert.equal(f.pr, undefined);
+  assert.ok(!f.calls.some(call => ['push', 'checkout', 'commit'].includes(call.command[1])));
+  const runs = f.store.workflows.list(f.project.id, 'question');
+  assert.deepEqual(
+    runs.map(run => [run.mode, run.state]),
+    [
+      ['discussion', 'done'],
+      ['discussion', 'done'],
+    ],
+  );
+});

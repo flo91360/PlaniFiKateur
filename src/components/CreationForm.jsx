@@ -128,7 +128,7 @@ export default function CreationForm({
               />
               <p className="muted">
                 {discussion
-                  ? 'Carte de discussion : une question pour échanger sur le projet, aucune modification ne sera effectuée.'
+                  ? 'Carte de discussion : une question pour échanger sur le projet. L’agent y répond sans rien modifier.'
                   : 'La description sera la demande transmise à l’agent.'}
               </p>
               {!offline && !discussion && (

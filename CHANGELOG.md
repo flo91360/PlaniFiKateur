@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.55 — 2026-10-17
+<!-- planifikateur:agent-discussion -->
+
+- **Réponses de l’agent dans Discussion** : L’agent répond aux questions de la liste Discussion : quand un responsable pose une question, puis à chaque relance en commentaire, le worker copie le dépôt en lecture seule et publie la réponse dans la discussion de la carte. Aucune branche, aucun commit ni PR ; la carte garde son statut et sa liste. Ces réponses utilisent un modèle plus léger (Haiku avec Claude Code, effort faible avec Codex). Le worker doit être mis à jour pour traiter ces questions.
+
 ## 0.1.54 — 2026-10-17
 <!-- planifikateur:liste-discussion -->
 

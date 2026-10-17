@@ -77,7 +77,12 @@ export function createSiteClient({ origin, token }, transport = fetch) {
           version: run.version,
           ...(run.leaseToken ? { leaseToken: run.leaseToken } : {}),
           ...(['claim', 'revise'].includes(action)
-            ? { aiSettingsSupported: true, executionProfilesSupported: true, engines: ['codex', 'claude-code'] }
+            ? {
+                aiSettingsSupported: true,
+                executionProfilesSupported: true,
+                discussionSupported: true,
+                engines: ['codex', 'claude-code'],
+              }
             : {}),
           ...data,
         },

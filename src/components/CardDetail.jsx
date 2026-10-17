@@ -359,7 +359,9 @@ export default function CardDetail({
           )}
           <p className="muted">
             {discussion
-              ? 'Carte de discussion : une question pour échanger, aucune modification n’est effectuée. Répondez dans la discussion ci-dessous.'
+              ? execution.managed
+                ? 'L’agent lit le dépôt et prépare sa réponse dans la discussion ci-dessous.'
+                : 'Carte de discussion : une question pour échanger, aucune modification n’est effectuée. L’agent répond dans la discussion ci-dessous, à la question puis à chaque relance d’un responsable.'
               : requestLocked && !readOnly
                 ? 'Carte confiée à l’agent : seul un responsable peut encore modifier la demande. Repassez-la en « À explorer » pour la retravailler.'
                 : 'Cette description est l’objectif transmis à l’agent.'}
