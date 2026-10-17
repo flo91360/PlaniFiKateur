@@ -336,3 +336,64 @@ test('Claude AskUserQuestion is relayed to the card instead of waiting for termi
   );
   assert.ok(usages[0].durationMs >= 0);
 });
+
+test('a Discussion question runs Codex read-only without network and Claude Code with reading tools only', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'planifikateur-discussion-ai-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const run = {
+    mode: 'discussion',
+    cardSnapshot: { title: 'Sauvegardes' },
+    objective: 'Comment sont faites les sauvegardes ?',
+    conversation: [{ author: 'Flo', authorKind: 'user', text: 'Et leur rétention ?' }],
+    exchanges: [],
+    submissions: [],
+    updates: [],
+  };
+  const answer = { status: 'result', summary: 'Voir docs/backups.md.', question: '', files: [] };
+  let codexOptions, prompt;
+  class Codex {
+    startThread(selected) {
+      codexOptions = selected;
+      return {
+        runStreamed: async input => {
+          prompt = input;
+          return {
+            events: (async function* () {
+              yield { type: 'item.completed', item: { type: 'agent_message', text: JSON.stringify(answer) } };
+              yield { type: 'turn.completed' };
+            })(),
+          };
+        },
+      };
+    }
+  }
+  const codex = await createCodexRunner({ codexHome: join(root, 'codex') }, { Codex }).run({
+    run,
+    job: { ai: { engine: 'codex', model: '', effort: '' } },
+    cwd: root,
+    onThread() {},
+  });
+  assert.equal(codex.summary, 'Voir docs/backups.md.');
+  assert.equal(codexOptions.sandboxMode, 'read-only');
+  assert.equal(codexOptions.networkAccessEnabled, false);
+  assert.match(prompt, /liste Discussion/);
+  assert.match(prompt, /Et leur rétention \?/);
+  let claudeOptions;
+  const query = ({ options }) => {
+    claudeOptions = options;
+    return (async function* () {
+      yield { type: 'result', subtype: 'success', structured_output: answer };
+    })();
+  };
+  const config = { claudeApiKey: 'private', claudeHome: join(root, 'claude'), codexHome: join(root, 'codex') };
+  await createClaudeRunner(config, { query }).run({
+    run,
+    job: { ai: { engine: 'claude-code', model: '', effort: '' } },
+    cwd: root,
+    onThread() {},
+  });
+  assert.deepEqual(claudeOptions.tools, ['Read', 'Glob', 'Grep']);
+  assert.deepEqual(claudeOptions.sandbox.filesystem.allowWrite, []);
+  assert.equal((await claudeOptions.canUseTool('Write', { file_path: join(root, 'a') })).behavior, 'deny');
+  assert.equal((await claudeOptions.canUseTool('Bash', { command: 'rm -rf .' })).behavior, 'deny');
+});

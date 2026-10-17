@@ -139,12 +139,10 @@ export function createWorker(config, dependencies = {}) {
     return job;
   }
 
-  // Checkout de la branche de la tâche à jour de la branche cible, dépendances installées.
-  async function prepareCheckout(task) {
-    const { job, reservation } = task;
-    const { signal } = reservation;
-    const profile = job.executionProfile,
-      targetBranch = profile.branch;
+  // Répertoire de la tâche et environnements de ses commandes : celles du projet, Git local et Git
+  // distant (seul à recevoir le jeton GitHub).
+  function workspace({ job, reservation }) {
+    const profile = job.executionProfile;
     const cwd = join(config.stateRoot, 'jobs', job.id);
     const home = join(cwd, '.planifikateur', 'home');
     const npmCache = join(config.stateRoot, 'npm-cache');
@@ -184,11 +182,21 @@ export function createWorker(config, dependencies = {}) {
       if (result.code !== 0) throw new Error(`Échec de ${args.slice(0, 3).join(' ')} : ${clean(result.output)}`);
       return result.output.trim();
     };
+    const url = `https://github.com/${job.repository}.git`;
+    return { cwd, home, npmCache, env, gitEnv, gitRemoteEnv, gitEnvFor, command, url };
+  }
+
+  // Checkout de la branche de la tâche à jour de la branche cible, dépendances installées.
+  async function prepareCheckout(task) {
+    const { job, reservation } = task;
+    const { signal } = reservation;
+    const profile = job.executionProfile,
+      targetBranch = profile.branch;
+    const { cwd, home, npmCache, env, gitEnv, gitRemoteEnv, gitEnvFor, command, url } = workspace(task);
     // Commande du projet (installation, tests) : code de la branche, exécuté isolé du worker.
     const project = args =>
       isolatedCommand(resolveWorkerCommand(args, workerDirectory), { config, cwd, writable: [npmCache] });
     const git = args => execute(['git', ...args], { cwd, env: gitEnvFor(['git', ...args]), signal });
-    const url = `https://github.com/${job.repository}.git`;
     await mkdir(config.stateRoot, { recursive: true });
     await checkRuntime(profile, config, execute, signal);
     await mkdir(join(config.stateRoot, 'jobs'), { recursive: true, mode: 0o700 });
@@ -596,10 +604,67 @@ export function createWorker(config, dependencies = {}) {
     }
   }
 
+  // Question de la liste Discussion : le dépôt est copié en lecture seule (sans branche ni
+  // dépendances), le modèle répond et sa réponse est publiée dans la carte. Rien n’est poussé.
+  async function discuss(task) {
+    const { job, reservation } = task;
+    job.phase = 'running';
+    await state.put(job);
+    log(`Question de discussion ${reservation.run.id}.`);
+    await reservation.action('progress', {
+      message: `Le worker copie le dépôt en lecture seule et interroge ${engineName(job.ai.engine)}.`,
+    });
+    const { cwd, home, env, command, url } = workspace(task);
+    await reservation.phase('préparation du dépôt', config.setupTimeoutMs, async () => {
+      await mkdir(join(config.stateRoot, 'jobs'), { recursive: true, mode: 0o700 });
+      await rm(cwd, { recursive: true, force: true });
+      const branch = job.executionProfile.branch;
+      await command(['git', 'clone', '--depth', '1', '--no-tags', '--single-branch', '--branch', branch, url, cwd], {
+        cwd: config.stateRoot,
+      });
+      await mkdir(home, { recursive: true });
+    });
+    let answer =
+      'Je n’ai pas réussi à préparer une réponse après plusieurs tentatives. Reformulez la question dans un nouveau commentaire pour relancer l’agent.';
+    if (job.attempts < config.maxAttempts) {
+      job.attempts++;
+      task.attemptStarted = true;
+      await state.put(job);
+      const runner = job.ai.engine === 'claude-code' ? claude : model;
+      const result = await reservation.phase('travail IA', config.modelTimeoutMs, () =>
+        runner.run({
+          run: { ...reservation.run, leaseToken: undefined, executionProfile: job.executionProfile },
+          job,
+          cwd,
+          signal: reservation.signal,
+          feedback: '',
+          environment: env,
+          onRuntime: async runtime => {
+            const safe = { ...validateAi(runtime), effort: job.ai.effort };
+            if (safe.engine !== job.ai.engine) throw new Error('Le moteur de la conversation a changé.');
+            job.aiRuntime = safe;
+            await state.put(job);
+          },
+          onUsage: usage => reservation.addUsage(usage),
+          onThread: async () => {},
+        }),
+      );
+      answer = result.status === 'question' ? result.question : result.summary;
+    }
+    await reservation.action('submit', { summary: clean(answer.slice(0, 10000)) });
+    job.phase = 'done';
+    job.attempts = 0;
+    await state.put(job);
+    log(`Exécution ${reservation.run.id} : réponse publiée dans la discussion de la carte.`);
+    await releaseCheckout(job);
+    return { status: 'answered' };
+  }
+
   // Une tentative complète : checkout, réalisation et vérifications, publication.
   async function attempt(task) {
     const { candidate, job, reservation } = task;
     if (candidate.workerQuestion) return waitForAnswer(task, candidate.workerQuestion);
+    if (reservation.run.mode === 'discussion') return discuss(task);
     job.phase = 'running';
     await state.put(job);
     const previous = reservation.run.submissions.at(-1)?.pullRequest || job.pullRequest;
@@ -634,7 +699,9 @@ export function createWorker(config, dependencies = {}) {
     const history = await site.history(reservation.run).catch(() => []);
     let current = history.find(item => item.id === reservation.run.id);
     if (current?.state === 'running') {
+      // Une question de discussion ne pose pas de question : elle répond après ses tentatives.
       const exhausted =
+        reservation.run.mode !== 'discussion' &&
         !(error instanceof WorkerTimeoutError) &&
         !signal.aborted &&
         !publicationPending &&

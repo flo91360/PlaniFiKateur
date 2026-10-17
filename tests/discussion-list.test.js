@@ -10,6 +10,7 @@ import { withInfos } from '../src/lib/infos.js';
 import { createStore } from '../server/store.js';
 import { readWorkspace, writeWorkspace } from '../server/workspace-tables.js';
 import { seedAccount } from './helpers/accounts.mjs';
+import { discussionAi } from '../server/workflows/runs.js';
 
 const card = (id, listId, status) => ({
   id,
@@ -62,13 +63,20 @@ test('a discussion card is never prepared for the agent and a moved card loses i
     );
     store.workflows.configureGithub(projectId, 'flo91360/PlaniFiKateur', admin);
     const { agent } = store.workflows.configureAgent({ name: 'Agent', projectIds: [projectId] }, admin);
-    // Une carte créée « Prête à démarrer » dans Discussion reste « À explorer » et n’entre pas dans la file.
+    // Une carte créée « Prête à démarrer » dans Discussion reste « À explorer » : sa question
+    // attend une réponse de l’agent, jamais une modification.
     store.change([{ type: 'card.create', projectId, card: card('question', discussion, 'ready') }], admin, {
       strict: true,
     });
     const created = store.read().projects.find(project => project.id === projectId);
     assert.equal(created.cards.find(item => item.id === 'question').status, 'draft');
-    assert.ok(!store.workflows.queue(projectId, agent).some(run => run.cardId === 'question'));
+    const [answer] = store.workflows.queue(projectId, agent).filter(run => run.cardId === 'question');
+    assert.equal(answer.mode, 'discussion');
+    assert.equal(answer.trigger, 'description');
+    assert.deepEqual(answer.ai, { engine: 'codex', model: '', effort: 'low' });
+    // Une seule réponse par message : la file ne prépare pas une seconde exécution.
+    store.workflows.queue(projectId, agent);
+    assert.equal(store.workflows.list(projectId, 'question').length, 1);
     assert.throws(
       () => store.workflows.prepare(projectId, 'question', {}, admin),
       error => error.code === 'discussion_card',
@@ -106,4 +114,17 @@ test('a discussion card is never prepared for the agent and a moved card loses i
   } finally {
     store.close();
   }
+});
+
+test('discussion answers use a lighter model: Haiku for Claude Code, low effort for both engines', () => {
+  assert.deepEqual(discussionAi({ engine: 'claude-code', model: 'opus' }), {
+    engine: 'claude-code',
+    model: 'haiku',
+    effort: 'low',
+  });
+  assert.deepEqual(discussionAi({ engine: 'codex', model: 'gpt-x' }), {
+    engine: 'codex',
+    model: 'gpt-x',
+    effort: 'low',
+  });
 });

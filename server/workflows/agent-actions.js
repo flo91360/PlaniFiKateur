@@ -51,6 +51,9 @@ export function createAgentActions(
     }
     if (JSON.stringify(run.executionProfile) !== DEFAULT_PROFILE && !data.executionProfilesSupported)
       fail(503, 'worker_update_required', 'Mettez à jour le worker pour utiliser ce profil d’exécution.');
+    // Un worker antérieur traiterait la question comme une demande de modification.
+    if (run.mode === 'discussion' && !data.discussionSupported)
+      fail(503, 'worker_update_required', 'Mettez à jour le worker pour répondre aux cartes de la liste Discussion.');
   };
   const reserve = (run, action, data, agent, projectId) => {
     // Une correction (revise) reprend la PR en cours du même agent ; claim prend une tâche libre.
@@ -151,6 +154,8 @@ export function createAgentActions(
       return save(run, agent, 'progress', { leaseHash: row.lease_hash, expires: Date.now() + LEASE_MS });
     },
     question(run, data) {
+      if (run.mode === 'discussion')
+        fail(400, 'invalid_action', 'Une question de la liste Discussion reçoit une réponse, pas une question.');
       if (run.exchanges.length >= 100) fail(400, 'question_limit', 'Limite de questions atteinte.');
       run.exchanges.push({
         question: text(data?.message, 'Question', 10000),
@@ -161,6 +166,22 @@ export function createAgentActions(
     },
     submit(run, data, agent) {
       if (run.submissions.length >= 50) fail(400, 'submission_limit', 'Limite de soumissions atteinte.');
+      // Réponse à une question de la liste Discussion : publiée dans la carte, sans PR ni fichier.
+      if (run.mode === 'discussion') {
+        if (data.pullRequest || data.files?.length || data.links?.length)
+          fail(400, 'invalid_delivery', 'Une réponse de discussion ne livre ni PR, ni fichier, ni lien.');
+        run.submissions.push({
+          summary: text(data.summary, 'Réponse', 10000),
+          checks: 'Lecture seule du dépôt : aucune modification.',
+          links: [],
+          pullRequest: null,
+          files: [],
+          date: new Date().toISOString(),
+          decision: null,
+        });
+        transition(run, 'submit', 'done');
+        return;
+      }
       checkLinks(data?.links);
       run.githubChecks = null;
       const files = data.files ?? [];

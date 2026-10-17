@@ -437,6 +437,20 @@ restent applicables : dix fichiers et 2 Mo par carte, 1 Mo par fichier et 20 Mo
 par projet. Les chemins hors du dépôt, liens symboliques et fichiers internes
 de Git ou de connexion ne peuvent pas être déclarés comme livrables.
 
+## Questions de la liste Discussion
+
+Une carte de la liste **Discussion** n’est jamais une demande de modification.
+Quand un responsable y pose sa question, puis à chaque relance qu’il écrit en
+commentaire, le site prépare une exécution de discussion. Le worker clone la
+branche cible en profondeur 1, sans branche de travail ni installation des
+dépendances, et lance le modèle en lecture seule : Codex en sandbox `read-only`
+sans réseau, Claude Code avec les seuls outils Read, Glob et Grep. Ces réponses
+utilisent automatiquement un modèle plus léger : Claude Code passe sur Haiku avec
+un effort faible, Codex garde le modèle du projet avec un effort faible. Sa réponse est
+publiée dans la discussion de la carte, puis la copie est supprimée. Rien n’est
+commité ni poussé et aucune PR n’est ouverte. Après plusieurs échecs, la réponse
+l’indique et une nouvelle relance redonne ses tentatives à l’agent.
+
 ## Vérification reproductible locale
 
 Le worker exécute les tests navigateur avec un seul processus Playwright à la

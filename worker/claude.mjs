@@ -2,7 +2,7 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { confineTool } from './confine.mjs';
 import { commandEnvironment } from './commands.mjs';
-import { resultSchema, taskPrompt, prepareAttachments } from './codex.mjs';
+import { discussionPrompt, resultSchema, taskPrompt, prepareAttachments } from './codex.mjs';
 import { parseModelResult } from './model-result.mjs';
 
 // Consommation d’un appel au modèle (message de l’assistant ou résultat final) au format du site.
@@ -36,12 +36,16 @@ export function createClaudeRunner(config, dependencies = {}) {
       let question = '',
         response;
       const ai = job.ai || run.ai || {};
+      // Une question de la liste Discussion ne modifie rien : outils de lecture seulement.
+      const discussion = run.mode === 'discussion';
       const options = {
         cwd,
         abortController: controller,
-        permissionMode: 'acceptEdits',
+        permissionMode: discussion ? 'default' : 'acceptEdits',
         settingSources: [],
-        tools: ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash', 'AskUserQuestion'],
+        tools: discussion
+          ? ['Read', 'Glob', 'Grep']
+          : ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash', 'AskUserQuestion'],
         env: {
           ...commandEnvironment(environment),
           HOME: home,
@@ -63,7 +67,7 @@ export function createClaudeRunner(config, dependencies = {}) {
           autoAllowBashIfSandboxed: true,
           allowUnsandboxedCommands: false,
           filesystem: {
-            allowWrite: [cwd],
+            allowWrite: discussion ? [] : [cwd],
             denyWrite: [join(cwd, '.git')],
             denyRead: [config.codexHome, config.claudeHome],
           },
@@ -103,7 +107,8 @@ export function createClaudeRunner(config, dependencies = {}) {
         started = Date.now();
       let reported = false;
       try {
-        for await (const event of query({ prompt: taskPrompt(run, feedback, attachments), options })) {
+        const prompt = discussion ? discussionPrompt(run) : taskPrompt(run, feedback, attachments);
+        for await (const event of query({ prompt, options })) {
           if (event.type === 'assistant' && event.message?.id && event.message.usage)
             messages.set(event.message.id, event.message.usage);
           if (event.type === 'system' && event.subtype === 'init') {

@@ -73,6 +73,19 @@ Avancement précédent : ${JSON.stringify(run.updates.slice(-10))}
 ${feedback ? `Retour du worker : ${feedback}` : ''}`;
 }
 
+// Question de la liste Discussion : l’agent explique, il ne modifie rien.
+export function discussionPrompt(run) {
+  return `Tu réponds à une question posée dans la liste Discussion d’un projet PlaniFiKateur.
+Cette carte sert uniquement à échanger sur le fonctionnement du projet et ses futures évolutions : ce n’est pas une demande de modification. Ne modifie, ne crée et ne supprime aucun fichier, ne lance aucune commande qui change le dépôt, et ne fais ni commit, ni push, ni PR. Le dépôt est fourni en lecture seule pour que tu t’appuies sur son code et sa documentation.
+Réponds en français, de façon claire et concrète, à la dernière question ou relance humaine des échanges ci-dessous, en tenant compte des réponses déjà données. Cite les fichiers utiles. Pour une évolution, propose une approche et ses conséquences sans la réaliser ; si une précision manque, réponds au mieux et pose ta question à la fin de ta réponse.
+Réponds en JSON conforme au schéma : status=result, ta réponse complète dans summary (10 000 caractères au plus), question vide et files=[].
+
+Carte : ${run.cardSnapshot.title}
+Question : ${run.objective}
+Dépôt : ${run.repository || ''}
+Échanges dans la carte, du plus ancien au plus récent : ${JSON.stringify(run.conversation || [])}`;
+}
+
 export async function prepareAttachments(run, cwd) {
   const directory = join(cwd, '.planifikateur', 'attachments');
   await rm(directory, { recursive: true, force: true });
@@ -113,11 +126,13 @@ export function createCodexRunner(config, dependencies = {}) {
       });
       const ai = job.ai || run.ai || {};
       const model = ai.model || config.model;
+      const discussion = run.mode === 'discussion';
       const options = {
         workingDirectory: cwd,
-        sandboxMode: 'workspace-write',
+        // Une question de la liste Discussion ne modifie rien : dépôt en lecture seule, sans réseau.
+        sandboxMode: discussion ? 'read-only' : 'workspace-write',
         approvalPolicy: 'never',
-        networkAccessEnabled: true,
+        networkAccessEnabled: !discussion,
         ...(model ? { model } : {}),
         ...(ai.effort ? { modelReasoningEffort: ai.effort } : {}),
       };
@@ -126,7 +141,7 @@ export function createCodexRunner(config, dependencies = {}) {
       const images = attachments.filter(file =>
         ['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.type),
       );
-      const prompt = taskPrompt(run, feedback, attachments);
+      const prompt = discussion ? discussionPrompt(run) : taskPrompt(run, feedback, attachments);
       const input = images.length
         ? [{ type: 'text', text: prompt }, ...images.map(file => ({ type: 'local_image', path: file.path }))]
         : prompt;
