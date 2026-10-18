@@ -56,7 +56,7 @@ const dialogTitles = {
   notifications: 'Notifications',
   reload: 'Recharger le tableau',
   card: 'Une nouvelle idée',
-  overview: 'Votre espace personnel',
+  overview: 'Vue d’ensemble',
   info: 'À propos de PlaniFiKateur',
 };
 
@@ -202,6 +202,21 @@ function App() {
         return p;
       return { ...p, cards: p.cards.map(c => (c.id === id ? { ...c, ...patch } : c)) };
     });
+  // Dépose une carte dans une liste, avant la carte `beforeId` ou, sans elle, en fin de liste.
+  const moveCardTo = (id, listId, beforeId = null) =>
+    updateProject(p => {
+      const card = p.cards.find(c => c.id === id);
+      if (!card || beforeId === id) return p;
+      const rest = p.cards.filter(c => c.id !== id);
+      const moved = card.listId === listId ? card : { ...card, listId };
+      let at = beforeId ? rest.findIndex(c => c.id === beforeId) : -1;
+      if (at < 0) {
+        const last = rest.findLastIndex(c => c.listId === listId);
+        at = last < 0 ? rest.length : last + 1;
+      }
+      const cards = [...rest.slice(0, at), moved, ...rest.slice(at)];
+      return cards.every((c, i) => c === p.cards[i]) ? p : { ...p, cards };
+    });
   // Déplace une carte d’un rang dans sa liste (vers le haut : -1), au clavier ou au toucher.
   const reorderCard = (id, delta) =>
     updateProject(p => {
@@ -264,7 +279,7 @@ function App() {
       aiEffort: values.aiEffort,
       tags: values.tags,
       comments: values.comment
-        ? [{ id: uid(), author: 'Vous', text: values.comment, date: new Date().toISOString() }]
+        ? [{ id: uid(), author: workspace.user?.name || 'Vous', text: values.comment, date: new Date().toISOString() }]
         : [],
       checklist: values.checklist,
       attachments: values.attachments,
@@ -410,7 +425,6 @@ function App() {
             view={kind}
             projects={projects}
             offline={offlineMode}
-            isAdmin={workspace.user?.role === 'admin'}
             onImport={imported => {
               setProjects(ps => [...ps, ...imported]);
               setNotice('Projets importés, sans remplacer les projets existants');
@@ -497,8 +511,8 @@ function App() {
                   onFilters={setFilters}
                   dragging={dragging}
                   onDragging={setDragging}
-                  onMoveCard={(cardId, listId) => {
-                    updateCard(cardId, { listId });
+                  onMoveCard={(cardId, listId, beforeId) => {
+                    moveCardTo(cardId, listId, beforeId);
                     setNotice('Carte déplacée');
                   }}
                   onMoveList={(listId, targetId, after) => {

@@ -93,7 +93,7 @@ export default function Sidebar({ projects, currentId, user, offline, open, onCl
         >
           <span className="workspace-avatar">P</span>
           <span>
-            Espace personnel<small>Un peu d’ordre, plein d’idées</small>
+            Vue d’ensemble<small>Projets, cartes et export</small>
           </span>
           <ChevronRight size={15} />
         </button>

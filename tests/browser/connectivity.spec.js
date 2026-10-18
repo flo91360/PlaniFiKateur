@@ -72,12 +72,10 @@ const newProject = async (page, name) => {
   await page.getByLabel('Nom du projet', { exact: true }).fill(name);
   await page.getByRole('button', { name: 'Créer le projet', exact: true }).click();
 };
-// Les sauvegardes serveur ne sont proposées que dans la fenêtre « Espace personnel » du menu latéral.
-const openWorkspace = async page => {
-  const menu = page.getByRole('button', { name: 'Ouvrir les projets', exact: true });
-  if ((await menu.isVisible()) && !(await page.locator('.sidebar.open').count())) await menu.click();
-  await page.getByRole('button', { name: /Espace personnel/ }).click();
-  await expect(page.getByRole('dialog', { name: 'Votre espace personnel' })).toBeVisible();
+// Les sauvegardes serveur sont dans « Mon compte », avec la gestion des membres (administrateur).
+const openAccount = async page => {
+  await page.getByRole('button', { name: 'Mon compte', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Mon compte', exact: true })).toBeVisible();
 };
 
 test(
@@ -629,7 +627,7 @@ test('owner can create and download a SQLite backup from the interface', async (
     page.getByRole('button', { name: 'Créer et télécharger une sauvegarde SQLite', exact: true }),
   ).toHaveCount(0);
   await page.getByRole('button', { name: 'Fermer', exact: true }).click();
-  await openWorkspace(page);
+  await openAccount(page);
   await expect(page.getByRole('heading', { name: 'Sauvegardes', exact: true })).toBeVisible();
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Créer et télécharger une sauvegarde SQLite', exact: true }).click();
@@ -744,8 +742,6 @@ test('administrator invites a member whose cards, comments and actions carry the
   await member.getByRole('button', { name: 'Terminé', exact: true }).click();
   await member.getByRole('button', { name: 'Mon compte', exact: true }).click();
   await expect(member.getByRole('heading', { name: 'Membres de l’espace', exact: true })).toHaveCount(0);
-  await member.getByRole('button', { name: 'Fermer', exact: true }).click();
-  await openWorkspace(member);
   await expect(
     member.getByRole('button', { name: 'Créer et télécharger une sauvegarde SQLite', exact: true }),
   ).toHaveCount(0);
@@ -2389,5 +2385,60 @@ test.describe('reliable and accessible interface', () => {
     await expect(menu.locator('a, button').first()).toBeFocused();
     await page.keyboard.press('Escape');
     await expect(menu).toHaveAttribute('inert', '');
+  });
+});
+
+test.describe('board features', () => {
+  test('a dragged card is dropped where it is released in the target list', async ({ page, appServer }) => {
+    await login(page, appServer);
+    const project = seed[0];
+    const [first, second] = project.cards.filter(
+      card => card.listId === project.lists[0].id && !isSystemCard(project.id, card.id),
+    );
+    const moved = project.cards.find(card => card.listId !== project.lists[0].id && !isSystemCard(project.id, card.id));
+    const preview = card =>
+      page.getByRole('article').filter({ has: page.getByRole('heading', { name: card.title, exact: true }) });
+    // Relâchée sur la moitié haute de la deuxième carte : elle s’insère juste avant elle.
+    await preview(moved).dragTo(preview(second), { targetPosition: { x: 20, y: 4 } });
+    await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+    const titles = await page
+      .locator('.list-column')
+      .first()
+      .getByRole('article')
+      .getByRole('heading')
+      .allTextContents();
+    expect(titles.indexOf(moved.title)).toBe(titles.indexOf(second.title) - 1);
+    expect(titles.indexOf(first.title)).toBeLessThan(titles.indexOf(moved.title));
+  });
+
+  test('checklist items are added, checked, renamed and removed from the card', async ({ page, appServer }) => {
+    await login(page, appServer);
+    const card = seed[0].cards.find(item => !isSystemCard(seed[0].id, item.id));
+    await page.getByRole('heading', { name: card.title, exact: true }).click();
+    const checklist = page.getByRole('region', { name: 'Liste de contrôle' });
+    for (const text of ['Écrire le test', 'Relire le texte']) {
+      await checklist.getByLabel('Nouveau critère', { exact: true }).fill(text);
+      await checklist.getByRole('button', { name: 'Ajouter', exact: true }).click();
+    }
+    const done = card.checklist.filter(item => item.done).length,
+      total = card.checklist.length;
+    await checklist.getByRole('checkbox', { name: 'Écrire le test' }).check();
+    await expect(checklist.locator('h3')).toContainText(`${done + 1}/${total + 2}`);
+    const rename = checklist.getByLabel('Texte du critère « Relire le texte »');
+    await rename.fill('Relire tout le texte');
+    await rename.blur();
+    await expect(checklist.getByRole('checkbox', { name: 'Relire tout le texte' })).toBeVisible();
+    await checklist.getByRole('button', { name: 'Retirer « Écrire le test »' }).click();
+    await expect(checklist.getByRole('checkbox')).toHaveCount(total + 1);
+    await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+    await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+    await expect(
+      page.getByRole('article').filter({ has: page.getByRole('heading', { name: card.title, exact: true }) }),
+    ).toContainText(`${done}/${total + 1}`);
+    await page.reload();
+    await page.getByRole('heading', { name: card.title, exact: true }).click();
+    await expect(
+      page.getByRole('region', { name: 'Liste de contrôle' }).getByRole('checkbox', { name: 'Relire tout le texte' }),
+    ).not.toBeChecked();
   });
 });

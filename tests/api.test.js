@@ -289,6 +289,21 @@ test('repeated attempts on an account from one address do not lock out its owner
   assert.throws(() => auth.loginLimit(from('192.0.2.200'), 'owner@example.test'), { code: 'too_many_attempts' });
 });
 
+test('a new production database starts without demo projects', () => {
+  assert.equal(readConfig({}).demo, true);
+  assert.equal(
+    readConfig({ NODE_ENV: 'production', PLANIFIKATEUR_OWNER_TOKEN: 'a', PLANIFIKATEUR_READ_TOKEN: 'b' }).demo,
+    false,
+  );
+  assert.equal(readConfig({ PLANIFIKATEUR_DEMO: '0' }).demo, false);
+  const empty = createStore(':memory:', { demo: false });
+  assert.deepEqual(empty.read().projects, []);
+  empty.close();
+  const demo = createStore(':memory:');
+  assert.ok(demo.read().projects.length > 0);
+  demo.close();
+});
+
 test('public binding requires separate owner and agent keys', () => {
   assert.throws(() => readConfig({ PLANIFIKATEUR_HOST: '0.0.0.0' }), /clés|TOKEN/);
   assert.throws(() => readConfig({ NODE_ENV: 'production' }), /TOKEN/);

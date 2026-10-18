@@ -13,7 +13,7 @@ const config = readConfig();
 if (!existsSync(config.database)) throw new Error('Base cible inexistante. Vérifiez PLANIFIKATEUR_DB_PATH.');
 if (action === 'restore' && resolve(source) === config.database)
   throw new Error('Choisissez un fichier de sauvegarde distinct de la base active.');
-const store = createStore(config.database, { backupDirectory: config.backupDirectory });
+const store = createStore(config.database, { backupDirectory: config.backupDirectory, demo: config.demo });
 const backups = createBackups(store, {
   directory: config.backupDirectory,
   intervalMs: config.backupIntervalMs,

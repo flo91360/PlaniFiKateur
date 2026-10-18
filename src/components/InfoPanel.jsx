@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { ArrowRight, FolderKanban, Sparkles } from 'lucide-react';
-import BackupsPanel from './BackupsPanel.jsx';
 import { createId as uid } from '../lib/id.js';
 import { exportWithAlert, SERVER_FORM } from '../lib/use-workspace.js';
 import { validateWorkspace } from '../lib/workspace.js';
@@ -94,9 +93,9 @@ function About({ offline }) {
   );
 }
 
-// Fenêtre d’information (view : 'info', 'overview' ou 'reload') avec export et import JSON ;
-// la vue 'overview' (Espace personnel) regroupe aussi les sauvegardes serveur de l’administrateur.
-export default function InfoPanel({ view, projects, offline, isAdmin, onImport, onReload, onClose }) {
+// Fenêtre d’information (view : 'info', 'overview' ou 'reload') avec export et import JSON. Les
+// sauvegardes de la base sont dans « Mon compte », réservées à l’administrateur.
+export default function InfoPanel({ view, projects, offline, onImport, onReload, onClose }) {
   const [importError, setImportError] = useState('');
   return (
     <div className="info-content">
@@ -107,8 +106,6 @@ export default function InfoPanel({ view, projects, offline, isAdmin, onImport, 
       ) : (
         <About offline={offline} />
       )}
-      {/* Seul accès aux sauvegardes serveur : elles concernent les données de l’espace, pas l’aide « À propos ». */}
-      {!offline && isAdmin && view === 'overview' && <BackupsPanel />}
       <div className="transfer-actions">
         <button className="secondary-button" onClick={() => exportWithAlert(projects)}>
           Exporter les projets (JSON)

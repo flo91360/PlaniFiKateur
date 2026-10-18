@@ -74,7 +74,9 @@ export const PROJECT_SETTINGS = [
 const NOTIFIED_SQL = `action IN (${NOTIFIED.map(action => `'${action}'`).join(',')}) AND NOT (action = 'comment.created' AND json_extract(payload, '$.executionId') IS NOT NULL)`;
 
 // `backupDirectory` reçoit la copie faite avant la migration du tableau en tables.
-export function createStore(filename, { backupDirectory } = {}) {
+// `demo` : une base neuve reçoit les projets de démonstration (développement et tests) ; sinon elle
+// commence vide.
+export function createStore(filename, { backupDirectory, demo = true } = {}) {
   if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true, mode: 0o700 });
   const db = new DatabaseSync(filename);
   db.exec(`PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;
@@ -107,7 +109,7 @@ export function createStore(filename, { backupDirectory } = {}) {
   const created =
     db
       .prepare('INSERT OR IGNORE INTO workspace VALUES (1, 1, ?, ?)')
-      .run(JSON.stringify(validateWorkspace(seed)), new Date().toISOString()).changes === 1;
+      .run(JSON.stringify(validateWorkspace(demo ? seed : [])), new Date().toISOString()).changes === 1;
   // Une base existante est copiée avant d’être convertie : la copie permet de revenir en arrière.
   migrateWorkspace(db, {
     backup() {

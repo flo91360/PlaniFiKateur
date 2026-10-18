@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiData } from '../lib/api-client.js';
 import { ACCENTS, DEFAULT_ACCENT } from '../lib/accents.js';
+import BackupsPanel from './BackupsPanel.jsx';
 
 const request = (path, options) => apiData(path, { fallback: 'Action impossible.', ...options });
 export default function AccountsPanel({ user, accent = DEFAULT_ACCENT, onAccent = () => {}, onLogout }) {
@@ -234,6 +235,8 @@ export default function AccountsPanel({ user, accent = DEFAULT_ACCENT, onAccent 
               </li>
             ))}
           </ul>
+          {/* Sauvegardes de la base : une tâche d’administration, à côté de la gestion des comptes. */}
+          <BackupsPanel />
         </>
       )}
       {error && (

@@ -5,6 +5,8 @@ Un tableau de projets inspiré de Trello, conçu pour préparer des demandes con
 ## Interface et connectivité
 
 - Projets indépendants, listes personnalisées et cartes déplaçables, à la souris ou depuis le détail de la carte (liste et position, au clavier ou au toucher).
+- Carte glissée déposée à l’endroit visé dans la liste, et non plus en fin de liste.
+- Liste de contrôle dans le détail de la carte : critères ajoutés, cochés, renommés ou retirés, progression affichée sur le tableau.
 - Listes modifiables (nom, couleur, place, suppression d’une liste vide) et projet modifiable par ses responsables (nom, description, symbole, couleur).
 - Suppression d’un projet avec confirmation, y compris du dernier projet ; ses listes et cartes sont supprimées avec lui.
 - Création et édition avec titre, description, statut, priorité, étiquettes et commentaires.
@@ -31,7 +33,7 @@ Un tableau de projets inspiré de Trello, conçu pour préparer des demandes con
 - Créateur des cartes et auteur des commentaires attribués par le serveur ; historique des actions pour préparer les notifications.
 - Accès agent en lecture seule avec une clé dédiée.
 - Consultation des cartes avec projet obligatoire, pour éviter de mélanger des titres identiques entre projets.
-- Mise à jour en direct par un flux d’événements (tableau, exécutions IA, suivis), avec une vérification toutes les 5 secondes en secours ; suspendue pendant l’édition et les sauvegardes.
+- Mise à jour en direct par un flux d’événements (tableau, exécutions IA, suivis), avec une vérification toutes les 5 secondes en secours ; poursuivie quand une carte est ouverte, sans toucher au champ en cours de saisie.
 - Rétention configurable de l’historique et des exécutions terminées (365 jours par défaut).
 - Fusion des modifications concurrentes par le serveur et messages de sauvegarde fiables.
 - Sauvegardes SQLite automatiques, copies avant suppression, téléchargement administrateur et restauration avec copie de sécurité.
@@ -118,7 +120,7 @@ Les tests utilisent Chromium installé sur la machine. S’il est absent, exécu
 
 ## Sauvegardes
 
-Les copies sont automatiquement créées à côté de la base, sur le volume persistant. Depuis le site, l’administrateur les consulte et les télécharge dans la fenêtre **Espace personnel** du menu latéral, seul accès aux sauvegardes serveur. Voir [la procédure de sauvegarde et restauration](docs/backups.md) pour Railway, les paramètres et les commandes `npm run db:backup` / `npm run db:restore`.
+Les copies sont automatiquement créées à côté de la base, sur le volume persistant. Depuis le site, l’administrateur les consulte et les télécharge dans **Mon compte**, sous la gestion des membres : c’est le seul accès aux sauvegardes serveur. Voir [la procédure de sauvegarde et restauration](docs/backups.md) pour Railway, les paramètres et les commandes `npm run db:backup` / `npm run db:restore`.
 
 Conserver également des copies hors du volume Railway.
 
@@ -128,7 +130,7 @@ Conserver également des copies hors du volume Railway.
 npm run export:preview
 ```
 
-`dist/PlaniFiKateur-apercu-v0.1.60.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
+`dist/PlaniFiKateur-apercu-v0.1.61.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 

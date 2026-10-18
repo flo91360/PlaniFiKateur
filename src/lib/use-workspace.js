@@ -25,7 +25,8 @@ function readLocal() {
 const request = (path, options) => apiFetch(path, { fallback: 'Le serveur ne répond pas.', ...options });
 
 export function useWorkspace({ pauseRefresh = false } = {}) {
-  const [projects, setState] = useState(() => (offlineMode ? readLocal() : seed));
+  // Connecté, rien n’est affiché avant la lecture du serveur : jamais de projets de démonstration.
+  const [projects, setState] = useState(() => (offlineMode ? readLocal() : []));
   const [ready, setReady] = useState(offlineMode);
   const [needsLogin, setNeedsLogin] = useState(false);
   const [needsSetup, setNeedsSetup] = useState(false),

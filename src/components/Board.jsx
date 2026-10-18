@@ -6,6 +6,7 @@ import {
   Layers3,
   LayoutGrid,
   Lightbulb,
+  ListChecks,
   ListFilter,
   MessageSquare,
   Pencil,
@@ -78,7 +79,19 @@ function Priority({ value }) {
   );
 }
 
-function CardPreview({ card, color, system, followers, work, dragging, readOnly, onDragStart, onDragEnd, onOpen }) {
+function CardPreview({
+  card,
+  color,
+  system,
+  followers,
+  work,
+  dragging,
+  dropBefore,
+  readOnly,
+  onDragStart,
+  onDragEnd,
+  onOpen,
+}) {
   const links = cardLinks(card);
   const badge = workBadge(work);
   // Carte du tableau : un article dont le titre est le bouton d’ouverture (étendu à toute la carte),
@@ -92,7 +105,8 @@ function CardPreview({ card, color, system, followers, work, dragging, readOnly,
         e.dataTransfer.setData('text/plain', card.id);
       }}
       onDragEnd={onDragEnd}
-      className={`card ${dragging ? 'dragging' : ''} ${links.length ? 'with-link' : ''}`}
+      data-card-id={card.id}
+      className={`card ${dragging ? 'dragging' : ''} ${dropBefore ? 'drop-before' : ''} ${links.length ? 'with-link' : ''}`}
     >
       <div className="card-tags">
         {card.tags.map((tag, i) => (
@@ -113,6 +127,15 @@ function CardPreview({ card, color, system, followers, work, dragging, readOnly,
       <footer>
         <Priority value={card.priority} />
         <div className="card-meta">
+          {card.checklist.length > 0 && (
+            <span
+              className={card.checklist.every(item => item.done) ? 'checklist-complete' : ''}
+              aria-label={`Liste de contrôle : ${card.checklist.filter(item => item.done).length} sur ${card.checklist.length}`}
+            >
+              <ListChecks size={13} />
+              {card.checklist.filter(item => item.done).length}/{card.checklist.length}
+            </span>
+          )}
           {card.comments.length > 0 && (
             <span>
               <MessageSquare size={13} />
@@ -141,6 +164,8 @@ function CardPreview({ card, color, system, followers, work, dragging, readOnly,
     </div>
   );
 }
+
+const plural = (count, word) => `${count} ${word}${count > 1 ? 's' : ''}`;
 
 // Tableau d’un projet : recherche, filtre de statut, cartes et listes à glisser-déposer.
 // `dragging` vaut { kind: 'card' | 'list', id } pendant un glisser-déposer.
@@ -198,7 +223,8 @@ export default function Board({
 }) {
   const { readOnly } = useProjectAccess();
   const scrollbar = useStickyScrollbar();
-  // Liste survolée : { id, side } où side vaut 'before' ou 'after' quand on déplace une liste.
+  // Liste survolée : { id, side } où side vaut 'before' ou 'after' quand on déplace une liste ;
+  // { id, beforeId } quand on déplace une carte, déposée avant la carte `beforeId` (null : en fin de liste).
   const [dropList, setDropList] = useState(null);
   const draggedCard = dragging?.kind === 'card' ? dragging.id : null;
   const draggedList = dragging?.kind === 'list' ? dragging.id : null;
@@ -218,7 +244,7 @@ export default function Board({
         onStatusFilter={statusFilter => onFilters({ ...filters, statusFilter })}
       />
       <div className="board-caption">
-        <span>Un projet, plusieurs pistes. À vous de les faire avancer.</span>
+        <span>{`${plural(project.lists.length, 'liste')} · ${plural(project.cards.length, 'carte')}`}</span>
         <span>
           <span className="tiny-dot" />
           {filtering
@@ -248,7 +274,23 @@ export default function Board({
               onDragOver={e => {
                 if (draggedCard) {
                   e.preventDefault();
-                  setDropList({ id: list.id });
+                  // Carte survolée : dépôt avant elle si le pointeur est sur sa moitié haute, après sinon.
+                  // Entre deux cartes, l’emplacement précédent est conservé ; sur l’en-tête ou le bas
+                  // de la liste, la carte va en fin de liste.
+                  const over = e.target.closest?.('[data-card-id]');
+                  const between = !over && !!e.target.closest?.('.cards');
+                  let beforeId = between && dropList?.id === list.id ? dropList.beforeId : null;
+                  if (over && e.currentTarget.contains(over)) {
+                    const siblings = cards.filter(card => card.id !== draggedCard);
+                    const index = siblings.findIndex(card => card.id === over.dataset.cardId);
+                    const box = over.getBoundingClientRect();
+                    if (index >= 0)
+                      beforeId =
+                        e.clientY < box.top + box.height / 2 ? siblings[index].id : siblings[index + 1]?.id || null;
+                    else beforeId = dropList?.beforeId ?? null;
+                  }
+                  if (dropList?.id !== list.id || dropList.beforeId !== beforeId)
+                    setDropList({ id: list.id, beforeId });
                 } else if (draggedList) {
                   e.preventDefault();
                   const box = e.currentTarget.getBoundingClientRect();
@@ -261,7 +303,7 @@ export default function Board({
               }}
               onDrop={e => {
                 e.preventDefault();
-                if (draggedCard) onMoveCard(draggedCard, list.id);
+                if (draggedCard) onMoveCard(draggedCard, list.id, dropList?.id === list.id ? dropList.beforeId : null);
                 else if (draggedList && dropList?.id === list.id && draggedList !== list.id)
                   onMoveList(draggedList, list.id, dropList.side === 'after');
                 endDrag();
@@ -313,6 +355,7 @@ export default function Board({
                     followers={followers[card.id] || []}
                     work={work[card.id]}
                     dragging={draggedCard === card.id}
+                    dropBefore={!!draggedCard && dropList?.id === list.id && dropList.beforeId === card.id}
                     readOnly={readOnly}
                     onDragStart={id => onDragging({ kind: 'card', id })}
                     onDragEnd={endDrag}
@@ -322,7 +365,7 @@ export default function Board({
                 {!cards.length && (
                   <div className="empty-list">
                     <Lightbulb size={22} />
-                    <p>{filtering ? 'Aucune carte ne correspond' : 'Une nouvelle piste commence ici'}</p>
+                    <p>{filtering ? 'Aucune carte ne correspond' : 'Aucune carte dans cette liste'}</p>
                   </div>
                 )}
               </div>
@@ -348,7 +391,7 @@ export default function Board({
       <footer className="board-footer">
         <span>
           <Layers3 size={14} />
-          Un esprit libre. Des idées bien rangées.
+          {project.name}
         </span>
         <span>PlaniFiKateur · v{appVersion}</span>
       </footer>
