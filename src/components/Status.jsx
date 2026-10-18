@@ -9,7 +9,7 @@ export const statuses = {
   clarify: { label: 'À préciser', icon: CircleHelp },
   review: { label: 'Tests et fusion', icon: CheckCheck },
   flo: { label: 'À relire', icon: CircleHelp },
-  done: { label: 'Terminée', icon: Check },
+  done: { label: 'À tester', icon: Check },
 };
 export const priorities = { low: 'Basse', normal: 'Normale', high: 'Haute' };
 

@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.58 — 2026-10-18
+<!-- planifikateur:liste-a-tester -->
+
+- **Liste et statut « À tester »** : La liste « Terminées » et le statut « Terminée » deviennent « À tester » dans tous les projets : une tâche livrée attend d’être vérifiée par son demandeur. Les listes existantes sont renommées au démarrage du serveur.
+
 ## 0.1.57 — 2026-10-18
 <!-- planifikateur:livraison-barre-defilement-collante -->
 

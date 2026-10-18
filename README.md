@@ -128,16 +128,17 @@ Conserver également des copies hors du volume Railway.
 npm run export:preview
 ```
 
-`dist/PlaniFiKateur-apercu-v0.1.57.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
+`dist/PlaniFiKateur-apercu-v0.1.58.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 
-La liste **Terminées** rassemble automatiquement les tâches terminées : une carte
-passée au statut « Terminée », à la main ou après la fusion de sa PR, y est déplacée
-pour que les autres listes ne gardent que le travail à faire. Chaque projet l’a,
-même vide, juste avant la colonne Infos ; une liste déjà nommée « Terminées » est
-reprise. Les cartes déjà terminées y sont rangées au
-démarrage du serveur.
+La liste **À tester** rassemble automatiquement les tâches livrées : une carte
+passée au statut « À tester », à la main ou après la fusion de sa PR, y est déplacée
+pour que son demandeur vérifie la nouvelle version, et que les autres listes ne
+gardent que le travail à faire. Chaque projet l’a, même vide, juste avant la
+colonne Infos ; une liste déjà nommée « À tester » est reprise, et l’ancienne liste
+« Terminées » est renommée au démarrage du serveur, où les cartes déjà livrées sont
+aussi rangées.
 
 La liste **Discussion** sert à échanger sur le fonctionnement du projet et ses
 futures évolutions : la description d’une carte y est une question, jamais une
@@ -147,7 +148,7 @@ est annulée). Quand un responsable pose la question, puis à chaque relance qu�
 écrit en commentaire, le worker copie le dépôt en lecture seule et l’agent répond
 dans la discussion de la carte : ni branche, ni commit, ni PR, et la carte garde
 son statut et sa liste. Ces réponses utilisent un modèle plus léger (Haiku avec
-Claude Code, effort faible avec Codex). Chaque projet l’a, même vide, juste avant Terminées ; une
+Claude Code, effort faible avec Codex). Chaque projet l’a, même vide, juste avant À tester ; une
 liste déjà nommée « Discussion » est reprise.
 
 La colonne **Info / Infos** contient une carte de version propre au dépôt associé

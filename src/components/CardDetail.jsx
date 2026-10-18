@@ -328,7 +328,7 @@ export default function CardDetail({
             )}
           </p>
           <div className="detail-status">
-            <Status value={card.status} />
+            {!isSystemCard(projectId, card.id) && <Status value={card.status} />}
             <span>dans {lists.find(l => l.id === card.listId)?.name}</span>
           </div>
           <label className="detail-label">

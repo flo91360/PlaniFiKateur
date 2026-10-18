@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import Avatar from './Avatar.jsx';
 import Status, { StatusOptions, priorities } from './Status.jsx';
-import { cardLinks } from '../lib/infos.js';
+import { cardLinks, isSystemCard } from '../lib/infos.js';
 import { workBadge } from '../lib/use-work-status.js';
 import { version as appVersion } from '../../package.json';
 import { useProjectAccess } from '../lib/project-access.js';
@@ -78,7 +78,7 @@ function Priority({ value }) {
   );
 }
 
-function CardPreview({ card, color, followers, work, dragging, readOnly, onDragStart, onDragEnd, onOpen }) {
+function CardPreview({ card, color, system, followers, work, dragging, readOnly, onDragStart, onDragEnd, onOpen }) {
   const links = cardLinks(card);
   const badge = workBadge(work);
   // Carte du tableau : un article dont le titre est le bouton d’ouverture (étendu à toute la carte),
@@ -108,7 +108,7 @@ function CardPreview({ card, color, followers, work, dragging, readOnly, onDragS
         </button>
       </h3>
       <p>{card.description || 'Ajoutez un peu de contexte à cette idée…'}</p>
-      <Status value={card.status} />
+      {!system && <Status value={card.status} />}
       {badge && <span className={`work-badge ${badge.tone}`}>{badge.label}</span>}
       <footer>
         <Priority value={card.priority} />
@@ -309,6 +309,7 @@ export default function Board({
                     key={card.id}
                     card={card}
                     color={list.color}
+                    system={isSystemCard(project.id, card.id)}
                     followers={followers[card.id] || []}
                     work={work[card.id]}
                     dragging={draggedCard === card.id}

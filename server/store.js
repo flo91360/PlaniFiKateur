@@ -309,8 +309,8 @@ export function createStore(filename, { backupDirectory } = {}) {
     return { ...version, repository, changelog, ...(downloads ? { downloads: JSON.parse(downloads.data) } : {}) };
   };
   transaction(synchronizeInfos);
-  // Projets antérieurs aux listes « Discussion » et « Terminées » : elles sont ajoutées au démarrage,
-  // les tâches terminées rangées et les cartes de discussion retirées de la file de l’agent.
+  // Projets antérieurs aux listes « Discussion » et « À tester » : elles sont ajoutées au démarrage
+  // (l’ancienne liste « Terminées » renommée), les tâches livrées rangées et les cartes de discussion retirées de la file de l’agent.
   transaction(() => {
     const previous = readProjects();
     const projects = previous.map(withProjectLists);
@@ -520,7 +520,7 @@ export function createStore(filename, { backupDirectory } = {}) {
             : 'Déplacez ou supprimez d’abord les cartes de cette liste.',
       );
     try {
-      // Une tâche passée au statut « Terminée » rejoint la liste « Terminées ».
+      // Une tâche passée au statut « À tester » rejoint la liste « À tester ».
       return { clean: validateWorkspace(result.projects.map(withProjectLists)), skipped };
     } catch (error) {
       fail(400, 'invalid_workspace', error.message);
