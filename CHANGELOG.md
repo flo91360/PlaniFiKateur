@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.59 — 2026-10-18
+<!-- planifikateur:bouton-ca-ne-marche-pas -->
+
+- **Bouton « Ça ne marche pas » sur les cartes à tester** : Quand le test d’une livraison échoue, le bouton « Ça ne marche pas » d’une carte de la liste « À tester » renvoie la demande à l’agent avec ce qui ne va pas : le texte est ajouté en commentaire de la même carte, qui quitte la liste « À tester » et repasse en « Prête à démarrer ».
+
 ## 0.1.58 — 2026-10-18
 <!-- planifikateur:liste-a-tester -->
 

@@ -34,5 +34,12 @@ export function withDiscussionList(project) {
   };
 }
 
+// Liste où une carte repart quand sa livraison est refusée au test : la première liste du projet qui
+// n’est ni « À tester », ni « Discussion », ni Infos.
+export function restartList(project) {
+  const kept = new Set([findDoneList(project)?.id, findDiscussionList(project)?.id, `${project.id}-infos`]);
+  return project.lists.find(list => !kept.has(list.id));
+}
+
 // Listes tenues par le site dans chaque projet : Discussion, puis À tester.
 export const withProjectLists = project => withDoneList(withDiscussionList(project));

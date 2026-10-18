@@ -194,9 +194,16 @@ export default function ExecutionPanel({
       await beforeStart();
       await apiData(base, { method: 'POST', data: {} });
     });
+  const restart = correction =>
+    act(async () => {
+      await beforeStart();
+      await apiData(base, { method: 'POST', data: { correction } });
+    });
   const active = unfinished(run);
-  // Une tâche terminée n’est plus relancée : une suite fait l’objet d’une nouvelle carte.
+  // Une tâche livrée n’est plus relancée telle quelle : si le test échoue, la correction demandée
+  // lance une nouvelle exécution sur la même carte.
   const finished = run?.state === 'done';
+  const failedTest = finished && cardStatus === 'done';
   const submission = run?.submissions.at(-1);
   const pr = submission?.pullRequest;
   const checks = run?.githubChecks;
@@ -301,8 +308,23 @@ export default function ExecutionPanel({
           onSubmit={message => transition('reject', message)}
           onCancel={() => setForm(null)}
         />
+      ) : form === 'restart' ? (
+        <MessageForm
+          label="Ce qui ne va pas"
+          initial=""
+          submit="Relancer l’agent"
+          cancel="Annuler"
+          busy={busy}
+          onSubmit={message => void restart(message)}
+          onCancel={() => setForm(null)}
+        />
       ) : (
         <div className="execution-actions">
+          {failedTest && canLaunch && (
+            <button className="secondary-button" disabled={busy} onClick={() => setForm('restart')}>
+              Ça ne marche pas
+            </button>
+          )}
           {!active && !finished && canLaunch && execution.loaded && !(execution.error && !run) && (
             <button
               className="primary-button"

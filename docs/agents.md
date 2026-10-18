@@ -1,4 +1,4 @@
-# Parcours agent par projet — v0.1.58
+# Parcours agent par projet — v0.1.59
 
 Un seul agent actif, sans délégation. Le site pilote les demandes et confirme la fusion GitHub ;
 l’agent s’exécute dans un service externe. Le [worker Codex](worker.md) fournit ce
@@ -44,8 +44,14 @@ humaines disponibles à cette étape :
   demande est transmise à l’agent, qui reprend la même PR ;
 - **Valider le résultat**, uniquement pour une ancienne exécution sans PR ;
 - **Relancer l’agent** après une annulation, qui prépare une nouvelle exécution
-  en conservant l’historique. Une tâche terminée (PR fusionnée) ne propose plus
-  ce bouton : une suite fait l’objet d’une nouvelle carte.
+  en conservant l’historique. Une tâche livrée (PR fusionnée) ne propose plus
+  ce bouton ;
+- **Ça ne marche pas**, sur une carte de la liste « À tester » dont la nouvelle
+  version ne convient pas : ce qui ne va pas est ajouté en commentaire de la même
+  carte, une nouvelle exécution est préparée (l’agent le reçoit avec la demande
+  initiale et le lien de la PR déjà fusionnée) et la carte repasse en « Prête à
+  démarrer », dans la première liste du projet qui n’est ni « À tester », ni
+  « Discussion », ni Infos. Réservé aux responsables.
 
 Les listes restent l’organisation du projet ; les statuts des cartes suivent
 l’exécution automatiquement. Une carte en attente peut être retirée de la file en changeant son statut.
@@ -60,7 +66,7 @@ demande confirmation à sa fermeture (aussitôt pour une pièce jointe ou l’ef
 avec la possibilité de rétablir la demande. La confirmation de suppression de la
 carte signale aussi l’annulation.
 Les transitions humaines exigent une version à jour pour éviter deux validations
-contradictoires. Depuis la v0.1.58, les droits par projet s’appliquent : confier une carte à
+contradictoires. Depuis la v0.1.59, les droits par projet s’appliquent : confier une carte à
 l’agent (statut « Prête à démarrer » ou « Confier à l’agent »), valider son résultat et demander
 des corrections sont réservés aux **responsables** du projet et aux administrateurs ; les
 contributeurs peuvent répondre à ses questions et annuler une exécution. Voir
@@ -113,7 +119,7 @@ Les actions d’agent :
 | `submit` | `{version, leaseToken, summary, checks, links: [], pullRequest: {url, headSha}, reviewRequired?}` | Soumettre une PR pour fusion automatique |
 | `interrupt` | `{version, leaseToken, message}` | Signaler un problème et rendre la tâche reprenable |
 
-Depuis la v0.1.58, `progress`, `question`, `submit` et `interrupt` acceptent aussi `usage` : la consommation cumulée du modèle depuis la réservation (`inputTokens`, dont `cachedInputTokens`, `outputTokens`, `costUsd` si le moteur le fournit, `durationMs`). Chaque réservation ouvre une tentative dans `attempts` (début, fin, consommation) ; la lecture des exécutions d’une carte ajoute `usage`, leur total (tentatives, tokens, coût connu, durée).
+Depuis la v0.1.59, `progress`, `question`, `submit` et `interrupt` acceptent aussi `usage` : la consommation cumulée du modèle depuis la réservation (`inputTokens`, dont `cachedInputTokens`, `outputTokens`, `costUsd` si le moteur le fournit, `durationMs`). Chaque réservation ouvre une tentative dans `attempts` (début, fin, consommation) ; la lecture des exécutions d’une carte ajoute `usage`, leur total (tentatives, tokens, coût connu, durée).
 
 `reviewRequired` liste les contrôles de la fusion que la PR modifie : workflows GitHub, scripts
 npm, fichiers de configuration des tests déclarés par le profil (`reviewPaths`). Le worker
@@ -221,7 +227,11 @@ préparer une exécution. Les critères d’acceptation ont été retirés des f
 et ne sont plus nécessaires : l’agent déduit le résultat attendu et les
 vérifications utiles de la description. Il peut demander des précisions.
 
-`POST .../cards/{carte}/work` reçoit `{}` ou `{ "delivery": "github" }`.
+`POST .../cards/{carte}/work` reçoit `{}` ou `{ "delivery": "github" }`. Avec
+`{ "correction": "…" }`, il renvoie à l’agent une carte de la liste « À tester »
+(erreur 409 `not_to_test` sinon) : la correction est ajoutée à l’objectif de la
+nouvelle exécution (champ `correction`), publiée en commentaire de la carte, qui
+quitte la liste « À tester ».
 Le serveur calcule `objective` à partir de la description. `criteria` et `context`
 restent présents mais vides dans les nouvelles exécutions pour conserver le
 contrat de lecture des agents. `cardSnapshot` garde la carte au démarrage et

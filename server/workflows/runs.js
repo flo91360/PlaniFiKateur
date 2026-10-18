@@ -3,7 +3,9 @@ import { fail } from '../http.js';
 import { CARD_STATUS, canTransition, isTerminal, legacyPublicationQuestion, transition } from '../execution-states.js';
 import { OPEN, source, text } from './core.js';
 import { usageSummary } from './usage.js';
-import { isDiscussionCard } from '../../src/lib/discussion-list.js';
+import { isDiscussionCard, restartList } from '../../src/lib/discussion-list.js';
+import { isSystemCard } from '../../src/lib/infos.js';
+import { findDoneList } from '../../src/lib/done-list.js';
 
 // Dernier message humain d’une carte de discussion : sa question (description), puis chaque relance
 // en commentaire. `answeredAfter` : l’agent a publié une réponse après ce message.
@@ -61,6 +63,14 @@ export function createRuns(
       fail(409, 'active_execution', 'Une exécution existe déjà. Annulez-la avant de préparer une nouvelle demande.');
     if (data?.delivery !== undefined && data.delivery !== 'github')
       fail(400, 'invalid_delivery', 'La livraison se fait par fusion automatique GitHub.');
+    // Livraison refusée au test : la carte « À tester » repart avec ce qui ne va pas.
+    const correction = data?.correction === undefined ? null : text(data.correction, 'Correction demandée', 10000);
+    if (correction) {
+      if (card.status !== 'done' || isSystemCard(projectId, cardId) || findDoneList(project)?.id !== card.listId)
+        fail(409, 'not_to_test', 'Seule une carte de la liste « À tester » peut être renvoyée à l’agent.');
+      if (card.comments.length >= 1000)
+        fail(400, 'comment_limit', 'La discussion de cette carte a atteint sa limite de commentaires.');
+    }
     const repository = githubProject(projectId);
     if (!repository) fail(400, 'github_not_configured', 'Configurez le dépôt GitHub du projet.');
     const run = {
@@ -92,7 +102,32 @@ export function createRuns(
       run.state,
       JSON.stringify(run),
     );
-    return save(run, actor, 'prepared');
+    if (correction) {
+      const previous = db
+        .prepare("SELECT data FROM executions WHERE card_id=? AND state='done' ORDER BY rowid DESC LIMIT 1")
+        .get(cardId);
+      const pullRequest = previous && JSON.parse(previous.data).submissions?.at(-1)?.pullRequest;
+      run.objective = `${run.objective}\n\nCette demande a déjà été livrée${pullRequest?.url ? ` (${pullRequest.url})` : ''}, mais le test de la nouvelle version a échoué. Corrige-la en partant du dépôt à jour. Ce qui ne va pas : ${correction}`;
+      run.correction = correction;
+    }
+    const prepared = save(run, actor, 'prepared');
+    if (correction) {
+      // Le commentaire rejoint la discussion de la carte, qui quitte la liste « À tester ».
+      const projects = readProjects();
+      const current = projects.find(item => item.id === projectId);
+      const target = current.cards.find(item => item.id === cardId);
+      target.comments.push({
+        id: `work-${run.id}-correction`,
+        author: actor.name,
+        authorId: actor.id,
+        authorKind: 'user',
+        text: correction,
+        date: prepared.updatedAt,
+      });
+      target.listId = restartList(current)?.id || target.listId;
+      writeProjects(projects, prepared.updatedAt);
+    }
+    return prepared;
   };
   // Question de la liste Discussion : l’agent lit le dépôt et répond dans la discussion de la carte,
   // sans branche, commit ni PR. Une exécution par message humain (`trigger`), jamais relancée.

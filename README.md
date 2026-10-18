@@ -128,7 +128,7 @@ Conserver également des copies hors du volume Railway.
 npm run export:preview
 ```
 
-`dist/PlaniFiKateur-apercu-v0.1.58.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
+`dist/PlaniFiKateur-apercu-v0.1.59.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 
@@ -138,7 +138,9 @@ pour que son demandeur vérifie la nouvelle version, et que les autres listes ne
 gardent que le travail à faire. Chaque projet l’a, même vide, juste avant la
 colonne Infos ; une liste déjà nommée « À tester » est reprise, et l’ancienne liste
 « Terminées » est renommée au démarrage du serveur, où les cartes déjà livrées sont
-aussi rangées.
+aussi rangées. Si le test échoue, le bouton **Ça ne marche pas** de la carte
+renvoie la demande à l’agent avec ce qui ne va pas, en commentaire de la même
+carte, qui quitte la liste « À tester ».
 
 La liste **Discussion** sert à échanger sur le fonctionnement du projet et ses
 futures évolutions : la description d’une carte y est une question, jamais une
