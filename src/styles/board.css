@@ -96,8 +96,29 @@
   align-items: flex-start;
   padding-bottom: 26px;
   min-height: 500px;
-  scrollbar-color: #c3d2cc transparent;
-  scrollbar-width: thin;
+  /* La barre native est remplacée par .board-scrollbar, toujours visible en bas de l’écran. */
+  scrollbar-width: none;
+}
+.board::-webkit-scrollbar {
+  display: none;
+}
+.board-scrollbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin-top: -26px;
+  margin-bottom: 26px;
+  padding: 4px 0;
+  background: var(--page);
+  scrollbar-color: #a9bdb5 transparent;
+}
+.board-scrollbar[hidden] {
+  display: none;
+}
+.board-scrollbar > div {
+  height: 1px;
 }
 .list-column {
   background: var(--surface-hover);
