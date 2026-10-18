@@ -24,7 +24,7 @@ const card = (id, listId, status) => ({
   checklist: [],
 });
 
-test('every project gets a « Discussion » list before Terminées, whose cards leave the agent queue', () => {
+test('every project gets a « Discussion » list before À tester, whose cards leave the agent queue', () => {
   const project = withProjectLists(
     withInfos({
       id: 'p',
@@ -34,7 +34,7 @@ test('every project gets a « Discussion » list before Terminées, whose cards 
   );
   assert.deepEqual(
     project.lists.map(list => list.name),
-    ['Améliorations', 'Discussion', 'Terminées', 'Infos'],
+    ['Améliorations', 'Discussion', 'À tester', 'Infos'],
   );
   assert.equal(withProjectLists(project), project);
   // Une carte « Prête à démarrer » placée dans Discussion revient « À explorer » ; les autres restent.
@@ -96,7 +96,7 @@ test('a discussion card is never prepared for the agent and a moved card loses i
     assert.ok(!store.workflows.queue(projectId, agent).some(item => item.id === run.id));
     store.close();
 
-    // Base antérieure à la liste : elle est ajoutée au démarrage, avant Terminées.
+    // Base antérieure à la liste : elle est ajoutée au démarrage, avant À tester.
     const db = new DatabaseSync(file);
     writeWorkspace(
       db,

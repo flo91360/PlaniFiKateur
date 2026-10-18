@@ -23,7 +23,7 @@ const card = (id, listId, status) => ({
   checklist: [],
 });
 
-test('finished tasks move to a « Terminées » list created before Infos, other cards stay', () => {
+test('finished tasks move to an « À tester » list created before Infos, other cards stay', () => {
   const project = withInfos({
     id: 'p',
     lists: [{ id: 'improvements', name: 'Améliorations', color: 'green' }],
@@ -32,11 +32,11 @@ test('finished tasks move to a « Terminées » list created before Infos, other
   const next = withDoneList(project);
   assert.deepEqual(
     next.lists.map(list => list.name),
-    ['Améliorations', 'Terminées', 'Infos'],
+    ['Améliorations', 'À tester', 'Infos'],
   );
   assert.equal(next.cards.find(item => item.id === 'finished').listId, doneListId('p'));
   assert.equal(next.cards.find(item => item.id === 'open').listId, 'improvements');
-  // Les cartes Infos, au statut « Terminée », restent dans leur liste.
+  // Les cartes Infos, au statut « À tester », restent dans leur liste.
   assert.ok(next.cards.filter(item => item.id.startsWith('p-')).every(item => item.listId === 'p-infos'));
   assert.equal(withDoneList(next), next);
   // Sans tâche terminée, la liste est créée vide et les cartes ne bougent pas.
@@ -50,7 +50,7 @@ test('finished tasks move to a « Terminées » list created before Infos, other
   assert.equal(withDoneList(withList), withList);
 });
 
-test('an existing list named « Terminées » is reused', () => {
+test('an existing list named « À tester » is reused, and a former « Terminées » list is renamed', () => {
   const project = {
     id: 'p',
     lists: [
@@ -61,7 +61,19 @@ test('an existing list named « Terminées » is reused', () => {
   };
   const next = withDoneList(project);
   assert.equal(next.lists.length, 2);
+  assert.deepEqual(next.lists[1], { id: 'archive', name: 'À tester', color: 'purple' });
   assert.equal(next.cards[0].listId, 'archive');
+  assert.equal(withDoneList(next), next);
+  // Liste déjà renommée, sans carte à ranger : rien ne change.
+  const named = { ...project, lists: [project.lists[0], { id: 'check', name: 'a tester', color: 'blue' }] };
+  assert.equal(withDoneList({ ...named, cards: [] }).lists, named.lists);
+  assert.equal(withDoneList(named).cards[0].listId, 'check');
+  // Liste du site encore nommée « Terminées » : renommée, sans doublon.
+  const legacy = { id: 'q', lists: [{ id: doneListId('q'), name: 'Terminées', color: 'green' }], cards: [] };
+  assert.deepEqual(
+    withDoneList(legacy).lists.map(list => list.name),
+    ['À tester'],
+  );
 });
 
 test('a card set to done is moved by the server, and finished cards are filed on startup', t => {
@@ -86,7 +98,7 @@ test('a card set to done is moved by the server, and finished cards are filed on
     assert.equal(project.lists.filter(list => list.id === doneListId('planifikateur')).length, 1);
     store.close();
 
-    // Base antérieure à la liste : une tâche terminée dans « Bugs », sans liste « Terminées ».
+    // Base antérieure à la liste : une tâche terminée dans « Bugs », sans liste « À tester ».
     const db = new DatabaseSync(file);
     const legacy = structuredClone(seed).map(item => ({
       ...item,
@@ -109,6 +121,26 @@ test('a card set to done is moved by the server, and finished cards are filed on
     const website = store.read().projects.find(item => item.id === 'website');
     assert.ok(website.lists.some(list => list.id === doneListId('website')));
     assert.ok(!website.cards.some(item => item.listId === doneListId('website')));
+    store.close();
+
+    // Base où la liste s’appelle encore « Terminées » : renommée « À tester » au démarrage, cartes gardées.
+    const old = new DatabaseSync(file);
+    const named = readWorkspace(old).map(item => ({
+      ...item,
+      lists: item.lists.map(list => (list.id === doneListId(item.id) ? { ...list, name: 'Terminées' } : list)),
+    }));
+    writeWorkspace(old, named);
+    old.close();
+    store = createStore(file);
+    for (const item of store.read().projects)
+      assert.equal(item.lists.find(list => list.id === doneListId(item.id)).name, 'À tester');
+    assert.equal(
+      store
+        .read()
+        .projects.find(item => item.id === 'planifikateur')
+        .cards.find(item => item.id === 'c7').listId,
+      doneListId('planifikateur'),
+    );
   } finally {
     store.close();
   }

@@ -187,7 +187,7 @@ function App() {
       let changed = false;
       const next = ps.map(p => {
         if (p.id !== project.id) return p;
-        // Une tâche terminée rejoint aussitôt la liste « Terminées » et une carte de discussion quitte la
+        // Une tâche livrée rejoint aussitôt la liste « À tester » et une carte de discussion quitte la
         // file de l’agent, comme sur le serveur.
         const updated = withProjectLists(transform(p));
         changed ||= updated !== p;

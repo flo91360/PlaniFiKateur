@@ -130,7 +130,7 @@ test('only a signed GitHub merge closes a code task, with idempotency and histor
   assert.equal(done.state, 'done');
   assert.equal(done.submissions[0].decision.automatic, true);
   assert.equal(f.store.read().projects[0].cards[0].status, 'done');
-  // La tâche terminée par la fusion rejoint la liste « Terminées ».
+  // La tâche terminée par la fusion rejoint la liste « À tester ».
   assert.equal(f.store.read().projects[0].cards[0].listId, doneListId(f.project.id));
   const revision = f.store.getRevision();
   await f.webhook('pull_request', payload);

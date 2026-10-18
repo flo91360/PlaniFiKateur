@@ -97,7 +97,7 @@ Toutes ces routes exigent une **session personnelle** de la même origine ; une 
 | Route | Usage |
 | --- | --- |
 | `PATCH /api/v1/workspace` | Lot de modifications fines, appliqué en une transaction ; réponse `{ "data": { projects, revision, updatedAt, skipped, rejected? } }`, pièces jointes sans contenu |
-| `POST /api/v1/projects` | `{ name, description?, emoji?, color?, lists? }` ; trois listes par défaut, les listes « Discussion » et « Terminées » et les cartes Infos ; réponse 201 |
+| `POST /api/v1/projects` | `{ name, description?, emoji?, color?, lists? }` ; trois listes par défaut, les listes « Discussion » et « À tester » et les cartes Infos ; réponse 201 |
 | `PATCH /api/v1/projects/{projectId}` | `{ name?, description?, emoji?, color? }` |
 | `DELETE /api/v1/projects/{projectId}` | Supprime le projet, ses listes et ses cartes |
 | `POST /api/v1/projects/{projectId}/lists` | `{ name, color? }` (`green`, `purple`, `orange`) ; réponse 201 |

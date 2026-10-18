@@ -169,7 +169,7 @@ export function createCore(db, { audit, findCard, readProjects, writeProjects, r
       // l’exécution, affichée par le bandeau « Exécution IA » de la carte.
       if (['question', 'answer'].includes(action) || (action === 'checks' && run.state === 'waiting'))
         questionComments(card, run);
-      // Tâche terminée (PR fusionnée, résultat accepté) : rangée dans la liste « Terminées ».
+      // Tâche terminée (PR fusionnée, résultat accepté) : rangée dans la liste « À tester ».
       projects[index] = withDoneList(projects[index]);
       writeProjects(projects, run.updatedAt);
     }

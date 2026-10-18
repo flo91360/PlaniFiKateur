@@ -2,7 +2,7 @@ import { findDoneList, withDoneList } from './done-list.js';
 
 // Liste « Discussion » d’un projet : ses cartes sont des questions pour échanger sur le
 // fonctionnement du projet et ses évolutions, jamais des demandes de modification. Elles ne sont
-// jamais confiées à l’agent. Chaque projet l’a, même vide, juste avant la liste Terminées (ou Infos) ;
+// jamais confiées à l’agent. Chaque projet l’a, même vide, juste avant la liste À tester (ou Infos) ;
 // une liste existante nommée « Discussion » est reprise.
 export const DISCUSSION_LIST_NAME = 'Discussion';
 export const discussionListId = projectId => `${projectId}-discussion`;
@@ -34,5 +34,5 @@ export function withDiscussionList(project) {
   };
 }
 
-// Listes tenues par le site dans chaque projet : Discussion, puis Terminées.
+// Listes tenues par le site dans chaque projet : Discussion, puis À tester.
 export const withProjectLists = project => withDoneList(withDiscussionList(project));

@@ -45,7 +45,7 @@ function ProjectStats({ cards }) {
         icon={CheckCheck}
         tone="green"
         value={done}
-        label="terminées"
+        label="à tester"
         hint={`${total ? Math.round((done / total) * 100) : 0} % des idées concrétisées`}
       />
     </div>
