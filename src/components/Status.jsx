@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowRight, Check, CheckCheck, Circle, CircleHelp, Clock3 } from 'lucide-react';
+import { ArrowRight, CheckCheck, Circle, CircleHelp, Clock3, FlaskConical } from 'lucide-react';
 
 // Libellés des statuts et priorités ; les clés sont validées par src/lib/workspace.js.
 export const statuses = {
@@ -9,7 +9,8 @@ export const statuses = {
   clarify: { label: 'À préciser', icon: CircleHelp },
   review: { label: 'Tests et fusion', icon: CheckCheck },
   flo: { label: 'À relire', icon: CircleHelp },
-  done: { label: 'À tester', icon: Check },
+  // Une fiole et non une coche : la livraison attend encore la vérification de son demandeur.
+  done: { label: 'À tester', icon: FlaskConical },
 };
 export const priorities = { low: 'Basse', normal: 'Normale', high: 'Haute' };
 
