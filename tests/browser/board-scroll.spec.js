@@ -27,13 +27,16 @@ test('la barre de défilement horizontale du tableau reste visible', { tag: '@mo
 
   // Les deux barres défilent ensemble (sur mobile, le tableau s’aligne ensuite sur une liste).
   const positions = () => Promise.all([board, bar].map(el => el.evaluate(node => Math.round(node.scrollLeft))));
+  // Position stabilisée : sur mobile, le calage sur une liste (scroll-snap) poursuit le défilement
+  // après l’affectation ; une nouvelle affectation pendant ce calage serait annulée par lui.
+  const settled = async () => {
+    const before = await positions();
+    await page.waitForTimeout(250);
+    const after = await positions();
+    return JSON.stringify(before) === JSON.stringify(after) && after[0] === after[1] ? after[0] : null;
+  };
   await bar.evaluate(el => (el.scrollLeft = 200));
-  await expect
-    .poll(async () => {
-      const [a, b] = await positions();
-      return a > 0 && a === b;
-    })
-    .toBe(true);
+  await expect.poll(settled, { timeout: 10000 }).toBeGreaterThan(0);
   await board.evaluate(el => (el.scrollLeft = 0));
-  await expect.poll(positions).toEqual([0, 0]);
+  await expect.poll(settled, { timeout: 10000 }).toBe(0);
 });

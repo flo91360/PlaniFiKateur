@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.65 — 2026-10-18
+<!-- planifikateur:test-defilement-fiable -->
+
+- **Modifications concurrentes préservées et tests fiables** : Fermer le détail d’une carte n’envoie plus que les champs modifiés dans ce détail : un titre, une description ou des étiquettes restés tels qu’ils ont été lus ne remplacent plus ce qu’une autre personne vient d’enregistrer. Le test de la barre de défilement attend la fin du calage sur une liste (mobile) ; ces deux échecs intermittents ne bloquent plus le tag d’une livraison.
+
 ## 0.1.64 — 2026-10-18
 <!-- planifikateur:etape-15b-decoupage -->
 
