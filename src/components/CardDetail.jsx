@@ -349,8 +349,15 @@ export default function CardDetail({
     onUpdate(patch);
     if (close) onClose();
   };
+  // Seuls les champs modifiés dans ce détail sont envoyés : un champ resté tel qu’il a été lu ne
+  // doit jamais remplacer la valeur qu’une autre session vient d’enregistrer.
   const saveFields = (nextDescription = description, options = { defer: true }) => {
-    update({ title: title.trim() || card.title, description: nextDescription.trim(), tags: parseTags(tags) }, options);
+    const base = previousFields.current;
+    const patch = {};
+    if (title.trim() && title !== base.title) patch.title = title.trim();
+    if (nextDescription !== base.description) patch.description = nextDescription.trim();
+    if (tags !== base.tags) patch.tags = parseTags(tags);
+    update(patch, options);
     if (!title.trim()) setTitle(card.title);
   };
   const replaceDescription = text => {
