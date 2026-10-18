@@ -39,7 +39,7 @@ Le volume doit pouvoir contenir la base et ses copies. Vous pouvez réduire le n
 
 ## Conserver une copie en dehors de Railway
 
-Dans le site connecté, ouvrir **Espace personnel** dans le menu latéral (bouton « Ouvrir les projets » sur mobile) puis la section **Sauvegardes**. C’est le seul accès aux sauvegardes serveur : la fenêtre d’information et l’historique des projets ne les proposent pas. « Créer et télécharger une sauvegarde SQLite » capture les données déjà enregistrées sur le serveur. Attendre « Sauvegardé sur le serveur » avant cette opération. Les anciennes copies sont également téléchargeables ; leurs dates sont affichées dans votre fuseau horaire.
+Dans le site connecté, l’administrateur ouvre **Mon compte** (barre supérieure) puis la section **Sauvegardes**, sous la gestion des membres. C’est le seul accès aux sauvegardes serveur : la vue d’ensemble, la fenêtre d’information et l’historique des projets ne les proposent pas. « Créer et télécharger une sauvegarde SQLite » capture les données déjà enregistrées sur le serveur. Attendre « Sauvegardé sur le serveur » avant cette opération. Les anciennes copies sont également téléchargeables ; leurs dates sont affichées dans votre fuseau horaire.
 
 La consultation et le téléchargement des sauvegardes exigent la session administrateur. La clé de lecture agent ne donne pas accès aux sauvegardes, qui contiennent tous les projets.
 

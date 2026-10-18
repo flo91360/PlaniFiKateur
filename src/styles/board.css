@@ -210,6 +210,10 @@
 .card.dragging {
   opacity: 0.4;
 }
+/* Emplacement de dépôt d’une carte glissée : avant cette carte. */
+.card.drop-before {
+  box-shadow: 0 -4px 0 -1px var(--primary);
+}
 /* Le bouton du titre couvre toute la carte : un clic n’importe où l’ouvre. */
 .card-open {
   padding: 0;
@@ -463,4 +467,8 @@
   display: flex;
   align-items: center;
   gap: 7px;
+}
+
+.card-meta .checklist-complete {
+  color: var(--primary);
 }

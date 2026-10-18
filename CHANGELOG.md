@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.61 — 2026-10-18
+<!-- planifikateur:etape-14a-tableau -->
+
+- **Tableau plus pratique** : Une carte glissée se dépose à l’endroit visé dans la liste. Le détail de la carte présente sa liste de contrôle (ajouter, cocher, renommer, retirer un critère) et le tableau sa progression. Les slogans laissent place à des textes utiles et l’auteur d’un premier commentaire est la personne connectée. Les sauvegardes de la base passent dans « Mon compte », avec la gestion des membres. Une base de production neuve commence sans projets de démonstration (PLANIFIKATEUR_DEMO pour choisir).
+
 ## 0.1.60 — 2026-10-18
 <!-- planifikateur:icone-a-tester -->
 

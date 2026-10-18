@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowRight, Check, MessageSquare, Trash2 } from 'lucide-react';
+import { ArrowRight, Check, ListChecks, MessageSquare, Trash2, X } from 'lucide-react';
 import ActivityPanel from './ActivityPanel.jsx';
 import Attachments from './Attachments.jsx';
 import Avatar from './Avatar.jsx';
@@ -68,6 +68,97 @@ function CardResources({ card }) {
         </div>
       )}
     </>
+  );
+}
+
+// Liste de contrôle de la carte : critères à cocher, ajoutés, renommés ou retirés un par un.
+function Checklist({ items, readOnly, locked, onChange }) {
+  const [text, setText] = useState('');
+  const done = items.filter(item => item.done).length;
+  const add = () => {
+    if (!text.trim()) return;
+    onChange([...items, { id: uid(), text: text.trim().slice(0, 2000), done: false }]);
+    setText('');
+  };
+  const update = (id, fields) => onChange(items.map(item => (item.id === id ? { ...item, ...fields } : item)));
+  return (
+    <section className="checklist-section" aria-label="Liste de contrôle">
+      <h3>
+        <ListChecks size={17} />
+        Liste de contrôle
+        {items.length > 0 && (
+          <span aria-label={`${done} critère${done > 1 ? 's' : ''} sur ${items.length} cochés`}>
+            {done}/{items.length}
+          </span>
+        )}
+      </h3>
+      {items.length > 0 && (
+        <progress className="checklist-progress" max={items.length} value={done} aria-hidden="true" />
+      )}
+      <ul>
+        {items.map(item => (
+          <li key={item.id} className={item.done ? 'done' : ''}>
+            <input
+              type="checkbox"
+              checked={item.done}
+              disabled={readOnly}
+              aria-label={item.text}
+              onChange={e => update(item.id, { done: e.target.checked })}
+            />
+            <ChecklistText
+              item={item}
+              readOnly={readOnly || locked}
+              onSave={value => update(item.id, { text: value })}
+            />
+            {!readOnly && !locked && (
+              <button
+                type="button"
+                className="icon-button"
+                aria-label={`Retirer « ${item.text} »`}
+                onClick={() => onChange(items.filter(other => other.id !== item.id))}
+              >
+                <X size={14} />
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {!items.length && <p className="muted">Aucun critère : ajoutez les points à vérifier pour cette carte.</p>}
+      {!readOnly && !locked && items.length < 500 && (
+        <LocalForm className="checklist-add" onConfirm={add}>
+          <input
+            aria-label="Nouveau critère"
+            value={text}
+            maxLength={2000}
+            onChange={e => setText(e.target.value)}
+            placeholder="Ajouter un critère…"
+          />
+          <button type="button" className="secondary-button" disabled={!text.trim()} onClick={add}>
+            Ajouter
+          </button>
+        </LocalForm>
+      )}
+    </section>
+  );
+}
+
+// Texte d’un critère, modifiable sur place ; enregistré en quittant le champ (vide : texte rétabli).
+function ChecklistText({ item, readOnly, onSave }) {
+  const [value, setValue] = useState(item.text);
+  useEffect(() => setValue(item.text), [item.text]);
+  if (readOnly) return <span className="checklist-text">{item.text}</span>;
+  return (
+    <input
+      className="checklist-text"
+      aria-label={`Texte du critère « ${item.text} »`}
+      value={value}
+      maxLength={2000}
+      onChange={e => setValue(e.target.value)}
+      onBlur={() => {
+        if (value.trim() && value.trim() !== item.text) onSave(value.trim());
+        else setValue(item.text);
+      }}
+    />
   );
 }
 
@@ -165,6 +256,8 @@ const requestFields = {
   tags: value => JSON.stringify(value),
   attachments: value => JSON.stringify(value || []),
   aiEffort: value => value || '',
+  // Les textes des critères font partie de la demande ; les cocher ne la change pas.
+  checklist: value => JSON.stringify((value || []).map(item => item.text)),
 };
 const changesRequest = (card, patch) =>
   Object.entries(requestFields).some(
@@ -391,6 +484,14 @@ export default function CardDetail({
               placeholder="Interface, Recherche… (séparées par une virgule)"
             />
           </label>
+          {!discussion && (
+            <Checklist
+              items={card.checklist}
+              readOnly={readOnly}
+              locked={requestLocked}
+              onChange={checklist => update({ checklist })}
+            />
+          )}
           <Attachments
             otherBytes={attachmentBytes}
             attachments={card.attachments || []}

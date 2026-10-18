@@ -12,13 +12,13 @@ import { useProjectAccess } from '../lib/project-access.js';
 
 const texts = {
   project: {
-    intro: 'Un espace dédié, pour rassembler les idées qui vont ensemble.',
+    intro: 'Un projet a ses listes, ses cartes, ses membres et, s’il est lié à GitHub, son agent IA.',
     label: 'Nom du projet',
     placeholder: 'Ex. Mon application',
     submit: 'Créer le projet',
   },
   list: {
-    intro: 'Organisez votre tableau avec une catégorie qui vous ressemble.',
+    intro: 'Une liste regroupe des cartes du tableau ; elle peut être renommée ou déplacée ensuite.',
     label: 'Nom de la liste',
     placeholder: 'Ex. À explorer',
     submit: 'Créer la liste',

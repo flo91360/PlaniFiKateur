@@ -465,3 +465,80 @@ textarea::placeholder {
   font-size: 12px;
   z-index: 30;
 }
+
+/* Liste de contrôle d’une carte. */
+.checklist-section {
+  margin-top: 22px;
+}
+.checklist-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.checklist-section h3 span {
+  color: var(--text-faint);
+  font-size: 10px;
+}
+.checklist-progress {
+  width: 100%;
+  height: 6px;
+  margin: 0 0 10px;
+  accent-color: var(--primary);
+}
+.checklist-section ul {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+}
+.checklist-section li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+}
+.checklist-section li.done .checklist-text {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+.checklist-section input[type='checkbox'] {
+  accent-color: var(--primary);
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.checklist-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+input.checklist-text {
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 4px 6px;
+  background: none;
+  color: var(--text-soft);
+  font-size: 12px;
+}
+input.checklist-text:hover,
+input.checklist-text:focus {
+  border-color: var(--border-strong);
+  background: var(--surface);
+}
+.checklist-add {
+  display: flex;
+  gap: 8px;
+}
+.checklist-add input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  background: var(--surface);
+  color: var(--text-soft);
+}

@@ -11,6 +11,8 @@ export function readConfig(env = process.env) {
     claudeOauthToken: env.CLAUDE_CODE_OAUTH_TOKEN || '',
     refineModel: env.PLANIFIKATEUR_REFINE_MODEL || '',
     secureCookie: env.NODE_ENV === 'production' || env.PLANIFIKATEUR_PUBLIC_ORIGIN?.startsWith('https://') || false,
+    // Projets de démonstration dans une base neuve : en développement seulement, sauf choix explicite.
+    demo: env.PLANIFIKATEUR_DEMO ? env.PLANIFIKATEUR_DEMO === '1' : env.NODE_ENV !== 'production',
   };
   if (
     (!['127.0.0.1', 'localhost', '::1'].includes(config.host) || env.NODE_ENV === 'production') &&
