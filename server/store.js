@@ -529,8 +529,29 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
     }
   };
   // Enregistre un nouvel état validé : exécutions IA, auteurs et dates, historique, abonnements.
+  // Responsable et archivage d’une carte, contrôlés quand ils changent : le responsable est un
+  // membre actif qui voit le projet ; une carte dont l’agent traite la demande n’est pas archivée.
+  const checkCards = (before, after) => {
+    const previous = new Map(before.flatMap(project => project.cards.map(card => [card.id, card])));
+    for (const project of after)
+      for (const card of project.cards) {
+        const old = previous.get(card.id);
+        if (card.assigneeId && card.assigneeId !== old?.assigneeId) {
+          const user = userById(card.assigneeId);
+          if (!user?.active || !user.password_hash || !access.role(publicUser(user), project.id))
+            fail(400, 'invalid_assignee', 'Le responsable de la carte doit être un membre actif du projet.');
+        }
+        if (
+          card.archived &&
+          !old?.archived &&
+          db.prepare("SELECT 1 FROM executions WHERE card_id = ? AND state NOT IN ('done','cancelled')").get(card.id)
+        )
+          fail(409, 'managed_status', 'L’agent traite cette carte : annulez son exécution avant de l’archiver.');
+      }
+  };
   const commit = (before, clean, actor, { restore = false, settings = null } = {}) => {
     const date = new Date().toISOString();
+    if (!restore) checkCards(before.projects, clean);
     workflows.reconcile(before.projects, clean, actor, restore);
     // before.projects vient de readWorkspace : il est déjà sous forme canonique.
     const events = restore ? [{ action: 'workspace.restored' }] : attributeChanges(before.projects, clean, actor, date);

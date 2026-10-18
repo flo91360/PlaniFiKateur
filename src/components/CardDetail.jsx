@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowRight, Check, ListChecks, MessageSquare, Trash2, X } from 'lucide-react';
+import { Archive, ArrowRight, Check, ListChecks, MessageSquare, Trash2, X } from 'lucide-react';
 import ActivityPanel from './ActivityPanel.jsx';
 import Attachments from './Attachments.jsx';
 import Avatar from './Avatar.jsx';
@@ -290,6 +290,7 @@ function CancelConfirm({ onConfirm, onRevert }) {
 
 export default function CardDetail({
   engine = 'codex',
+  members = [],
   attachmentBytes = 0,
   onWorkflowRefresh,
   offline,
@@ -375,7 +376,8 @@ export default function CardDetail({
   const stored = fieldsSaved && saveStatus === 'saved';
   // Une carte de la liste Discussion sert à échanger : elle n’est jamais confiée à l’agent.
   const discussion = isDiscussionCard({ id: projectId, lists }, card);
-  const executionShown = !offline && !isSystemCard(projectId, card.id) && !discussion;
+  const systemCard = isSystemCard(projectId, card.id);
+  const executionShown = !offline && !systemCard && !discussion;
   const saveFailed = ['error', 'conflict'].includes(saveStatus);
   // Demandes « Confier à l’agent » en attente de l’enregistrement de la carte.
   const saveWaiters = useRef([]);
@@ -423,6 +425,7 @@ export default function CardDetail({
           <div className="detail-status">
             {!isSystemCard(projectId, card.id) && <Status value={card.status} />}
             <span>dans {lists.find(l => l.id === card.listId)?.name}</span>
+            {card.archived && <span className="archived-badge">Archivée</span>}
           </div>
           <label className="detail-label">
             Description
@@ -573,6 +576,55 @@ export default function CardDetail({
               <PriorityOptions />
             </select>
           </label>
+          <label>
+            Échéance
+            <input
+              type="date"
+              aria-label="Échéance"
+              value={card.dueDate || ''}
+              disabled={readOnly}
+              onChange={e => onUpdate({ dueDate: e.target.value || null })}
+            />
+          </label>
+          {!offline && (
+            <label>
+              Responsable
+              <select
+                aria-label="Responsable"
+                value={card.assigneeId || ''}
+                disabled={readOnly}
+                onChange={e => onUpdate({ assigneeId: e.target.value || null })}
+              >
+                <option value="">Personne</option>
+                {members.map(member => (
+                  <option key={member.id} value={member.id}>
+                    {member.name}
+                    {member.id === user?.id ? ' (vous)' : ''}
+                  </option>
+                ))}
+                {card.assigneeId && !members.some(member => member.id === card.assigneeId) && (
+                  <option value={card.assigneeId}>Ancien membre</option>
+                )}
+              </select>
+            </label>
+          )}
+          {!readOnly && !systemCard && (
+            <div className="detail-archive">
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={!card.archived && runActive}
+                title={!card.archived && runActive ? 'Annulez d’abord l’exécution IA de cette carte.' : undefined}
+                onClick={() => {
+                  onUpdate({ archived: card.archived ? null : true });
+                  if (!card.archived) onClose();
+                }}
+              >
+                <Archive size={14} />
+                {card.archived ? 'Restaurer la carte' : 'Archiver la carte'}
+              </button>
+            </div>
+          )}
           {!readOnly && <DeleteCard onDelete={onDelete} cancelsExecution={runActive} />}
         </aside>
       </div>

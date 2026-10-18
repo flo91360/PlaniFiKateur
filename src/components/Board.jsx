@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  Archive,
   ArrowDown,
   ArrowRight,
   ArrowUp,
+  CalendarDays,
   Layers3,
   LayoutGrid,
   Lightbulb,
@@ -21,13 +23,21 @@ import { workBadge } from '../lib/use-work-status.js';
 import { version as appVersion } from '../../package.json';
 import { useProjectAccess } from '../lib/project-access.js';
 
-export const cardMatches = (card, { query, statusFilter }) =>
+// Le tableau montre les cartes actives, ou seulement les cartes archivées (`archived`).
+export const cardMatches = (card, { query, statusFilter, archived = false }) =>
+  !!card.archived === archived &&
   (statusFilter === 'all' || card.status === statusFilter) &&
   `${card.title} ${card.description} ${card.tags.join(' ')}`
     .toLocaleLowerCase('fr')
     .includes(query.toLocaleLowerCase('fr').trim());
 
-function Toolbar({ listCount, query, statusFilter, onQuery, onStatusFilter }) {
+// Échéance au format court (« 18 oct. ») ; `late` si elle est passée pour une carte non terminée.
+const today = () => new Date().toLocaleDateString('sv');
+export const dueLabel = date =>
+  new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+const isLate = card => !!card.dueDate && card.dueDate < today() && card.status !== 'done';
+
+function Toolbar({ listCount, query, statusFilter, archived, archivedCount, onQuery, onStatusFilter, onArchived }) {
   return (
     <div className="board-toolbar">
       <div className="board-tab">
@@ -59,6 +69,17 @@ function Toolbar({ listCount, query, statusFilter, onQuery, onStatusFilter }) {
             <StatusOptions />
           </select>
         </label>
+        {(archived || archivedCount > 0) && (
+          <button
+            type="button"
+            className={`secondary-button archive-toggle ${archived ? 'active' : ''}`}
+            aria-pressed={archived}
+            onClick={() => onArchived(!archived)}
+          >
+            <Archive size={15} />
+            {archived ? 'Revenir au tableau' : `Archivées (${archivedCount})`}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -83,6 +104,7 @@ function CardPreview({
   card,
   color,
   system,
+  assignee,
   followers,
   work,
   dragging,
@@ -127,6 +149,15 @@ function CardPreview({
       <footer>
         <Priority value={card.priority} />
         <div className="card-meta">
+          {card.dueDate && (
+            <span
+              className={`card-due ${isLate(card) ? 'late' : ''}`}
+              aria-label={`Échéance : ${dueLabel(card.dueDate)}${isLate(card) ? ' (dépassée)' : ''}`}
+            >
+              <CalendarDays size={13} />
+              {dueLabel(card.dueDate)}
+            </span>
+          )}
           {card.checklist.length > 0 && (
             <span
               className={card.checklist.every(item => item.done) ? 'checklist-complete' : ''}
@@ -140,6 +171,12 @@ function CardPreview({
             <span>
               <MessageSquare size={13} />
               {card.comments.length}
+            </span>
+          )}
+          {assignee && (
+            <span className="card-assignee" title={`Responsable : ${assignee.name}`}>
+              <Avatar className="card-avatar assignee" name={assignee.name} />
+              <span className="sr-only">Responsable : {assignee.name}</span>
             </span>
           )}
           <div className="card-followers-avatars" role="group" aria-label="Membres qui suivent cette carte">
@@ -208,6 +245,7 @@ function useStickyScrollbar() {
 
 export default function Board({
   project,
+  members = [],
   followers,
   work = {},
   filters,
@@ -229,7 +267,10 @@ export default function Board({
   const draggedCard = dragging?.kind === 'card' ? dragging.id : null;
   const draggedList = dragging?.kind === 'list' ? dragging.id : null;
   const filtering = filters.query || filters.statusFilter !== 'all';
+  const archived = !!filters.archived;
+  const archivedCount = project.cards.filter(card => card.archived).length;
   const visible = project.cards.filter(card => cardMatches(card, filters));
+  const memberById = new Map(members.map(member => [member.id, member]));
   const endDrag = () => {
     onDragging(null);
     setDropList(null);
@@ -240,11 +281,18 @@ export default function Board({
         listCount={project.lists.length}
         query={filters.query}
         statusFilter={filters.statusFilter}
+        archived={archived}
+        archivedCount={archivedCount}
         onQuery={query => onFilters({ ...filters, query })}
         onStatusFilter={statusFilter => onFilters({ ...filters, statusFilter })}
+        onArchived={value => onFilters({ ...filters, archived: value })}
       />
       <div className="board-caption">
-        <span>{`${plural(project.lists.length, 'liste')} · ${plural(project.cards.length, 'carte')}`}</span>
+        <span>
+          {archived
+            ? `${archivedCount} ${archivedCount > 1 ? 'cartes archivées' : 'carte archivée'} : ouvrez-en une pour la restaurer`
+            : `${plural(project.lists.length, 'liste')} · ${plural(project.cards.length - archivedCount, 'carte')}`}
+        </span>
         <span>
           <span className="tiny-dot" />
           {filtering
@@ -352,6 +400,7 @@ export default function Board({
                     card={card}
                     color={list.color}
                     system={isSystemCard(project.id, card.id)}
+                    assignee={card.assigneeId ? memberById.get(card.assigneeId) || { name: 'Ancien membre' } : null}
                     followers={followers[card.id] || []}
                     work={work[card.id]}
                     dragging={draggedCard === card.id}

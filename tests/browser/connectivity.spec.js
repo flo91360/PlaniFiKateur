@@ -2441,4 +2441,32 @@ test.describe('board features', () => {
       page.getByRole('region', { name: 'Liste de contrôle' }).getByRole('checkbox', { name: 'Relire tout le texte' }),
     ).not.toBeChecked();
   });
+
+  test('a card gets a due date and an assignee, then is archived and restored', async ({ page, appServer }) => {
+    await login(page, appServer);
+    const card = seed[0].cards.find(item => !isSystemCard(seed[0].id, item.id));
+    const preview = () =>
+      page.getByRole('article').filter({ has: page.getByRole('heading', { name: card.title, exact: true }) });
+    await page.getByRole('heading', { name: card.title, exact: true }).click();
+    await page.getByLabel('Échéance', { exact: true }).fill('2020-01-15');
+    await page.getByLabel('Responsable', { exact: true }).selectOption({ label: 'Alice (vous)' });
+    await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+    await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+    // Échéance passée sur une carte non livrée : signalée en retard.
+    await expect(preview().locator('.card-due.late')).toHaveText('15 janv.');
+    await expect(preview().locator('.card-assignee')).toHaveAttribute('title', 'Responsable : Alice');
+    await page.getByRole('heading', { name: card.title, exact: true }).click();
+    await page.getByRole('button', { name: 'Archiver la carte', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'Détail de la carte' })).toHaveCount(0);
+    await expect(preview()).toHaveCount(0);
+    await page.getByRole('button', { name: 'Archivées (1)', exact: true }).click();
+    await expect(preview()).toHaveCount(1);
+    await page.getByRole('heading', { name: card.title, exact: true }).click();
+    await expect(page.locator('.archived-badge')).toHaveText('Archivée');
+    await page.getByRole('button', { name: 'Restaurer la carte', exact: true }).click();
+    await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+    await page.getByRole('button', { name: 'Revenir au tableau', exact: true }).click();
+    await expect(preview()).toHaveCount(1);
+    await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
+  });
 });

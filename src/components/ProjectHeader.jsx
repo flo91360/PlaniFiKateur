@@ -92,7 +92,7 @@ export default function ProjectHeader({ project, offline, onOpenSettings, onEdit
           )}
         </div>
       </div>
-      <ProjectStats cards={ideaCards(project)} />
+      <ProjectStats cards={ideaCards(project).filter(card => !card.archived)} />
     </>
   );
 }

@@ -7,6 +7,7 @@ Un tableau de projets inspiré de Trello, conçu pour préparer des demandes con
 - Projets indépendants, listes personnalisées et cartes déplaçables, à la souris ou depuis le détail de la carte (liste et position, au clavier ou au toucher).
 - Carte glissée déposée à l’endroit visé dans la liste, et non plus en fin de liste.
 - Liste de contrôle dans le détail de la carte : critères ajoutés, cochés, renommés ou retirés, progression affichée sur le tableau.
+- Échéance et responsable de chaque carte, affichés sur le tableau (échéance dépassée signalée) ; archivage d’une carte, qui quitte le tableau et la file de l’agent, et vue « Archivées » pour la restaurer.
 - Listes modifiables (nom, couleur, place, suppression d’une liste vide) et projet modifiable par ses responsables (nom, description, symbole, couleur).
 - Suppression d’un projet avec confirmation, y compris du dernier projet ; ses listes et cartes sont supprimées avec lui.
 - Création et édition avec titre, description, statut, priorité, étiquettes et commentaires.
@@ -130,7 +131,7 @@ Conserver également des copies hors du volume Railway.
 npm run export:preview
 ```
 
-`dist/PlaniFiKateur-apercu-v0.1.61.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
+`dist/PlaniFiKateur-apercu-v0.1.62.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 
