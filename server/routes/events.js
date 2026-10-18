@@ -4,12 +4,16 @@ const MAX_STREAMS = 200;
 // Plusieurs onglets restent possibles, sans qu’un seul compte occupe tous les flux.
 const MAX_STREAMS_PER_ACCOUNT = 10;
 const HEARTBEAT_MS = 25000;
+// Données en attente d’envoi au-delà desquelles un client qui ne lit plus est déconnecté : il se
+// reconnecte de lui-même et relit le tableau (événement ready), au lieu d’accumuler la mémoire.
+const MAX_PENDING_BYTES = 256 * 1024;
 
 // Flux d’événements du serveur (Server-Sent Events) pour l’interface : il annonce les changements
 // du tableau, des exécutions IA et des abonnements, qui sont ensuite relus par les routes
 // habituelles. Les événements ne contiennent que des identifiants, une révision et un état.
 export function eventRoutes({ store, config, auth, guards, streams }) {
   const heartbeatMs = config.eventHeartbeatMs || HEARTBEAT_MS;
+  const maxPending = config.eventMaxPendingBytes || MAX_PENDING_BYTES;
   return [
     {
       path: '/api/v1/events',
@@ -31,7 +35,13 @@ export function eventRoutes({ store, config, auth, guards, streams }) {
             'X-Accel-Buffering': 'no',
             Connection: 'keep-alive',
           });
-          const send = (type, data) => res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
+          let closed = false;
+          const write = text => {
+            if (closed || res.destroyed) return;
+            if (res.writableLength > maxPending) close();
+            else res.write(text);
+          };
+          const send = (type, data) => write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
           // Reconnexion automatique du navigateur après 5 s ; l’événement ready donne la révision.
           res.write('retry: 5000\n\n');
           send('ready', { revision: store.getRevision() });
@@ -52,16 +62,18 @@ export function eventRoutes({ store, config, auth, guards, streams }) {
           // que la session est toujours valide (déconnexion, compte désactivé).
           const heartbeat = setInterval(() => {
             if (!auth.currentUser(req)) close();
-            else res.write(': ping\n\n');
+            else write(': ping\n\n');
           }, heartbeatMs);
           heartbeat.unref();
           const stream = { userId: ctx.user.id, close: () => close() };
-          const close = () => {
+          function close() {
+            if (closed) return;
+            closed = true;
             clearInterval(heartbeat);
             unsubscribe();
             streams.delete(stream);
             if (!res.writableEnded) res.end();
-          };
+          }
           streams.add(stream);
           req.on('close', close);
         },

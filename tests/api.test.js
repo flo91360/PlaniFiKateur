@@ -51,8 +51,8 @@ test('consultation exposes persisted projects, lists and full card context', asy
 test('unexpected errors are logged with the method and path only and stay private in the response', async t => {
   const logs = [];
   const { store, get } = await fixture(t, { logError: (...args) => logs.push(args) });
-  const read = store.read;
-  store.read = () => {
+  const read = store.readLight;
+  store.readLight = () => {
     throw new Error('Base indisponible');
   };
   const response = await get('/projects?q=secret-de-test');
@@ -61,7 +61,7 @@ test('unexpected errors are logged with the method and path only and stay privat
   assert.equal(logs.length, 1);
   assert.equal(logs[0][0], 'PlaniFiKateur : erreur interne sur GET /api/v1/projects');
   assert.equal(logs[0][1].message, 'Base indisponible');
-  store.read = read;
+  store.readLight = read;
   assert.equal((await get('/projects/inconnu')).status, 404);
   assert.equal(logs.length, 1, 'expected client errors are not logged');
 });

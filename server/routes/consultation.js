@@ -40,8 +40,10 @@ export function consultationRoutes({ store, auth }) {
     ctx.viewer = ctx.agent ? null : auth.currentUser(ctx.req);
   };
   const read = (ctx, data, meta = {}) => ctx.send(200, { data, meta: { revision: ctx.workspace.revision, ...meta } });
+  // Les pièces jointes y figurent sans leur contenu, téléchargé par sa propre route : la
+  // consultation ne relit jamais les fichiers.
   const load = ctx => {
-    ctx.workspace = ctx.viewer ? store.readFor(ctx.viewer) : store.read();
+    ctx.workspace = ctx.viewer ? store.readFor(ctx.viewer, { attachmentData: false }) : store.readLight();
     return ctx.workspace.projects;
   };
   const allowed = (ctx, projectId) => {

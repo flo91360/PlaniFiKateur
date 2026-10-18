@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.63 — 2026-10-18
+<!-- planifikateur:etape-15a-performances -->
+
+- **Enregistrements rapides et flux d’événements robuste** : Une modification limitée à un projet ne relit et ne réécrit plus que ce projet : sur un grand tableau, l’enregistrement passe de plusieurs secondes à une fraction de seconde. La consultation n’envoie plus le contenu des pièces jointes. Un navigateur qui ne lit plus le flux d’événements est déconnecté puis se reconnecte, au lieu d’accumuler la mémoire du serveur. Les relectures de l’interface partagent un même hook (usePolledResource) et yaml n’est plus qu’une dépendance de développement.
+
 ## 0.1.62 — 2026-10-18
 <!-- planifikateur:etape-14b-cartes -->
 
