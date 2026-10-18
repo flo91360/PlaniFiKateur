@@ -595,3 +595,35 @@ test('the attention list shows agent questions and results to validate until a p
   await f.humanAction(run, 'accept');
   assert.deepEqual((await list()).data, []);
 });
+
+test('a card to test goes back to the agent with a correction comment and leaves the « À tester » list', async t => {
+  const f = await fixture(t, { legacyManual: true });
+  const board = () => f.store.read().projects.find(p => p.id === f.project.id);
+  const card = () => board().cards.find(c => c.id === f.card.id);
+  const correct = message =>
+    f.request(f.path, { method: 'POST', human: true, data: message === undefined ? {} : { correction: message } });
+  // Pas encore livrée : refus.
+  assert.equal((await correct('Trop tôt')).status, 409);
+  let run = await f.claim(await f.prepare());
+  run = await f.agentAction(run, 'submit', { summary: 'Menu livré.', checks: 'Relu.', links: [] });
+  await f.humanAction(run, 'accept');
+  const doneList = board().lists.find(list => list.id === `${f.project.id}-done`);
+  assert.equal(card().status, 'done');
+  assert.equal(card().listId, doneList.id);
+  assert.equal((await correct('   ')).status, 400);
+  const response = await correct('Le menu ne s’ouvre pas.');
+  assert.equal(response.status, 201);
+  const next = (await response.json()).data;
+  assert.equal(next.state, 'ready');
+  assert.equal(next.correction, 'Le menu ne s’ouvre pas.');
+  assert.match(next.objective, /le test de la nouvelle version a échoué.*Le menu ne s’ouvre pas\./s);
+  assert.equal(card().status, 'ready');
+  assert.notEqual(card().listId, doneList.id);
+  assert.ok(!['Discussion', 'Infos'].includes(board().lists.find(list => list.id === card().listId).name));
+  const comment = card().comments.at(-1);
+  assert.equal(comment.text, 'Le menu ne s’ouvre pas.');
+  assert.equal(comment.authorKind, 'user');
+  // La carte n’est plus à tester : une seconde correction est refusée tant qu’elle est en cours.
+  assert.equal((await correct('Encore')).status, 409);
+  assert.equal(f.store.workflows.queue(f.project.id, f.credentials.agent).length, 1);
+});

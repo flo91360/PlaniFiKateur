@@ -1741,7 +1741,7 @@
         }
       },
       "post": {
-        "summary": "Préparer l’exécution à partir de la description et des critères enregistrés dans la carte",
+        "summary": "Préparer l’exécution à partir de la description enregistrée dans la carte, ou renvoyer à l’agent une carte « À tester » avec `correction`",
         "security": [
           {
             "ownerSession": []
@@ -1800,7 +1800,7 @@
           }
         },
         "requestBody": {
-          "required": true,
+          "required": false,
           "content": {
             "application/json": {
               "schema": {
@@ -1809,13 +1809,14 @@
                   "delivery": {
                     "type": "string",
                     "enum": [
-                      "manual",
                       "github"
-                    ],
-                    "default": "manual"
+                    ]
+                  },
+                  "correction": {
+                    "type": "string",
+                    "description": "Ce qui ne va pas dans la version livrée : la carte, au statut « À tester », est renvoyée à l’agent, reçoit ce texte en commentaire et quitte la liste « À tester »."
                   }
-                },
-                "required": []
+                }
               }
             }
           }
@@ -7870,6 +7871,10 @@
                 }
               }
             ]
+          },
+          "correction": {
+            "type": "string",
+            "description": "Présent quand la carte « À tester » a été renvoyée à l’agent : ce qui ne va pas dans la version livrée."
           }
         }
       },
