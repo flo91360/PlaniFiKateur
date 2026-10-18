@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowDown,
   ArrowRight,
@@ -144,6 +144,43 @@ function CardPreview({ card, color, followers, work, dragging, readOnly, onDragS
 
 // Tableau d’un projet : recherche, filtre de statut, cartes et listes à glisser-déposer.
 // `dragging` vaut { kind: 'card' | 'list', id } pendant un glisser-déposer.
+// Barre de défilement horizontale collée au bas de l’écran : la barre native du tableau n’apparaît
+// qu’après ses cartes, souvent hors de vue. Cette copie reste visible tant que le tableau l’est
+// et défile en même temps que lui.
+function useStickyScrollbar() {
+  const boardRef = useRef(null);
+  const barRef = useRef(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const board = boardRef.current;
+    const bar = barRef.current;
+    if (!board || !bar) return undefined;
+    const measure = () => setWidth(board.scrollWidth > board.clientWidth + 1 ? board.scrollWidth : 0);
+    const follow = (from, to) => () => {
+      if (Math.abs(to.scrollLeft - from.scrollLeft) > 1) to.scrollLeft = from.scrollLeft;
+    };
+    const onBoard = follow(board, bar);
+    const onBar = follow(bar, board);
+    board.addEventListener('scroll', onBoard, { passive: true });
+    bar.addEventListener('scroll', onBar, { passive: true });
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(board);
+    for (const child of board.children) observer?.observe(child);
+    window.addEventListener('resize', measure);
+    measure();
+    return () => {
+      board.removeEventListener('scroll', onBoard);
+      bar.removeEventListener('scroll', onBar);
+      observer?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  });
+  useEffect(() => {
+    if (width && barRef.current && boardRef.current) barRef.current.scrollLeft = boardRef.current.scrollLeft;
+  }, [width]);
+  return { boardRef, barRef, width };
+}
+
 export default function Board({
   project,
   followers,
@@ -160,6 +197,7 @@ export default function Board({
   onEditList = () => {},
 }) {
   const { readOnly } = useProjectAccess();
+  const scrollbar = useStickyScrollbar();
   // Liste survolée : { id, side } où side vaut 'before' ou 'after' quand on déplace une liste.
   const [dropList, setDropList] = useState(null);
   const draggedCard = dragging?.kind === 'card' ? dragging.id : null;
@@ -190,7 +228,7 @@ export default function Board({
               : 'Glissez les cartes et les listes, ou déplacez-les depuis leur détail'}
         </span>
       </div>
-      <div className="board" aria-label="Tableau du projet">
+      <div className="board" aria-label="Tableau du projet" ref={scrollbar.boardRef}>
         {project.lists.map(list => {
           const cards = visible.filter(c => c.listId === list.id);
           return (
@@ -302,6 +340,9 @@ export default function Board({
             Ajouter une liste
           </button>
         )}
+      </div>
+      <div className="board-scrollbar" ref={scrollbar.barRef} hidden={!scrollbar.width} aria-hidden="true">
+        <div style={{ width: scrollbar.width }} />
       </div>
       <footer className="board-footer">
         <span>
