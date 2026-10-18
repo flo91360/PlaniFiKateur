@@ -1,45 +1,26 @@
-import { access, appendFile, mkdir, readFile, rm } from 'node:fs/promises';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { mkdir, rm } from 'node:fs/promises';
+import { join } from 'node:path';
 import { validId, validRepository } from './config.mjs';
-import { ApiError, PublicationPendingError, createSiteClient, createGithubClient } from './clients.mjs';
+import { PublicationPendingError, createSiteClient, createGithubClient } from './clients.mjs';
 import { createState } from './state.mjs';
 import { runCommand } from './commands.mjs';
 import { createCodexRunner } from './codex.mjs';
 import { checkGeneratedFile, collectOutputs } from './outputs.mjs';
 import { createClaudeRunner } from './claude.mjs';
 import { validateAi, efforts, effortLabels } from './ai-settings.mjs';
-import { defaultExecutionProfile, installedProfile, resolveWorkerCommand } from './execution-profile.mjs';
-import { runtimeEnvironment, checkRuntime, projectDiagnostic } from './runtime.mjs';
+import { defaultExecutionProfile, installedProfile } from './execution-profile.mjs';
+import { projectDiagnostic } from './runtime.mjs';
 import { prepareDelivery } from './delivery.mjs';
-import { isolatedCommand } from './isolation.mjs';
 import { reviewedChanges } from './review.mjs';
 import { WorkerTimeoutError, createReservation } from './reservation.mjs';
-
+import { createCheckouts } from './checkout.mjs';
+import { createFollowUp } from './follow-up.mjs';
+import { LEGACY_PUBLICATION_QUESTION } from './legacy-publication.mjs';
 import { checkoutFingerprint, requestFingerprint } from './checkpoint.mjs';
-import {
-  checkoutProblem,
-  gitGuard,
-  concludeMerge,
-  conflictInstructions,
-  mergeInProgress,
-  resolveWorkerOwned,
-} from './checkout-state.mjs';
+import { gitGuard, concludeMerge } from './checkout-state.mjs';
 
-const workerDirectory = dirname(fileURLToPath(import.meta.url));
-// Seules ces commandes Git contactent GitHub et reçoivent le jeton.
-const REMOTE_GIT = new Set(['clone', 'fetch', 'ls-remote', 'push']);
 const MAX_ROUNDS = 3;
 const engineName = engine => (engine === 'codex' ? 'Codex' : 'Claude Code');
-
-// Un ancien worker posait cette question technique au lieu de republier sa PR ; le site la
-// reconnaît aussi. Une vraie demande de précision exige toujours une réponse humaine.
-const LEGACY_PUBLICATION_QUESTION = 'La PR ne pointe pas sur le commit testé.';
-const legacyPublicationQuestion = run =>
-  run.state === 'waiting' &&
-  !!run.submissions.at(-1)?.pullRequest &&
-  run.exchanges.at(-1)?.question === LEGACY_PUBLICATION_QUESTION &&
-  !run.exchanges.at(-1)?.answer;
 
 export function createWorker(config, dependencies = {}) {
   const site = dependencies.site || createSiteClient(config);
@@ -139,155 +120,7 @@ export function createWorker(config, dependencies = {}) {
     return job;
   }
 
-  // Répertoire de la tâche et environnements de ses commandes : celles du projet, Git local et Git
-  // distant (seul à recevoir le jeton GitHub).
-  function workspace({ job, reservation }) {
-    const profile = job.executionProfile;
-    const cwd = join(config.stateRoot, 'jobs', job.id);
-    const home = join(cwd, '.planifikateur', 'home');
-    const npmCache = join(config.stateRoot, 'npm-cache');
-    const env = {
-      ...runtimeEnvironment(profile, config),
-      HOME: home,
-      npm_config_cache: npmCache,
-      PLANIFIKATEUR_WORKER: '1',
-      CI: '1',
-    };
-    // Git ne lance ni hook ni surveillance du système de fichiers, même si l’agent en déclarait ;
-    // le jeton GitHub n’accompagne que les commandes qui contactent GitHub.
-    const gitEnv = {
-      ...env,
-      GIT_TERMINAL_PROMPT: '0',
-      GIT_CONFIG_NOSYSTEM: '1',
-      GIT_CONFIG_GLOBAL: '/dev/null',
-      GIT_CONFIG_COUNT: '2',
-      GIT_CONFIG_KEY_0: 'core.hooksPath',
-      GIT_CONFIG_VALUE_0: '/dev/null',
-      GIT_CONFIG_KEY_1: 'core.fsmonitor',
-      GIT_CONFIG_VALUE_1: 'false',
-    };
-    const gitRemoteEnv = {
-      ...gitEnv,
-      GIT_ASKPASS: fileURLToPath(new URL('./git-askpass.mjs', import.meta.url)),
-      PLANIFIKATEUR_GIT_TOKEN: config.githubToken,
-    };
-    const gitEnvFor = args => (REMOTE_GIT.has(args[1]) ? gitRemoteEnv : gitEnv);
-    const command = async (args, extra = {}) => {
-      const result = await execute(args, {
-        cwd,
-        env: args[0] === 'git' ? gitEnvFor(args) : env,
-        signal: reservation.signal,
-        ...extra,
-      });
-      if (result.code !== 0) throw new Error(`Échec de ${args.slice(0, 3).join(' ')} : ${clean(result.output)}`);
-      return result.output.trim();
-    };
-    const url = `https://github.com/${job.repository}.git`;
-    return { cwd, home, npmCache, env, gitEnv, gitRemoteEnv, gitEnvFor, command, url };
-  }
-
-  // Checkout de la branche de la tâche à jour de la branche cible, dépendances installées.
-  async function prepareCheckout(task) {
-    const { job, reservation } = task;
-    const { signal } = reservation;
-    const profile = job.executionProfile,
-      targetBranch = profile.branch;
-    const { cwd, home, npmCache, env, gitEnv, gitRemoteEnv, gitEnvFor, command, url } = workspace(task);
-    // Commande du projet (installation, tests) : code de la branche, exécuté isolé du worker.
-    const project = args =>
-      isolatedCommand(resolveWorkerCommand(args, workerDirectory), { config, cwd, writable: [npmCache] });
-    const git = args => execute(['git', ...args], { cwd, env: gitEnvFor(['git', ...args]), signal });
-    await mkdir(config.stateRoot, { recursive: true });
-    await checkRuntime(profile, config, execute, signal);
-    await mkdir(join(config.stateRoot, 'jobs'), { recursive: true, mode: 0o700 });
-    let cloned = true;
-    try {
-      await access(join(cwd, '.git'));
-    } catch {
-      cloned = false;
-    }
-    if (cloned) {
-      // Un checkout que le worker ne sait pas remettre en état est recréé depuis GitHub :
-      // la branche publiée est reprise, seul le travail jamais poussé est perdu.
-      // Configuration Git, attributs ou hooks changés depuis la dernière préparation : posés par
-      // l’agent pendant un tour interrompu, ils ne doivent jamais servir aux commandes du worker.
-      const problem =
-        job.gitGuard && job.gitGuard !== (await gitGuard(cwd))
-          ? 'configuration Git locale modifiée hors du worker'
-          : await checkoutProblem(cwd, git, job.branch);
-      if (problem) {
-        log(`Exécution ${job.id} : checkout local recréé (${problem}).`);
-        await reservation.action('progress', { message: `Checkout local recréé depuis GitHub : ${problem}.` });
-        await rm(cwd, { recursive: true, force: true });
-        cloned = false;
-      }
-    }
-    if (!cloned) {
-      // Recover the same branch after losing the checkout; never force-push.
-      await command(['git', 'clone', '--no-tags', '--single-branch', '--branch', targetBranch, url, cwd], {
-        cwd: config.stateRoot,
-      });
-    }
-    await mkdir(home, { recursive: true });
-    await mkdir(npmCache, { recursive: true });
-    const exclude = join(cwd, '.git', 'info', 'exclude');
-    if (!(await readFile(exclude, 'utf8').catch(() => '')).split('\n').includes('.planifikateur/'))
-      await appendFile(exclude, '\n.planifikateur/\n');
-    await command(['git', 'config', 'user.name', 'PlaniFiKateur IA']);
-    await command(['git', 'config', 'user.email', 'agent@planifikateur.invalid']);
-    if ((await command(['git', 'config', '--get', 'remote.origin.url'])) !== url)
-      throw new Error('L’origine du dépôt a changé.');
-    await command(['git', 'fetch', 'origin', targetBranch]);
-    if (!cloned) {
-      const remote = await command(['git', 'ls-remote', '--heads', 'origin', `refs/heads/${job.branch}`]);
-      if (remote) {
-        await command(['git', 'fetch', 'origin', `${job.branch}:refs/remotes/origin/${job.branch}`]);
-        await command(['git', 'checkout', '-b', job.branch, `origin/${job.branch}`]);
-      } else await command(['git', 'checkout', '-b', job.branch, `origin/${targetBranch}`]);
-    }
-    // L’agent ne lance aucune commande Git : le worker termine la fusion d’un tour précédent
-    // dont l’agent a résolu les conflits, puis intègre la branche cible actuelle.
-    let conflicts = [];
-    if (await mergeInProgress(cwd)) {
-      conflicts = await concludeMerge(cwd, git);
-      if (!conflicts.length) log(`Exécution ${job.id} : fusion précédente avec ${targetBranch} validée par le worker.`);
-    }
-    if (!conflicts.length) {
-      // Le travail non validé d’un tour précédent est conservé dans un commit avant la fusion.
-      if (await command(['git', 'status', '--porcelain'])) {
-        await command(['git', 'add', '--all']);
-        await command(['git', 'commit', '--no-verify', '-m', `Travail en cours (${job.id})`]);
-      }
-      const merged = await git(['merge', '--no-edit', `origin/${targetBranch}`]);
-      if (merged.code !== 0) {
-        if (!(await mergeInProgress(cwd)))
-          throw new Error(`Échec de git merge origin/${targetBranch} : ${clean(merged.output)}`);
-        conflicts = await resolveWorkerOwned(git);
-        if (!conflicts.length) await command(['git', 'commit', '--no-edit', '--no-verify']);
-      }
-    }
-    await reservation.action('progress', { message: `Préparation des dépendances du profil ${profile.preset}.` });
-    const legacy = reservation.run.legacyExecutionProfile;
-    for (const install of legacy ? config.installCommands : profile.installCommands) await command(project(install));
-    await reservation.action('progress', {
-      message: 'Le dépôt est prêt. L’agent réalise la demande avant les vérifications locales.',
-    });
-    job.gitGuard = await gitGuard(cwd);
-    await state.put(job);
-    return {
-      cwd,
-      env,
-      gitEnv,
-      gitRemoteEnv,
-      project,
-      command,
-      url,
-      targetBranch,
-      testCommands: legacy ? config.testCommands : profile.testCommands,
-      git,
-      conflicts: conflicts.length ? conflictInstructions(targetBranch, conflicts) : '',
-    };
-  }
+  const { workspace, prepareCheckout } = createCheckouts({ config, execute, state, log, clean, github });
 
   // Fichiers générés contrôlés, puis version et changelog préparés si le dépôt a changé.
   // Lève une erreur décrivant ce que le modèle doit corriger.
@@ -775,158 +608,18 @@ export function createWorker(config, dependencies = {}) {
     }
   }
 
-  // Message de suivi journalisé une seule fois tant que la situation ne change pas.
-  async function note(job, reason, message) {
-    if (job.mergeReason === reason) return;
-    job.mergeReason = reason;
-    await state.put(job);
-    log(message);
-  }
-
-  // Suivi d’une tâche connue : état sur le site, PR et fusion. Renvoie la tâche à reprendre, ou null.
-  async function reconcileJob(job, signal) {
-    if (['done', 'cancelled'].includes(job.phase)) {
-      await releaseCheckout(job);
-      return null;
-    }
-    if (auto && !projects.has(job.projectId)) {
-      if (job.phase !== 'unauthorized') {
-        job.phase = 'unauthorized';
-        await state.put(job);
-        log(`Exécution ${job.id} suspendue localement : projet non autorisé ou supprimé.`);
-      }
-      return null;
-    }
-    let history;
-    try {
-      history = await site.history(job, signal);
-    } catch (error) {
-      // Site injoignable ou clé refusée : toutes les tâches sont concernées, le tour s’arrête.
-      if (!(error instanceof ApiError) || error.status !== 404 || error.code !== 'card_not_found')
-        throw Object.assign(error, { siteError: true });
-      job.phase = 'cancelled';
-      await state.put(job);
-      log(`Exécution ${job.id} archivée localement : carte absente de son projet.`);
-      return null;
-    }
-    const run = history.find(r => r.id === job.id);
-    if (!run) {
-      job.phase = 'cancelled';
-      await state.put(job);
-      log(`Exécution ${job.id} archivée localement : exécution absente de la carte.`);
-      return null;
-    }
-    if (allowed(run) && legacyPublicationQuestion(run)) {
-      const pr = await github.pull(run.repository, run.submissions.at(-1).pullRequest.number, signal);
-      if (
-        pr.state === 'open' &&
-        pr.head.ref === job.branch &&
-        pr.head.repo?.full_name?.toLowerCase() === run.repository.toLowerCase() &&
-        pr.base?.ref === (run.executionProfile?.branch || 'main')
-      ) {
-        log(`Exécution ${run.id} : reprise automatique de la publication interrompue.`);
-        return { ...run, publicationRecovery: true };
-      }
-    }
-    if (['done', 'cancelled', 'waiting', 'review'].includes(run.state)) {
-      if (job.phase !== run.state) {
-        job.phase = run.state;
-        await state.put(job);
-        log(`Exécution ${job.id} : ${run.state}.`);
-      }
-      await releaseCheckout(job);
-      return null;
-    }
-    // Interrompue ou remise en file sur le site (bail expiré, worker arrêté avant de le signaler) :
-    // la tâche n’est plus « running » localement, sinon la mise à jour du worker se croirait occupée.
-    if (['interrupted', 'ready'].includes(run.state) && job.phase === 'running') {
-      job.phase = run.state;
-      await state.put(job);
-      log(`Exécution ${job.id} : ${run.state} sur le site.`);
-    }
-    if (run.state !== 'merging' || !allowed(run)) return null;
-    const submission = run.submissions.at(-1)?.pullRequest;
-    const profile = profileOf(job.executionProfile || run.executionProfile || defaultExecutionProfile());
-    if (!submission) return null;
-    const pr = await github.pull(run.repository, submission.number, signal);
-    if (pr.state !== 'open') {
-      if (!pr.merged)
-        return {
-          ...run,
-          workerQuestion: 'La PR a été fermée sans fusion. Souhaitez-vous reprendre cette tâche ou l’annuler ?',
-        };
-      // A merged PR is only completed by the signed GitHub webhook or the site's own GitHub check.
-      await note(job, 'merged', `Exécution ${run.id} : PR fusionnée, confirmation du site attendue.`);
-      return null;
-    }
-    if (pr.head.sha !== submission.headSha || pr.head.repo?.full_name?.toLowerCase() !== run.repository.toLowerCase()) {
-      await note(
-        job,
-        'head_changed',
-        `Exécution ${run.id} : le commit de la PR a changé hors du worker ; elle ne sera pas fusionnée automatiquement.`,
-      );
-      return null;
-    }
-    if (await github.behindMain(run.repository, pr.head.sha, signal, profile.branch)) return run;
-    if (!pr.labels.some(l => l.name === 'planifikateur-agent')) await github.label(run.repository, pr.number, signal);
-    let merged;
-    try {
-      merged = await github.mergeWhenReady(
-        run.repository,
-        pr,
-        data => site.mergeEligible(data, signal),
-        signal,
-        profile,
-      );
-    } catch (error) {
-      const message = clean(error.message);
-      if (job.mergeReason !== message) {
-        job.mergeReason = message;
-        await state.put(job);
-        log(`Exécution ${run.id} : fusion automatique bloquée : ${message}. Le worker réessaiera sans relancer Codex.`);
-      }
-      return null;
-    }
-    if (merged.merged) {
-      log(
-        `Exécution ${run.id} : PR #${pr.number} fusionnée après réussite des tests GitHub, notification du site attendue.`,
-      );
-    } else if (job.mergeReason !== merged.reason) {
-      job.mergeReason = merged.reason;
-      await state.put(job);
-      log(`Exécution ${run.id} : fusion en attente (${merged.reason}).`);
-    }
-    return null;
-  }
-
-  // Une erreur sur une tâche (dépôt renommé, PR inaccessible…) ne bloque pas les autres : la tâche
-  // est réessayée plus tard, avec un délai croissant, et l’erreur n’est journalisée qu’une fois.
-  async function reconcile(signal) {
-    for (const job of await state.all()) {
-      if (job.followUp?.retryAfter > Date.now()) continue;
-      try {
-        const candidate = await reconcileJob(job, signal);
-        if (job.followUp) {
-          delete job.followUp;
-          await state.put(job);
-          log(`Exécution ${job.id} : suivi rétabli.`);
-        }
-        if (candidate) return candidate;
-      } catch (error) {
-        if (signal?.aborted || error.siteError) throw error;
-        const message = clean(error.message);
-        const failures = (job.followUp?.failures || 0) + 1;
-        const minutes = Math.min(30, 2 ** (failures - 1));
-        if (job.followUp?.error !== message)
-          log(
-            `Exécution ${job.id} : suivi impossible (${message}). Nouvelle tentative dans ${minutes} min ; les autres tâches continuent.`,
-          );
-        job.followUp = { error: message, failures, retryAfter: Date.now() + minutes * 60000 };
-        await state.put(job);
-      }
-    }
-    return null;
-  }
+  const { reconcile } = createFollowUp({
+    site,
+    github,
+    state,
+    log,
+    clean,
+    allowed,
+    auto,
+    knownProjects: () => projects,
+    profileOf,
+    releaseCheckout,
+  });
 
   return {
     processTask,

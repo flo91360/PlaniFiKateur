@@ -1,0 +1,136 @@
+import { isDeepStrictEqual } from 'node:util';
+import { validateDriveRelease } from '../../src/lib/drive-release.js';
+
+// Versions publiées des dépôts : tags et releases GitHub, archives et téléchargements Google Drive.
+// Chaque enregistrement met à jour les cartes Infos des projets liés au dépôt.
+export function createReleaseStore({ db, transaction, workflows, synchronizeInfos }) {
+  return {
+    recordDriveRelease(repository, data) {
+      return transaction(() => {
+        repository = repository.toLowerCase();
+        if (!this.read().projects.some(project => workflows.githubProject(project.id)?.toLowerCase() === repository))
+          return { updated: false };
+        let release;
+        try {
+          release = validateDriveRelease(data, repository, data.version);
+        } catch {
+          return { updated: false };
+        }
+        const row = db
+          .prepare('SELECT data FROM github_downloads WHERE repository=? AND tag=?')
+          .get(repository, release.version);
+        if (row && (JSON.parse(row.data).commit !== release.commit || isDeepStrictEqual(JSON.parse(row.data), release)))
+          return { updated: false };
+        db.prepare(
+          'INSERT INTO github_downloads VALUES(?,?,?) ON CONFLICT(repository,tag) DO UPDATE SET data=excluded.data',
+        ).run(repository, release.version, JSON.stringify(release));
+        synchronizeInfos();
+        return { updated: true };
+      });
+    },
+    driveArchive(repository, tag) {
+      const row = db
+        .prepare('SELECT data FROM drive_archives WHERE repository=? AND tag=?')
+        .get(repository.toLowerCase(), tag);
+      return row ? JSON.parse(row.data) : null;
+    },
+    recordDriveArchive(repository, tag, data) {
+      db.prepare(
+        'INSERT INTO drive_archives VALUES(?,?,?) ON CONFLICT(repository,tag) DO UPDATE SET data=excluded.data',
+      ).run(repository.toLowerCase(), tag, JSON.stringify(data));
+    },
+    recordDriveRepository(repository, data) {
+      db.prepare(
+        'INSERT INTO drive_repositories VALUES(?,?) ON CONFLICT(repository) DO UPDATE SET data=excluded.data',
+      ).run(repository.toLowerCase(), JSON.stringify(data));
+    },
+    driveStatus(repository) {
+      repository = repository.toLowerCase();
+      const checked = db.prepare('SELECT data FROM drive_repositories WHERE repository=?').get(repository);
+      const { error = '', checkedAt = '' } = checked ? JSON.parse(checked.data) : {};
+      const releases = db
+        .prepare('SELECT tag,data FROM drive_archives WHERE repository=?')
+        .all(repository)
+        .map(row => {
+          const { state, message, folderId, files, date } = JSON.parse(row.data);
+          return {
+            tag: row.tag,
+            state,
+            message,
+            date,
+            files: files || [],
+            ...(folderId ? { folderUrl: `https://drive.google.com/drive/folders/${folderId}` } : {}),
+          };
+        })
+        .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
+        .slice(0, 10);
+      return { checkedAt, repositoryError: error, releases };
+    },
+    recordGithubChangelog(repository, releases) {
+      return transaction(() => {
+        repository = repository.toLowerCase();
+        if (!this.read().projects.some(project => workflows.githubProject(project.id)?.toLowerCase() === repository))
+          return;
+        for (const release of releases) {
+          if (
+            !release ||
+            release.draft ||
+            typeof release.tag_name !== 'string' ||
+            !release.tag_name.trim() ||
+            release.tag_name.length > 140 ||
+            !release.published_at ||
+            !Number.isFinite(Date.parse(release.published_at))
+          )
+            continue;
+          const entry = {
+            tag: release.tag_name,
+            date: new Date(release.published_at).toISOString(),
+            body:
+              typeof release.body === 'string'
+                ? release.body
+                    .replace(/<!-- planifikateur-drive\n[\s\S]*?\n-->/g, '')
+                    .trim()
+                    .slice(0, 20000)
+                : '',
+          };
+          db.prepare(
+            'INSERT INTO github_changelog VALUES(?,?,?) ON CONFLICT(repository,tag) DO UPDATE SET data=excluded.data',
+          ).run(repository, entry.tag, JSON.stringify(entry));
+        }
+        synchronizeInfos();
+      });
+    },
+    githubVersion(repository) {
+      const row = db.prepare('SELECT data FROM github_versions WHERE repository=?').get(repository.toLowerCase());
+      return row ? JSON.parse(row.data) : null;
+    },
+    refreshInfos() {
+      return transaction(synchronizeInfos);
+    },
+    recordGithubVersion(repository, version) {
+      return transaction(() => {
+        repository = repository.toLowerCase();
+        if (!this.read().projects.some(project => workflows.githubProject(project.id)?.toLowerCase() === repository))
+          return { updated: false };
+        if (
+          typeof version.tag !== 'string' ||
+          !version.tag.trim() ||
+          version.tag.length > 140 ||
+          /[\u0000-\u001f]/.test(version.tag) ||
+          (version.date && !Number.isFinite(Date.parse(version.date)))
+        )
+          return { updated: false };
+        const previous = this.githubVersion(repository);
+        // Do not replace a newer signed push with a stale API response.
+        if (previous?.date && (!version.date || Date.parse(previous.date) > Date.parse(version.date)))
+          return { updated: false };
+        if (isDeepStrictEqual(previous, version)) return { updated: false };
+        db.prepare(
+          'INSERT INTO github_versions VALUES(?,?) ON CONFLICT(repository) DO UPDATE SET data=excluded.data',
+        ).run(repository, JSON.stringify(version));
+        synchronizeInfos();
+        return { updated: true };
+      });
+    },
+  };
+}

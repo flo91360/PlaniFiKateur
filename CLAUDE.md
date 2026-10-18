@@ -20,18 +20,22 @@ comptes, sauvegardes, Google Drive, multi-projets).
 - `server/` : API Node sans framework, montée dans Vite en dev (`vite.config.js`)
   et par `server/index.js` en production. `api.js` assemble la table de routes
   (`router.js`) décrite par domaine dans `server/routes/` ; `auth.js` gère
-  sessions, clés et limites. Stockage SQLite via `node:sqlite` (`store.js`),
+  sessions, clés et limites. Stockage SQLite via `node:sqlite` (`store.js`,
+  avec comptes, historique et versions publiées dans `server/store/`),
   parcours agent dans `workflows.js`, assemblé depuis `server/workflows/`
   (socle, réglages, agents, exécutions, actions du worker, GitHub).
 - `worker/` : worker IA séparé (Codex ou Claude Agent SDK), avec **son propre
   `package.json`**. Profils d’exécution par dépôt dans le registre déclaratif
-  `execution-profile.mjs` (dépôts, version, consignes, environnement).
+  `execution-profile.mjs` (dépôts, version, consignes, environnement) ;
+  `worker.mjs` enchaîne les étapes d’une tâche, `checkout.mjs` prépare le dépôt
+  et `follow-up.mjs` suit les PR jusqu’à la fusion.
 - `scripts/` : client agent de référence, sauvegarde/restauration, export HTML,
   Google Drive.
 - `public/openapi.json` : spécification de l’API, servie à `/openapi.json`.
 - `tests/*.test.js` : tests `node:test` (serveur et worker) ;
-  `tests/browser/` : Playwright, projet ordinateur ; le projet mobile ne rejoue
-  que les tests marqués `@mobile`.
+  `tests/browser/` : Playwright, un fichier par domaine, serveur de test et
+  aides communs dans `support.js` ; le projet mobile ne rejoue que les tests
+  marqués `@mobile`.
 
 ## Commandes
 
