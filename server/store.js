@@ -2,16 +2,16 @@ import { DatabaseSync } from 'node:sqlite';
 import { isDeepStrictEqual } from 'node:util';
 import { mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { randomUUID, randomBytes } from 'node:crypto';
 import { withInfos } from '../src/lib/infos.js';
 import { withProjectLists } from '../src/lib/discussion-list.js';
 import { seed } from '../src/data/demo.js';
 import { validateWorkspace } from '../src/lib/workspace.js';
-import { publicUser, tokenHash } from './accounts.js';
-import { DEFAULT_ACCENT, isAccent } from '../src/lib/accents.js';
+import { publicUser } from './accounts.js';
 import { attributeChanges } from './activity.js';
 import { createWorkflows } from './workflows.js';
-import { validateDriveRelease } from '../src/lib/drive-release.js';
+import { createAccountStore } from './store/accounts.js';
+import { createHistoryStore } from './store/history.js';
+import { createReleaseStore } from './store/releases.js';
 import { fail } from './http.js';
 import { notificationRecipients } from './recipients.js';
 import { migrateWorkspace, readWorkspace, writeWorkspace } from './workspace-tables.js';
@@ -640,6 +640,9 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
           .filter(id => !survivingCards.has(id));
     for (const id of removedCards) db.prepare('DELETE FROM card_subscriptions WHERE card_id = ?').run(id);
   };
+  const releases = createReleaseStore({ db, transaction, workflows, synchronizeInfos });
+  const accounts = createAccountStore({ db, transaction, audit, access, userById });
+  const history = createHistoryStore({ db, emit });
   return {
     workflows,
     // Abonnement aux événements validés ; renvoie la fonction de désabonnement.
@@ -647,133 +650,7 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    recordDriveRelease(repository, data) {
-      return transaction(() => {
-        repository = repository.toLowerCase();
-        if (!this.read().projects.some(project => workflows.githubProject(project.id)?.toLowerCase() === repository))
-          return { updated: false };
-        let release;
-        try {
-          release = validateDriveRelease(data, repository, data.version);
-        } catch {
-          return { updated: false };
-        }
-        const row = db
-          .prepare('SELECT data FROM github_downloads WHERE repository=? AND tag=?')
-          .get(repository, release.version);
-        if (row && (JSON.parse(row.data).commit !== release.commit || isDeepStrictEqual(JSON.parse(row.data), release)))
-          return { updated: false };
-        db.prepare(
-          'INSERT INTO github_downloads VALUES(?,?,?) ON CONFLICT(repository,tag) DO UPDATE SET data=excluded.data',
-        ).run(repository, release.version, JSON.stringify(release));
-        synchronizeInfos();
-        return { updated: true };
-      });
-    },
-    driveArchive(repository, tag) {
-      const row = db
-        .prepare('SELECT data FROM drive_archives WHERE repository=? AND tag=?')
-        .get(repository.toLowerCase(), tag);
-      return row ? JSON.parse(row.data) : null;
-    },
-    recordDriveArchive(repository, tag, data) {
-      db.prepare(
-        'INSERT INTO drive_archives VALUES(?,?,?) ON CONFLICT(repository,tag) DO UPDATE SET data=excluded.data',
-      ).run(repository.toLowerCase(), tag, JSON.stringify(data));
-    },
-    recordDriveRepository(repository, data) {
-      db.prepare(
-        'INSERT INTO drive_repositories VALUES(?,?) ON CONFLICT(repository) DO UPDATE SET data=excluded.data',
-      ).run(repository.toLowerCase(), JSON.stringify(data));
-    },
-    driveStatus(repository) {
-      repository = repository.toLowerCase();
-      const checked = db.prepare('SELECT data FROM drive_repositories WHERE repository=?').get(repository);
-      const { error = '', checkedAt = '' } = checked ? JSON.parse(checked.data) : {};
-      const releases = db
-        .prepare('SELECT tag,data FROM drive_archives WHERE repository=?')
-        .all(repository)
-        .map(row => {
-          const { state, message, folderId, files, date } = JSON.parse(row.data);
-          return {
-            tag: row.tag,
-            state,
-            message,
-            date,
-            files: files || [],
-            ...(folderId ? { folderUrl: `https://drive.google.com/drive/folders/${folderId}` } : {}),
-          };
-        })
-        .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
-        .slice(0, 10);
-      return { checkedAt, repositoryError: error, releases };
-    },
-    recordGithubChangelog(repository, releases) {
-      return transaction(() => {
-        repository = repository.toLowerCase();
-        if (!this.read().projects.some(project => workflows.githubProject(project.id)?.toLowerCase() === repository))
-          return;
-        for (const release of releases) {
-          if (
-            !release ||
-            release.draft ||
-            typeof release.tag_name !== 'string' ||
-            !release.tag_name.trim() ||
-            release.tag_name.length > 140 ||
-            !release.published_at ||
-            !Number.isFinite(Date.parse(release.published_at))
-          )
-            continue;
-          const entry = {
-            tag: release.tag_name,
-            date: new Date(release.published_at).toISOString(),
-            body:
-              typeof release.body === 'string'
-                ? release.body
-                    .replace(/<!-- planifikateur-drive\n[\s\S]*?\n-->/g, '')
-                    .trim()
-                    .slice(0, 20000)
-                : '',
-          };
-          db.prepare(
-            'INSERT INTO github_changelog VALUES(?,?,?) ON CONFLICT(repository,tag) DO UPDATE SET data=excluded.data',
-          ).run(repository, entry.tag, JSON.stringify(entry));
-        }
-        synchronizeInfos();
-      });
-    },
-    githubVersion(repository) {
-      const row = db.prepare('SELECT data FROM github_versions WHERE repository=?').get(repository.toLowerCase());
-      return row ? JSON.parse(row.data) : null;
-    },
-    refreshInfos() {
-      return transaction(synchronizeInfos);
-    },
-    recordGithubVersion(repository, version) {
-      return transaction(() => {
-        repository = repository.toLowerCase();
-        if (!this.read().projects.some(project => workflows.githubProject(project.id)?.toLowerCase() === repository))
-          return { updated: false };
-        if (
-          typeof version.tag !== 'string' ||
-          !version.tag.trim() ||
-          version.tag.length > 140 ||
-          /[\u0000-\u001f]/.test(version.tag) ||
-          (version.date && !Number.isFinite(Date.parse(version.date)))
-        )
-          return { updated: false };
-        const previous = this.githubVersion(repository);
-        // Do not replace a newer signed push with a stale API response.
-        if (previous?.date && (!version.date || Date.parse(previous.date) > Date.parse(version.date)))
-          return { updated: false };
-        if (isDeepStrictEqual(previous, version)) return { updated: false };
-        db.prepare(
-          'INSERT INTO github_versions VALUES(?,?) ON CONFLICT(repository) DO UPDATE SET data=excluded.data',
-        ).run(repository, JSON.stringify(version));
-        synchronizeInfos();
-        return { updated: true };
-      });
-    },
+    ...releases,
     subscription(projectId, cardId, userId) {
       const { card } = findCard(projectId, cardId);
       return { following: following(card, userId) };
@@ -1087,212 +964,8 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
       }
       return { removes: removesContent(before.projects, state.projects) };
     },
-    hasUsers() {
-      return !!db.prepare('SELECT 1 FROM users LIMIT 1').get();
-    },
-    userByEmail(email) {
-      return db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-    },
-    userById,
-    bootstrapUser(fields, passwordHash) {
-      return transaction(() => {
-        if (this.hasUsers()) fail(409, 'already_initialized', 'Le compte administrateur a déjà été créé.');
-        const id = randomUUID();
-        db.prepare("INSERT INTO users(id,email,name,password_hash,role,created_at) VALUES(?,?,?,?,'admin',?)").run(
-          id,
-          fields.email,
-          fields.name,
-          passwordHash,
-          new Date().toISOString(),
-        );
-        const user = publicUser(userById(id));
-        audit(user, 'account.created', { userId: id });
-        return user;
-      });
-    },
-    users() {
-      return db.prepare('SELECT * FROM users ORDER BY created_at, id').all().map(publicUser);
-    },
-    inviteUser(fields, actor, existingId = null) {
-      return transaction(() => {
-        const token = randomBytes(32).toString('hex'),
-          expires = Date.now() + 7 * 86400000;
-        let id = existingId;
-        if (id) {
-          const existing = userById(id);
-          if (!existing || !existing.active) fail(404, 'user_not_found', 'Compte actif inexistant.');
-          if (existing.id === actor.id || existing.role === 'admin')
-            fail(400, 'invalid_invitation', 'Ce compte ne peut pas être réinvité.');
-          db.prepare('UPDATE users SET invite_hash = ?, invite_expires = ? WHERE id = ?').run(
-            tokenHash(token),
-            expires,
-            id,
-          );
-        } else {
-          if (this.userByEmail(fields.email)) fail(409, 'email_exists', 'Un compte utilise déjà cette adresse.');
-          if (this.users().length >= 100) fail(400, 'user_limit', 'La limite de 100 comptes est atteinte.');
-          id = randomUUID();
-          db.prepare(
-            "INSERT INTO users(id,email,name,role,invite_hash,invite_expires,created_at) VALUES(?,?,?,'member',?,?,?)",
-          ).run(id, fields.email, fields.name, tokenHash(token), expires, new Date().toISOString());
-        }
-        audit(actor, 'account.invited', { userId: id });
-        return { user: publicUser(userById(id)), token, expiresAt: new Date(expires).toISOString() };
-      });
-    },
-    invitation(token) {
-      return db
-        .prepare('SELECT * FROM users WHERE invite_hash = ? AND invite_expires > ? AND active = 1')
-        .get(tokenHash(token), Date.now());
-    },
-    acceptInvitation(token, name, passwordHash) {
-      return transaction(() => {
-        const user = this.invitation(token);
-        if (!user) fail(400, 'invalid_invitation', 'Invitation invalide, expirée ou déjà utilisée.');
-        db.prepare(
-          'UPDATE users SET name = ?, password_hash = ?, invite_hash = NULL, invite_expires = NULL WHERE id = ?',
-        ).run(name, passwordHash, user.id);
-        db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id);
-        const result = publicUser(userById(user.id));
-        audit(result, 'account.activated', { userId: user.id });
-        return result;
-      });
-    },
-    setActive(id, active, actor) {
-      return transaction(() => {
-        const user = userById(id);
-        if (!user) fail(404, 'user_not_found', 'Compte inexistant.');
-        if (id === actor.id || user.role === 'admin')
-          fail(400, 'protected_admin', 'Le compte administrateur ne peut pas être désactivé.');
-        db.prepare('UPDATE users SET active = ? WHERE id = ?').run(active ? 1 : 0, id);
-        if (!active) db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
-        audit(actor, active ? 'account.enabled' : 'account.disabled', { userId: id });
-        return publicUser(userById(id));
-      });
-    },
-    deleteUser(id, actor) {
-      return transaction(() => {
-        const user = userById(id);
-        if (!user) fail(404, 'user_not_found', 'Compte inexistant.');
-        if (id === actor.id || user.role === 'admin')
-          fail(400, 'protected_admin', 'Le compte administrateur ne peut pas être supprimé.');
-        db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
-        db.prepare('DELETE FROM card_subscriptions WHERE user_id = ?').run(id);
-        access.forgetUser(id);
-        db.prepare('DELETE FROM notification_reads WHERE user_id = ?').run(id);
-        db.prepare('DELETE FROM notifications WHERE user_id = ?').run(id);
-        db.prepare('DELETE FROM user_preferences WHERE user_id = ?').run(id);
-        db.prepare('DELETE FROM users WHERE id = ?').run(id);
-        audit(actor, 'account.deleted', { userId: id, userName: user.name });
-        return { deleted: true };
-      });
-    },
-    changePassword(id, passwordHash, actor) {
-      transaction(() => {
-        db.prepare('UPDATE users SET password_hash = ?, invite_hash = NULL, invite_expires = NULL WHERE id = ?').run(
-          passwordHash,
-          id,
-        );
-        db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
-        audit(actor, 'account.password_changed', { userId: id });
-      });
-    },
-    // Préférences personnelles d’affichage : propres au compte, jamais exposées aux autres.
-    preferences(userId) {
-      const row = db.prepare('SELECT accent FROM user_preferences WHERE user_id = ?').get(userId);
-      return { accent: isAccent(row?.accent) ? row.accent : DEFAULT_ACCENT };
-    },
-    setAccent(userId, accent) {
-      db.prepare('DELETE FROM user_preferences WHERE user_id = ?').run(userId);
-      if (accent !== DEFAULT_ACCENT) db.prepare('INSERT INTO user_preferences VALUES(?,?)').run(userId, accent);
-      return this.preferences(userId);
-    },
-    createSession(userId) {
-      const token = randomBytes(32).toString('hex');
-      db.prepare('DELETE FROM sessions WHERE expires <= ?').run(Date.now());
-      db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(tokenHash(token), userId, Date.now() + 12 * 3600000);
-      return token;
-    },
-    session(token) {
-      if (!token) return null;
-      return publicUser(
-        db
-          .prepare(
-            'SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires > ? AND u.active = 1 AND u.password_hash IS NOT NULL',
-          )
-          .get(tokenHash(token), Date.now()),
-      );
-    },
-    deleteSession(token) {
-      if (token) db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(tokenHash(token));
-    },
-    // Notifications d’un compte : actions qui le concernent sur les projets qu’il voit, les plus
-    // récentes d’abord, avec le nombre de non lues (après le dernier identifiant marqué comme lu).
-    notifications(user, { limit = 30 } = {}) {
-      const visible = JSON.stringify(Object.keys(this.accessOf(user)));
-      const from = `FROM notifications n JOIN activity a ON a.id = n.activity_id WHERE n.user_id = ? AND (a.project_id IS NULL OR a.project_id IN (SELECT value FROM json_each(?)))`;
-      const lastReadId =
-        db.prepare('SELECT last_id FROM notification_reads WHERE user_id = ?').get(user.id)?.last_id ?? 0;
-      const items = db
-        .prepare(`SELECT a.* ${from} ORDER BY n.activity_id DESC LIMIT ?`)
-        .all(user.id, visible, limit)
-        .map(row => {
-          const { projectName, cardTitle, details, executionId } = JSON.parse(row.payload);
-          return {
-            id: row.id,
-            date: row.date,
-            action: row.action,
-            actor: row.actor_id ? { id: row.actor_id, name: row.actor_name } : { id: null, name: row.actor_name },
-            projectId: row.project_id,
-            projectName: projectName || null,
-            cardId: row.card_id,
-            cardTitle: cardTitle || null,
-            ...(details ? { details } : {}),
-            ...(executionId ? { executionId } : {}),
-            read: row.id <= lastReadId,
-          };
-        });
-      const unread = db
-        .prepare(`SELECT COUNT(*) AS n ${from} AND n.activity_id > ?`)
-        .get(user.id, visible, lastReadId).n;
-      return { items, unread, lastReadId };
-    },
-    // Marque comme lues les notifications jusqu’à `upTo` inclus (jamais en arrière).
-    readNotifications(user, upTo) {
-      if (!Number.isSafeInteger(upTo) || upTo < 0) fail(400, 'invalid_notification', 'upTo : identifiant attendu.');
-      const max = db.prepare('SELECT COALESCE(MAX(id), 0) AS id FROM activity').get().id;
-      db.prepare(
-        'INSERT INTO notification_reads VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET last_id = MAX(last_id, excluded.last_id)',
-      ).run(user.id, Math.min(upTo, max));
-      emit({ type: 'notifications', userIds: [user.id] });
-      return this.notifications(user, { limit: 0 });
-    },
-    // `visible` limite l’historique global aux projets d’un compte ; les actions sans projet
-    // (comptes, agents) ne sont montrées qu’aux administrateurs (`visible` absent).
-    activity({ projectId, cardId, before = Number.MAX_SAFE_INTEGER, limit = 50, visible = null } = {}) {
-      const rows = db
-        .prepare(
-          'SELECT * FROM activity WHERE id < ? AND (? IS NULL OR project_id = ?) AND (? IS NULL OR card_id = ?) AND (? IS NULL OR project_id IN (SELECT value FROM json_each(?))) ORDER BY id DESC LIMIT ?',
-        )
-        .all(
-          before,
-          projectId || null,
-          projectId || null,
-          cardId || null,
-          cardId || null,
-          visible && JSON.stringify(visible),
-          visible && JSON.stringify(visible),
-          limit,
-        );
-      return rows.map(row => ({
-        ...JSON.parse(row.payload),
-        id: row.id,
-        date: row.date,
-        actor: row.actor_id ? { id: row.actor_id, name: row.actor_name } : null,
-        action: row.action,
-        revision: row.revision,
-      }));
-    },
+    ...accounts,
+    ...history,
     close() {
       db.close();
     },

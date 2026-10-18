@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.64 — 2026-10-18
+<!-- planifikateur:etape-15b-decoupage -->
+
+- **Code découpé par domaine** : Le stockage sépare les comptes, l’historique et les versions publiées dans server/store/ ; le worker sépare la préparation du dépôt (checkout.mjs) et le suivi des PR (follow-up.mjs) de l’enchaînement des tâches ; les tests navigateur sont rangés par domaine avec un module commun. Aucun changement de comportement.
+
 ## 0.1.63 — 2026-10-18
 <!-- planifikateur:etape-15a-performances -->
 
