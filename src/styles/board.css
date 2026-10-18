@@ -344,8 +344,8 @@
   background: var(--danger-surface);
 }
 .status.done {
-  color: #4e7b5b;
-  background: var(--success-surface);
+  color: var(--warning-text);
+  background: var(--warning-surface);
 }
 .card footer {
   display: flex;

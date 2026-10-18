@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.60 — 2026-10-18
+<!-- planifikateur:icone-a-tester -->
+
+- **Icône du statut « À tester »** : Le statut « À tester » d’une carte affiche une fiole orange au lieu d’une coche verte : la livraison n’est pas terminée, son demandeur doit encore la vérifier.
+
 ## 0.1.59 — 2026-10-18
 <!-- planifikateur:bouton-ca-ne-marche-pas -->
 
