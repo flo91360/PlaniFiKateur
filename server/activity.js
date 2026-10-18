@@ -33,6 +33,9 @@ const CARD_FIELDS = [
   'comments',
   'attachments',
   'aiEffort',
+  'dueDate',
+  'assigneeId',
+  'archived',
 ];
 export function attributeChanges(before, after, actor, date) {
   const events = [];

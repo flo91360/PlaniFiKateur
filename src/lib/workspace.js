@@ -71,6 +71,20 @@ export function validateWorkspace(projects, { attachmentData = true } = {}) {
       if (!STATUSES.includes(c.status) || !priorities.includes(c.priority))
         fail(`${path}.cards : statut ou priorité inconnus.`);
       if (c.aiEffort != null && !efforts.codex.includes(c.aiEffort)) fail('Effort IA invalide.');
+      // Échéance (jour, sans heure), personne responsable (compte) et archivage : facultatifs.
+      if (
+        c.dueDate != null &&
+        (typeof c.dueDate !== 'string' ||
+          !/^\d{4}-\d{2}-\d{2}$/.test(c.dueDate) ||
+          new Date(`${c.dueDate}T00:00:00Z`).toISOString().slice(0, 10) !== c.dueDate)
+      )
+        fail('Échéance invalide : date AAAA-MM-JJ attendue.');
+      if (
+        c.assigneeId != null &&
+        (typeof c.assigneeId !== 'string' || !c.assigneeId.trim() || c.assigneeId.length > 128)
+      )
+        fail('Responsable de la carte invalide.');
+      if (c.archived != null && typeof c.archived !== 'boolean') fail('archived : booléen attendu.');
       return {
         id: id(c.id, `${path}.cards.id`),
         listId: c.listId,
@@ -83,6 +97,9 @@ export function validateWorkspace(projects, { attachmentData = true } = {}) {
         status: c.status,
         priority: c.priority,
         ...(c.aiEffort ? { aiEffort: c.aiEffort } : {}),
+        ...(c.dueDate ? { dueDate: c.dueDate } : {}),
+        ...(c.assigneeId ? { assigneeId: c.assigneeId } : {}),
+        ...(c.archived ? { archived: true } : {}),
         ...(c.readme ? { readme: repository(c.readme) } : {}),
         ...(c.changelog ? { changelog: repository(c.changelog) } : {}),
         ...(c.downloads

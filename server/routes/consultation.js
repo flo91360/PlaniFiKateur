@@ -73,14 +73,19 @@ export function consultationRoutes({ store, auth }) {
     const p = scopedProject(ctx);
     const status = ctx.url.searchParams.get('status'),
       listId = ctx.url.searchParams.get('listId'),
-      q = (ctx.url.searchParams.get('q') || '').trim().toLocaleLowerCase('fr');
+      q = (ctx.url.searchParams.get('q') || '').trim().toLocaleLowerCase('fr'),
+      // Cartes archivées : exclues par défaut, seules avec `true`, mêlées aux autres avec `all`.
+      archived = ctx.url.searchParams.get('archived') || 'false';
     if (status && !STATUSES.includes(status)) throw httpError(400, 'invalid_filter', 'Statut inconnu.');
+    if (!['false', 'true', 'all'].includes(archived))
+      throw httpError(400, 'invalid_filter', 'archived : false, true ou all attendu.');
     const limit = pageNumber(ctx.url, 'limit', 50, 200),
       offset = pageNumber(ctx.url, 'offset', 0, Number.MAX_SAFE_INTEGER);
     const filtered = p.cards
       .map(c => cardContext(p, c))
       .filter(
         c =>
+          (archived === 'all' || !!c.archived === (archived === 'true')) &&
           (!status || c.status === status) &&
           (!listId || c.listId === listId) &&
           (!q || `${c.title} ${c.description} ${c.tags.join(' ')}`.toLocaleLowerCase('fr').includes(q)),

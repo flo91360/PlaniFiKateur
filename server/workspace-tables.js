@@ -7,7 +7,7 @@ import { validateWorkspace } from '../src/lib/workspace.js';
 export const WORKSPACE_TABLES = `
   CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, position INTEGER NOT NULL, name TEXT NOT NULL, description TEXT NOT NULL, emoji TEXT NOT NULL, color TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS lists (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, position INTEGER NOT NULL, name TEXT NOT NULL, color TEXT NOT NULL);
-  CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, list_id TEXT NOT NULL, position INTEGER NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL, priority TEXT NOT NULL, ai_effort TEXT, tags TEXT NOT NULL, checklist TEXT NOT NULL, created_by TEXT, created_at TEXT, updated_by TEXT, updated_at TEXT, infos TEXT);
+  CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, list_id TEXT NOT NULL, position INTEGER NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL, priority TEXT NOT NULL, ai_effort TEXT, tags TEXT NOT NULL, checklist TEXT NOT NULL, created_by TEXT, created_at TEXT, updated_by TEXT, updated_at TEXT, infos TEXT, due_date TEXT, assignee_id TEXT, archived INTEGER);
   CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, card_id TEXT NOT NULL, position INTEGER NOT NULL, author TEXT NOT NULL, author_id TEXT, author_kind TEXT, text TEXT NOT NULL, date TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS attachments (id TEXT PRIMARY KEY, card_id TEXT NOT NULL, position INTEGER NOT NULL, name TEXT NOT NULL, type TEXT NOT NULL, size INTEGER NOT NULL, data TEXT NOT NULL);
   CREATE INDEX IF NOT EXISTS lists_project ON lists(project_id, position);
@@ -84,6 +84,9 @@ export function readWorkspace(db, { projectIds = null, attachmentData = true } =
           status: c.status,
           priority: c.priority,
           ...(c.ai_effort ? { aiEffort: c.ai_effort } : {}),
+          ...(c.due_date ? { dueDate: c.due_date } : {}),
+          ...(c.assignee_id ? { assigneeId: c.assignee_id } : {}),
+          ...(c.archived ? { archived: true } : {}),
           ...(infos.readme ? { readme: infos.readme } : {}),
           ...(infos.changelog ? { changelog: infos.changelog } : {}),
           ...(infos.downloads ? { downloads: infos.downloads } : {}),
@@ -138,6 +141,9 @@ function rowsOf(projects) {
         json(c.updatedBy),
         c.updatedAt ?? null,
         Object.keys(infos).length ? JSON.stringify(infos) : null,
+        c.dueDate || null,
+        c.assigneeId || null,
+        c.archived ? 1 : null,
       ]);
       (c.comments || []).forEach((comment, order) =>
         rows.comments.push([
@@ -179,6 +185,9 @@ const COLUMNS = {
     'updated_by',
     'updated_at',
     'infos',
+    'due_date',
+    'assignee_id',
+    'archived',
   ],
   comments: ['id', 'card_id', 'position', 'author', 'author_id', 'author_kind', 'text', 'date'],
   attachments: ['id', 'card_id', 'position', 'name', 'type', 'size', 'data'],
@@ -239,12 +248,30 @@ export function writeWorkspace(db, projects, previous = null) {
   return { written, projectIds: [...projectIds], structural };
 }
 
+// Colonnes ajoutées aux cartes après la création des tables (v0.1.62 : échéance, responsable,
+// archivage). Elles sont vides pour les cartes existantes.
+function addCardColumns(db) {
+  const existing = new Set(
+    db
+      .prepare('PRAGMA table_info(cards)')
+      .all()
+      .map(column => column.name),
+  );
+  for (const [name, type] of [
+    ['due_date', 'TEXT'],
+    ['assignee_id', 'TEXT'],
+    ['archived', 'INTEGER'],
+  ])
+    if (!existing.has(name)) db.exec(`ALTER TABLE cards ADD COLUMN ${name} ${type}`);
+}
+
 // Convertit l’ancien tableau JSON (colonne workspace.projects) en tables, une seule fois.
 // `backup` est appelé avant toute modification ; la conversion est vérifiée puis validée en
 // une transaction : en cas d’écart, la base reste intacte et le démarrage échoue.
 export function migrateWorkspace(db, { backup } = {}) {
   if (db.prepare('PRAGMA user_version').get().user_version >= TABLES_VERSION) {
     db.exec(WORKSPACE_TABLES);
+    addCardColumns(db);
     return false;
   }
   backup?.();

@@ -472,3 +472,31 @@
 .card-meta .checklist-complete {
   color: var(--primary);
 }
+
+.card-meta .card-due {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.card-meta .card-due.late {
+  color: #a23b20;
+  font-weight: 600;
+}
+.card-assignee {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+}
+.card-avatar.assignee {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+.archive-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.archive-toggle.active {
+  border-color: var(--primary);
+  color: var(--primary);
+}

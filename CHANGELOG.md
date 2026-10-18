@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.62 — 2026-10-18
+<!-- planifikateur:etape-14b-cartes -->
+
+- **Échéance, responsable et archivage des cartes** : Chaque carte peut recevoir une échéance et un responsable, membre du projet, visibles sur le tableau ; une échéance dépassée est signalée. Une carte archivée quitte le tableau et la file de l’agent ; la vue « Archivées » permet de la retrouver et de la restaurer. L’API accepte dueDate, assigneeId et archived, et la consultation des cartes exclut les cartes archivées sauf avec archived=true ou all.
+
 ## 0.1.61 — 2026-10-18
 <!-- planifikateur:etape-14a-tableau -->
 

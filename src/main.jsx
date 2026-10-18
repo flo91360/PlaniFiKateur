@@ -19,6 +19,7 @@ import { useWorkStatus } from './lib/use-work-status.js';
 import { useAttention } from './lib/use-attention.js';
 import { useServerEvents } from './lib/use-server-events.js';
 import { useNotifications } from './lib/use-notifications.js';
+import { useApiResource } from './lib/use-api.js';
 import ConnectionScreen from './components/AccountScreen.jsx';
 import AccountsPanel from './components/AccountsPanel.jsx';
 import ActivityPanel from './components/ActivityPanel.jsx';
@@ -150,6 +151,11 @@ function App() {
   const [projectAi, setProjectAi] = useProjectAi(project?.id, ready);
   const attention = useAttention({ enabled: !offlineMode && ready && !needsLogin });
   const workStatus = useWorkStatus({ projectId: project?.id, enabled: !offlineMode && ready && !needsLogin });
+  // Membres qui voient le projet : responsables possibles d’une carte, affichés sur le tableau.
+  const membersResource = useApiResource(project ? `projects/${project.id}/members` : '', {
+    enabled: !offlineMode && ready && !needsLogin,
+  });
+  const projectMembers = (membersResource.data?.members || []).filter(member => member.role);
   useServerEvents(!offlineMode && ready && !needsLogin);
   const notifications = useNotifications(!offlineMode && ready && !needsLogin);
   useEffect(() => applyAccent(workspace.accent), [workspace.accent]);
@@ -505,6 +511,7 @@ function App() {
                 <Board
                   key={project.id}
                   project={project}
+                  members={projectMembers}
                   followers={cardFollowers}
                   work={workStatus}
                   filters={filters}
@@ -570,6 +577,7 @@ function App() {
           >
             <CardDetail
               key={selected.id}
+              members={projectMembers}
               engine={projectAi.engine}
               attachmentBytes={attachmentSize(project, selected.id)}
               onWorkflowRefresh={() => workspace.refresh({ whileEditing: true })}

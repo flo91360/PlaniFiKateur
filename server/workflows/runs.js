@@ -53,6 +53,8 @@ export function createRuns(
     run.approval?.headSha !== run.submissions.at(-1)?.pullRequest?.headSha;
   const prepare = (projectId, cardId, data, actor) => {
     const { project, card } = findCard(projectId, cardId);
+    if (card.archived)
+      fail(409, 'archived_card', 'Cette carte est archivée : restaurez-la avant de la confier à l’agent.');
     if (isDiscussionCard(project, card))
       fail(
         409,
@@ -184,6 +186,7 @@ export function createRuns(
     for (const card of project?.cards || []) {
       if (
         card.status !== 'ready' ||
+        card.archived ||
         !card.description.trim() ||
         activeCards.has(card.id) ||
         isDiscussionCard(project, card)

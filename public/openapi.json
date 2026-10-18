@@ -716,6 +716,21 @@
             "description": "Recherche dans le titre, la description et les étiquettes."
           },
           {
+            "name": "archived",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "false",
+                "true",
+                "all"
+              ],
+              "default": "false"
+            },
+            "description": "Cartes archivées : exclues (false, par défaut), seules (true) ou mêlées aux autres (all)."
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -1007,6 +1022,21 @@
               "type": "string"
             },
             "description": "Recherche dans le titre, la description et les étiquettes."
+          },
+          {
+            "name": "archived",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "false",
+                "true",
+                "all"
+              ],
+              "default": "false"
+            },
+            "description": "Cartes archivées : exclues (false, par défaut), seules (true) ou mêlées aux autres (all)."
           },
           {
             "name": "limit",
@@ -7536,6 +7566,19 @@
               "null"
             ],
             "format": "date-time"
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date",
+            "description": "Échéance (AAAA-MM-JJ), absente si la carte n’en a pas."
+          },
+          "assigneeId": {
+            "type": "string",
+            "description": "Identifiant du compte responsable de la carte, membre actif du projet."
+          },
+          "archived": {
+            "type": "boolean",
+            "description": "Présent (true) si la carte est archivée."
           }
         }
       },
