@@ -112,11 +112,12 @@ export function readWorkspace(db, { projectIds = null, attachmentData = true } =
     }));
 }
 
-// Lignes attendues pour chaque table, dans l’ordre des colonnes du schéma.
-function rowsOf(projects) {
+// Lignes attendues pour chaque table, dans l’ordre des colonnes du schéma. `positions` donne la
+// place enregistrée des projets quand seuls certains d’entre eux sont écrits.
+function rowsOf(projects, positions = null) {
   const rows = { projects: [], lists: [], cards: [], comments: [], attachments: [] };
-  projects.forEach((p, position) => {
-    rows.projects.push([p.id, position, p.name, p.description, p.emoji, p.color]);
+  projects.forEach((p, index) => {
+    rows.projects.push([p.id, positions?.get(p.id) ?? index, p.name, p.description, p.emoji, p.color]);
     p.lists.forEach((l, index) => rows.lists.push([l.id, p.id, index, l.name, l.color]));
     p.cards.forEach((c, index) => {
       const infos = {
@@ -196,12 +197,22 @@ const COLUMNS = {
 // Remplace le contenu des tables par `projects` (déjà validé) en n’écrivant que les différences.
 // `previous`, quand il est fourni, est l’état actuellement en base (tel que lu par readWorkspace) :
 // les différences sont alors calculées en mémoire, sans relire les tables ni les pièces jointes.
+// `scope` (identifiants de projets) limite l’écriture à ces projets : `projects` ne contient
+// qu’eux, les autres restent intacts et l’ordre des projets ne change pas.
 // Renvoie le nombre de lignes écrites ou supprimées, les projets dont le contenu a changé
 // (`projectIds`) et `structural` quand la liste des projets elle-même change (ajout, suppression
 // ou ordre) : les navigateurs relisent alors tout le tableau plutôt que ces seuls projets.
-export function writeWorkspace(db, projects, previous = null) {
-  const wanted = rowsOf(projects);
-  const known = previous && rowsOf(previous);
+export function writeWorkspace(db, projects, previous = null, { scope = null } = {}) {
+  const positions =
+    scope &&
+    new Map(
+      db
+        .prepare('SELECT id, position FROM projects')
+        .all()
+        .map(row => [row.id, row.position]),
+    );
+  const wanted = rowsOf(projects, positions);
+  const known = previous && rowsOf(previous, positions);
   let written = 0,
     structural = false;
   const projectIds = new Set();
@@ -209,15 +220,45 @@ export function writeWorkspace(db, projects, previous = null) {
   // Projet d’une ligne : elle-même (projects), sa colonne project_id (lists, cards) ou celui de sa carte.
   const projectOf = (table, row) =>
     table === 'projects' ? row[0] : table === 'lists' || table === 'cards' ? row[1] : cardProjects.get(row[1]);
-  for (const [table, columns] of Object.entries(COLUMNS)) {
-    const existing = known
-      ? new Map(known[table].map(row => [row[0], row]))
-      : new Map(
+  // Lignes en base, toutes lues avant la première écriture : une carte supprimée garde ainsi ses
+  // commentaires et pièces jointes dans l’état de départ, qui sont supprimés avec elle.
+  const among = 'IN (SELECT value FROM json_each(?))';
+  const scopeJson = scope && JSON.stringify(scope);
+  const scopedCards =
+    scope &&
+    JSON.stringify([
+      ...new Set([
+        ...db
+          .prepare(`SELECT id FROM cards WHERE project_id ${among}`)
+          .all(scopeJson)
+          .map(row => row.id),
+        ...wanted.cards.map(row => row[0]),
+      ]),
+    ]);
+  const filters = {
+    projects: [`WHERE id ${among}`, scopeJson],
+    lists: [`WHERE project_id ${among}`, scopeJson],
+    cards: [`WHERE project_id ${among}`, scopeJson],
+    comments: [`WHERE card_id ${among}`, scopedCards],
+    attachments: [`WHERE card_id ${among}`, scopedCards],
+  };
+  const stored = Object.fromEntries(
+    Object.entries(COLUMNS).map(([table, columns]) => {
+      if (known) return [table, new Map(known[table].map(row => [row[0], row]))];
+      const [where, parameter] = scope ? filters[table] : ['', null];
+      return [
+        table,
+        new Map(
           db
-            .prepare(`SELECT ${columns.join(',')} FROM ${table}`)
-            .all()
+            .prepare(`SELECT ${columns.join(',')} FROM ${table} ${where}`)
+            .all(...(scope ? [parameter] : []))
             .map(row => [row.id, columns.map(column => row[column])]),
-        );
+        ),
+      ];
+    }),
+  );
+  for (const [table, columns] of Object.entries(COLUMNS)) {
+    const existing = stored[table];
     const upsert = db.prepare(
       `INSERT OR REPLACE INTO ${table}(${columns.join(',')}) VALUES(${columns.map(() => '?').join(',')})`,
     );

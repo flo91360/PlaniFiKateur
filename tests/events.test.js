@@ -162,3 +162,45 @@ test('a change in a hidden project is not announced, and announcements only cite
   );
   assert.equal(event.fromRevision, event.revision - 1);
 });
+
+test('a client that stops reading is disconnected instead of buffering events forever', async t => {
+  const { eventRoutes } = await import('../server/routes/events.js');
+  const store = createStore(':memory:');
+  t.after(() => store.close());
+  const user = seedAccount(store);
+  const streams = new Set();
+  const [route] = eventRoutes({
+    store,
+    config: { eventHeartbeatMs: 60000, eventMaxPendingBytes: 100 },
+    auth: { currentUser: () => user },
+    guards: {},
+    streams,
+  });
+  // Réponse qui ne se vide jamais : tout ce qui est écrit reste en attente d’envoi.
+  const written = [];
+  const res = {
+    writableLength: 0,
+    writableEnded: false,
+    destroyed: false,
+    writeHead() {},
+    write(text) {
+      written.push(text);
+      this.writableLength += text.length;
+    },
+    end() {
+      this.writableEnded = true;
+    },
+  };
+  route.methods.GET({ user, req: { on() {} }, res });
+  assert.equal(streams.size, 1);
+  for (let i = 0; i < 20; i++)
+    store.change(
+      [{ type: 'card.update', projectId: 'planifikateur', cardId: 'c1', fields: { title: `Titre ${i}` } }],
+      user,
+    );
+  assert.equal(res.writableEnded, true);
+  assert.equal(streams.size, 0);
+  const count = written.length;
+  store.change([{ type: 'card.update', projectId: 'planifikateur', cardId: 'c1', fields: { title: 'Après' } }], user);
+  assert.equal(written.length, count, 'Plus rien n’est écrit après la déconnexion.');
+});

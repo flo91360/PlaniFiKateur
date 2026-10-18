@@ -392,10 +392,12 @@ export function createRuns(
     // Modification du tableau (`before` → `after`) : annule les exécutions dont la demande a changé,
     // refuse un statut piloté par l’agent, et prend une réponse en commentaire pour la question posée.
     withdrawDiscussion,
-    reconcile(before, after, actor, restore) {
+    // `scope` : seuls ces projets ont été lus et modifiés ; les exécutions des autres ne sont pas
+    // concernées.
+    reconcile(before, after, actor, restore, scope = null) {
       if (!restore) withdrawDiscussion(after, actor);
       for (const row of rows(OPEN))
-        if (!isTerminal(row.state)) {
+        if (!isTerminal(row.state) && (!scope || scope.includes(row.project_id))) {
           const run = unpack(row),
             card = after.find(p => p.id === run.projectId)?.cards.find(c => c.id === run.cardId);
           const discussionMoved =

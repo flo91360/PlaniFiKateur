@@ -1,35 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
-import { apiData } from './api-client.js';
-import { useServerConnected, useServerEvent } from './use-server-events.js';
+import { usePolledResource } from './use-polled-resource.js';
+
+const NONE = Object.freeze({});
 
 // État de l’agent sur les cartes d’un projet ({ cardId: { state, awaitingApproval, checks } }),
 // relu à chaque événement d’exécution du projet ; toutes les 2 minutes par sécurité, 10 s sans flux.
 export function useWorkStatus({ projectId, enabled }) {
-  const [snapshot, setSnapshot] = useState(null);
-  const live = useServerConnected();
-  const reload = useRef(() => {});
-  useServerEvent((type, data) => {
-    if (type === 'ready' || (type === 'work' && data.projectId === projectId)) reload.current();
+  const { data } = usePolledResource(projectId ? `projects/${projectId}/work-status` : '', {
+    enabled,
+    every: 120000,
+    offlineEvery: 10000,
+    refreshOn: (type, event) => type === 'work' && event.projectId === projectId,
   });
-  useEffect(() => {
-    if (!enabled || !projectId) return;
-    const controller = new AbortController();
-    const load = () =>
-      apiData(`projects/${projectId}/work-status`, { signal: controller.signal })
-        .then(status => {
-          if (!controller.signal.aborted) setSnapshot({ projectId, status });
-        })
-        .catch(() => {});
-    reload.current = load;
-    load();
-    const timer = setInterval(load, live ? 120000 : 10000);
-    return () => {
-      reload.current = () => {};
-      controller.abort();
-      clearInterval(timer);
-    };
-  }, [projectId, enabled, live]);
-  return enabled && snapshot && snapshot.projectId === projectId ? snapshot.status : {};
+  return data || NONE;
 }
 
 // Badge d’une carte sur le tableau, ou null : ce qui attend une personne passe en premier.
