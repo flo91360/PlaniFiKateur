@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.66 — 2026-10-20
+<!-- planifikateur:livraison-defilement-tactile-mobile -->
+
+- **Défilement horizontal rétabli sur mobile** : Sur téléphone, le tableau défile de nouveau d’une liste à l’autre : la barre de défilement collée en bas de l’écran ne ramène plus le tableau en arrière pendant le geste.
+
 ## 0.1.65 — 2026-10-18
 <!-- planifikateur:test-defilement-fiable -->
 

@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 const { version } = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
 const html = readFileSync(new URL(`../../dist/PlaniFiKateur-apercu-v${version}.html`, import.meta.url), 'utf8');
 
-test('la barre de défilement horizontale du tableau reste visible', { tag: '@mobile' }, async ({ page }) => {
+async function openNewProject(page) {
   await page.route('http://planifikateur.test/**', route => route.fulfill({ contentType: 'text/html', body: html }));
   await page.goto('http://planifikateur.test/app');
   const menu = page.getByRole('button', { name: 'Ouvrir les projets', exact: true });
@@ -13,6 +13,10 @@ test('la barre de défilement horizontale du tableau reste visible', { tag: '@mo
   await page.getByLabel('Nom du projet', { exact: true }).fill('Défilement');
   await page.getByRole('button', { name: 'Créer le projet', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
+}
+
+test('la barre de défilement horizontale du tableau reste visible', { tag: '@mobile' }, async ({ page }) => {
+  await openNewProject(page);
 
   const board = page.locator('.board');
   const bar = page.locator('.board-scrollbar');
@@ -40,3 +44,25 @@ test('la barre de défilement horizontale du tableau reste visible', { tag: '@mo
   await board.evaluate(el => (el.scrollLeft = 0));
   await expect.poll(settled, { timeout: 10000 }).toBe(0);
 });
+
+test(
+  'la barre recopiée ne ramène pas le tableau en arrière pendant un défilement',
+  { tag: '@mobile' },
+  async ({ page }) => {
+    await openNewProject(page);
+    await expect(page.locator('.board-scrollbar')).toBeVisible();
+    const position = await page.locator('.board').evaluate(
+      board =>
+        new Promise(resolve => {
+          board.style.scrollSnapType = 'none';
+          // Sur téléphone, l’élan du doigt continue de déplacer le tableau avant que la barre recopiée
+          // signale à son tour son défilement : cet écho, en retard, ne doit pas faire reculer le tableau.
+          board.addEventListener('scroll', () => (board.scrollLeft = 200), { once: true });
+          board.scrollLeft = 100;
+          setTimeout(() => resolve(Math.round(board.scrollLeft)), 500);
+        }),
+    );
+    expect(position).toBe(200);
+    await expect.poll(() => page.locator('.board-scrollbar').evaluate(bar => Math.round(bar.scrollLeft))).toBe(200);
+  },
+);

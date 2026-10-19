@@ -218,8 +218,18 @@ function useStickyScrollbar() {
     const bar = barRef.current;
     if (!board || !bar) return undefined;
     const measure = () => setWidth(board.scrollWidth > board.clientWidth + 1 ? board.scrollWidth : 0);
+    // Position que chaque élément a reçue de l’autre : son événement de défilement n’est alors qu’un
+    // écho. Sur téléphone, l’élan du doigt déplace encore le tableau quand cet écho arrive ; le
+    // recopier ramènerait le tableau en arrière et bloquerait le défilement horizontal.
+    const echoes = new Map();
     const follow = (from, to) => () => {
-      if (Math.abs(to.scrollLeft - from.scrollLeft) > 1) to.scrollLeft = from.scrollLeft;
+      const echo = echoes.get(from);
+      echoes.delete(from);
+      if (echo !== undefined && Math.abs(from.scrollLeft - echo) <= 1) return;
+      if (Math.abs(to.scrollLeft - from.scrollLeft) <= 1) return;
+      // Position demandée, pas celle relue : le calage sur une liste peut déjà l’avoir déplacée.
+      echoes.set(to, from.scrollLeft);
+      to.scrollLeft = from.scrollLeft;
     };
     const onBoard = follow(board, bar);
     const onBar = follow(bar, board);
