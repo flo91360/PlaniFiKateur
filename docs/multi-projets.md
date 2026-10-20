@@ -55,8 +55,8 @@ le choisissent par défaut (`repositories`), son fichier de version
 `project.godot`, `qmake` pour l’unique `.pro`, avec les documents dont le numéro
 suit la version), ses consignes au modèle (`instructions`, par exemple le format
 Qt Designer pour TrameErgo seulement), ses variables d’environnement et les
-fichiers qui règlent ses tests (`reviewPaths`) : une PR qui les modifie, comme les
-workflows GitHub ou les scripts npm, attend l’approbation d’un responsable. Ajouter un
+fichiers protégés (`protectedPaths`) : une carte ne peut pas les modifier, pas plus
+que les workflows GitHub ou les scripts npm (voir [le worker](worker.md#isolation-du-code-exécuté)). Ajouter un
 projet revient à ajouter une entrée : le reste du worker s’en déduit sans tester
 les noms de profils.
 

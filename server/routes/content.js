@@ -1,7 +1,7 @@
 import { httpError } from '../http.js';
 import { createId } from '../../src/lib/id.js';
 import { withInfos } from '../../src/lib/infos.js';
-import { CARD_FIELDS, LIST_FIELDS, PROJECT_FIELDS } from '../../src/lib/workspace-changes.js';
+import { CARD_FIELDS, LIST_FIELDS, MAX_BATCH, PROJECT_FIELDS } from '../../src/lib/workspace-changes.js';
 
 const REMOVALS = ['project.delete', 'list.delete', 'card.delete'];
 const DEFAULT_LISTS = [
@@ -21,26 +21,28 @@ const only = (body, allowed) => {
 // Modifications fines du tableau, avec une session personnelle. L’interface envoie ses
 // modifications par lot (PATCH /api/v1/workspace) ; les routes par élément servent aux
 // intégrations. Toutes s’appliquent sur l’état courant, sans révision à fournir.
-export function contentRoutes({ store, config, guards }) {
+export function contentRoutes({ store, config, auth, guards }) {
   // Une modification qui retire réellement un projet, une liste ou une carte est précédée d’une
   // sauvegarde, une fois les droits vérifiés : un compte sans droit n’en déclenche aucune.
+  // `replays` : tentatives supplémentaires pour isoler les refus d’un lot `partial`.
   const apply = (ctx, changes, options) => {
-    if (
-      config.backups &&
-      Array.isArray(changes) &&
-      changes.some(change => REMOVALS.includes(change?.type)) &&
-      store.previewChanges(changes, ctx.user, options).removes
-    )
-      try {
-        config.backups.create({ kind: 'deletion' });
-      } catch {
-        throw httpError(
-          503,
-          'backup_failed',
-          'La sauvegarde de sécurité a échoué. La suppression n’a pas été enregistrée.',
-        );
-      }
-    return store.change(changes, ctx.user, options);
+    let replays = 0;
+    if (config.backups && Array.isArray(changes) && changes.some(change => REMOVALS.includes(change?.type))) {
+      const preview = store.previewChanges(changes, ctx.user, options);
+      replays = preview.replays;
+      if (preview.removes)
+        try {
+          config.backups.create({ kind: 'deletion' });
+        } catch {
+          throw httpError(
+            503,
+            'backup_failed',
+            'La sauvegarde de sécurité a échoué. La suppression n’a pas été enregistrée.',
+          );
+        }
+    }
+    const result = store.change(changes, ctx.user, options);
+    return { ...result, replays: replays + result.replays };
   };
   const strict = (ctx, change) => apply(ctx, [change], { strict: true });
   const projectOf = (workspace, projectId) => workspace.projects.find(p => p.id === projectId);
@@ -69,9 +71,21 @@ export function contentRoutes({ store, config, guards }) {
           if (typeof partial !== 'boolean') throw httpError(400, 'invalid_change', 'partial : booléen attendu.');
           if (!['all', 'changed'].includes(scope))
             throw httpError(400, 'invalid_change', 'scope : « all » ou « changed » attendu.');
+          if (changes.length > MAX_BATCH)
+            throw httpError(
+              413,
+              'too_many_changes',
+              `Un lot ne peut dépasser ${MAX_BATCH} modifications : envoyez-les en plusieurs fois.`,
+            );
           // `partial` : les modifications refusées sont listées dans `rejected`, les autres enregistrées.
           // Le tableau renvoyé n’inclut pas le contenu des pièces jointes (voir leur route).
-          const { skipped, rejected, ...workspace } = apply(ctx, changes, { partial, scope, attachmentData: false });
+          auth.replays.check(ctx.user.id);
+          const { skipped, rejected, replays, ...workspace } = apply(ctx, changes, {
+            partial,
+            scope,
+            attachmentData: false,
+          });
+          auth.replays.spend(ctx.user.id, replays);
           ctx.res.setHeader('ETag', `"${workspace.revision}"`);
           ctx.send(200, { data: { ...workspace, skipped, ...(partial ? { rejected } : {}) } });
         },

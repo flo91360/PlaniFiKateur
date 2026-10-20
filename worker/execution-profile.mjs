@@ -5,8 +5,9 @@
 // - versioning : fichier de version (npm : package.json et son lockfile, godot : project.godot,
 //   qmake : l’unique fichier .pro) et documents dont le numéro suit la version ;
 // - instructions : consignes propres au projet ajoutées à la demande envoyée au modèle ;
-// - reviewPaths : fichiers qui règlent les tests ; une PR qui les modifie (comme les workflows
-//   GitHub ou les scripts npm) attend l’approbation d’un responsable avant la fusion ;
+// - protectedPaths : fichiers qu’une carte ne peut pas modifier, comme les workflows GitHub et
+//   les scripts npm (configuration des tests, worker et livraison) : le worker les rétablit
+//   avant de livrer (worker/protected.mjs) ;
 // - environment : variables ajoutées aux commandes (hors du profil validé, qui reste comparable).
 export const executionPresets = {
   planifikateur: {
@@ -23,7 +24,28 @@ export const executionPresets = {
     workflow: { file: 'ci.yml', name: 'Tests', jobs: ['Tests serveur', 'Tests navigateur'] },
     repositories: ['planifikateur'],
     versioning: { format: 'npm', documents: ['README.md', 'docs/agents.md', 'docs/github.md'] },
-    reviewPaths: ['playwright.config.*', 'eslint.config.*', '.prettierrc*', '.prettierignore'],
+    // Le worker est redéployé automatiquement depuis main : ni lui, ni sa chaîne de livraison, ni
+    // les consignes des agents et leurs tests ne sont modifiables par une carte.
+    protectedPaths: [
+      'playwright.config.*',
+      'eslint.config.*',
+      '.prettierrc*',
+      '.prettierignore',
+      'worker/**',
+      '.dockerignore',
+      'scripts/delivery.mjs',
+      'scripts/merge-agent-pr.mjs',
+      'scripts/publish-version.mjs',
+      'scripts/verify-deployment.mjs',
+      'AGENTS.md',
+      'CLAUDE.md',
+      'tests/worker*.test.js',
+      'tests/execution-profiles.test.js',
+      'tests/trameergo-profile.test.js',
+      'tests/delivery.test.js',
+      'tests/deploy.test.js',
+      'tests/deploy/**',
+    ],
   },
   defilordi: {
     label: 'DefilOrdi — Electron',
@@ -40,7 +62,7 @@ export const executionPresets = {
     workflow: { file: 'build-windows.yml', name: 'Windows .exe', jobs: ['build'] },
     repositories: ['defilordi'],
     versioning: { format: 'npm' },
-    reviewPaths: ['vitest.config.*', 'tsconfig*.json'],
+    protectedPaths: ['vitest.config.*', 'tsconfig*.json'],
     environment: { ELECTRON_SKIP_BINARY_DOWNLOAD: '1' },
   },
   trameergo: {
@@ -71,7 +93,7 @@ export const executionPresets = {
     workflow: { file: 'build.yml', name: 'Construire le jeu', jobs: ['export'] },
     repositories: ['funkart'],
     versioning: { format: 'godot' },
-    reviewPaths: ['tests/test_profiles.gd', 'tests/autoplay.gd'],
+    protectedPaths: ['tests/test_profiles.gd', 'tests/autoplay.gd'],
   },
 };
 // Profil par défaut d’un dépôt : celui qui le déclare dans `repositories`, sinon PlaniFiKateur.

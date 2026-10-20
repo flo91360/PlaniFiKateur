@@ -357,15 +357,10 @@ test('only GitHub network commands receive the token and no Git command runs hoo
 });
 
 test('a push refused for a missing workflow permission asks for the token change instead of retrying', async t => {
+  // Une carte ne modifie pas les workflows, mais la branche cible intégrée à une PR peut en apporter.
   const f = await fixture(t, {
     refusePush: () =>
       'To https://github.com/flo91360/defilordi.git\n ! [remote rejected] HEAD -> planifikateur/x (refusing to allow a Personal Access Token to create or update workflow `.github/workflows/build-windows.yml` without `workflow` scope)\nerror: failed to push some refs',
-    model: async input => {
-      await mkdir(join(input.cwd, '.github', 'workflows'), { recursive: true });
-      await writeFile(join(input.cwd, '.github', 'workflows', 'build-windows.yml'), 'on: push\n');
-      await writeFile(join(input.cwd, 'greet.mjs'), "export const greet = () => 'bonjour';\n");
-      return { status: 'result', summary: 'Build Windows', question: '' };
-    },
   });
   f.prepare();
   const outcome = await f.worker.tick();
@@ -374,9 +369,54 @@ test('a push refused for a missing workflow permission asks for the token change
   assert.equal(run.state, 'waiting');
   const message = run.exchanges.at(-1).question;
   assert.match(message, /portée « workflow »/);
-  assert.match(message, /\.github\/workflows\/build-windows\.yml/);
   assert.ok(!message.includes('github-test-token'));
   assert.equal(f.pr, undefined);
+});
+
+test('a card cannot change the worker or the merge controls: they are restored and the rest is delivered', async t => {
+  const f = await fixture(t, {
+    model: async input => {
+      await writeFile(join(input.cwd, 'greet.mjs'), "export const greet = () => 'bonjour';\n");
+      if (!/fichiers protégés modifiés/.test(input.feedback || '')) {
+        await mkdir(join(input.cwd, '.github', 'workflows'), { recursive: true });
+        await writeFile(join(input.cwd, '.github', 'workflows', 'ci.yml'), 'on: push\n');
+        await mkdir(join(input.cwd, 'worker'), { recursive: true });
+        await writeFile(join(input.cwd, 'worker', 'isolation.mjs'), 'export const sandbox = false;\n');
+      }
+      return { status: 'result', summary: 'Salutation française', question: '' };
+    },
+  });
+  f.prepare();
+  const outcome = await f.worker.tick();
+  assert.equal(outcome.status, 'merging', f.logs.join('\n'));
+  assert.equal(f.modelCalls.length, 2);
+  assert.match(f.modelCalls[1].feedback, /\.github\/workflows\/ci\.yml, worker\/isolation\.mjs/);
+  const submission = f.current().submissions.at(-1);
+  assert.equal(submission.reviewRequired, undefined);
+  const delivered = (await f.git(['ls-tree', '-r', '--name-only', submission.pullRequest.headSha], f.bare)).split('\n');
+  assert.ok(delivered.includes('greet.mjs'));
+  assert.ok(!delivered.some(path => path.startsWith('.github/') || path.startsWith('worker/')));
+});
+
+test('a request that needs protected files becomes a question on the card, without a PR', async t => {
+  const f = await fixture(t, {
+    model: async input => {
+      await writeFile(join(input.cwd, 'greet.mjs'), "export const greet = () => 'bonjour';\n");
+      await writeFile(join(input.cwd, 'AGENTS.md'), '# Plus de consignes\n');
+      return { status: 'result', summary: 'Consignes', question: '' };
+    },
+  });
+  f.prepare();
+  assert.equal((await f.worker.tick()).status, 'waiting', f.logs.join('\n'));
+  assert.equal(f.modelCalls.length, 3);
+  const run = f.current();
+  assert.equal(run.state, 'waiting');
+  assert.match(run.exchanges.at(-1).question, /fichiers protégés : AGENTS\.md.*intervention directe/);
+  assert.equal(f.pr, undefined);
+  assert.equal(
+    f.calls.some(c => c.command[0] === 'git' && c.command[1] === 'push'),
+    false,
+  );
 });
 
 test('a refused merge automatically retries without consuming another model attempt or replacing the PR', async t => {

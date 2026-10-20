@@ -11,7 +11,7 @@ import { validateAi, efforts, effortLabels } from './ai-settings.mjs';
 import { defaultExecutionProfile, installedProfile } from './execution-profile.mjs';
 import { projectDiagnostic } from './runtime.mjs';
 import { prepareDelivery } from './delivery.mjs';
-import { reviewedChanges } from './review.mjs';
+import { protectedChanges, protectedQuestion, restoreProtected } from './protected.mjs';
 import { WorkerTimeoutError, createReservation } from './reservation.mjs';
 import { createCheckouts } from './checkout.mjs';
 import { createFollowUp } from './follow-up.mjs';
@@ -139,6 +139,19 @@ export function createWorker(config, dependencies = {}) {
       throw new Error(
         `Conflits encore présents dans ${unresolved.join(', ')} : supprime tous les marqueurs de conflit en modifiant ces fichiers, sans commande Git.`,
       );
+    // Fichiers protégés (worker, livraison, contrôles de la fusion) : rétablis tels qu’ils sont sur
+    // la branche cible, puis l’agent réalise la demande sans eux.
+    const repository = { command: checkout.command, cwd: checkout.cwd, base: `origin/${checkout.targetBranch}` };
+    const touched = await protectedChanges(task.job.executionProfile, repository);
+    if (touched.length) {
+      await restoreProtected(touched, repository);
+      throw Object.assign(
+        new Error(
+          `fichiers protégés modifiés (${touched.join(', ')}). Le worker les a rétablis tels qu’ils sont sur ${checkout.targetBranch} : une carte ne peut pas les changer. Réalise la demande sans les modifier ; si elle ne peut pas l’être, réponds avec status=question en l’expliquant.`,
+        ),
+        { protectedFiles: touched },
+      );
+    }
     const checks = [];
     for (const file of outputs) checks.push(await checkGeneratedFile(file, checkout.command));
     const repositoryChanged =
@@ -287,7 +300,7 @@ export function createWorker(config, dependencies = {}) {
           completedTests: [],
         };
       }
-      let deliverables, failure;
+      let deliverables, failure, blocked;
       await reservation.phase('vérifications locales', config.testsTimeoutMs, async () => {
         try {
           if (!cached) {
@@ -298,6 +311,7 @@ export function createWorker(config, dependencies = {}) {
         } catch (error) {
           if (reservation.signal.aborted) throw error;
           failure = `Corrige les fichiers à livrer : ${clean(error.message)}`;
+          blocked = error.protectedFiles;
         }
         if (!failure) {
           const fingerprint = await checkoutFingerprint(checkout, result, job.id);
@@ -313,7 +327,11 @@ export function createWorker(config, dependencies = {}) {
       delete job.checkpoint;
       await state.put(job);
       cached = undefined;
-      if (round === MAX_ROUNDS - 1) throw new Error(failure);
+      if (round === MAX_ROUNDS - 1) {
+        // L’agent revient sans cesse aux fichiers protégés : la carte l’explique, sans PR.
+        if (blocked) return { status: 'question', question: protectedQuestion(blocked) };
+        throw new Error(failure);
+      }
       feedback = `Corrige l’échec puis propose à nouveau le résultat : ${failure}`;
     }
   }
@@ -353,6 +371,13 @@ export function createWorker(config, dependencies = {}) {
         task,
         'La tâche n’a produit aucune modification par rapport à main. Pouvez-vous préciser ce qui doit changer ?',
       );
+    // Dernier contrôle avant de publier : aucun fichier protégé ne part dans la PR.
+    const touched = await protectedChanges(job.executionProfile, {
+      command,
+      cwd: checkout.cwd,
+      base: `origin/${targetBranch}`,
+    });
+    if (touched.length) throw new Error(`Publication refusée : fichiers protégés modifiés (${touched.join(', ')}).`);
     const sha = await command(['git', 'rev-parse', 'HEAD']);
     await reservation.action('progress', {
       message: 'Les tests locaux ont réussi. Le worker publie la branche et prépare la PR.',
@@ -374,16 +399,12 @@ export function createWorker(config, dependencies = {}) {
       log(`Exécution ${run.id} : publication refusée, le token GitHub ne peut pas modifier les workflows.`);
       return waiting;
     }
-    const reviewRequired = await reviewedChanges(job.executionProfile, command, `origin/${targetBranch}`);
-    const review = reviewRequired.length
-      ? `\n\nContrôles modifiés : approbation d’un responsable requise avant la fusion.\n${reviewRequired.map(item => `- ${item}`).join('\n')}`
-      : '';
     // PR starts unlabeled. Only enable merging after the site has bound this SHA.
     const pr = await github.ensurePullRequest(
       job.repository,
       job.branch,
       run.cardSnapshot.title.slice(0, 140),
-      `${result.summary}\n\nCarte PlaniFiKateur : ${run.cardId}\nExécution : ${run.id}\n\nVérifications locales :\n${checks.map(c => `- ${c}`).join('\n')}${review}`,
+      `${result.summary}\n\nCarte PlaniFiKateur : ${run.cardId}\nExécution : ${run.id}\n\nVérifications locales :\n${checks.map(c => `- ${c}`).join('\n')}`,
       signal,
       sha,
       targetBranch,
@@ -398,7 +419,6 @@ export function createWorker(config, dependencies = {}) {
       links: [pr.html_url],
       pullRequest: { url: pr.html_url, headSha: sha },
       files,
-      ...(reviewRequired.length ? { reviewRequired } : {}),
     });
     // Résultat publié : rattaché à la demande telle que le site l’enregistre désormais (avec cette
     // soumission), pour une mise à jour de la PR quand la branche cible avance.

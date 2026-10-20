@@ -16,6 +16,29 @@ function createLimiter(max, code, message) {
   };
 }
 
+// Budget glissant en mémoire : `max` unités par clé et par minute, dépensées après coup (le coût
+// d’une requête n’est connu qu’une fois traitée) et vérifiées avant la suivante.
+function createBudget(max, code, message) {
+  const used = new Map();
+  const current = now => {
+    for (const [entry, spent] of used) if (spent.until < now) used.delete(entry);
+  };
+  return {
+    check(key) {
+      current(Date.now());
+      if ((used.get(key)?.count || 0) >= max) throw httpError(429, code, message);
+    },
+    spend(key, count) {
+      if (!count) return;
+      const now = Date.now();
+      current(now);
+      const spent = used.get(key) || { count: 0, until: now + 60000 };
+      spent.count += count;
+      used.set(key, spent);
+    },
+  };
+}
+
 // Sessions personnelles (cookie HttpOnly), clés d’agent et clé de lecture.
 // Adresse du client. Derrière `trustProxy` mandataires (Railway : 1), l’adresse ajoutée par le
 // dernier mandataire de confiance dans X-Forwarded-For ; sinon celle de la connexion.
@@ -103,6 +126,13 @@ export function createAuth(store, { ownerToken = '', readToken = '', secureCooki
       accountLimit(JSON.stringify([address, email]));
       accountWideLimit(email);
     },
+    // Lots `partial` refusés : chaque tentative pour isoler les refus relit et revalide le tableau,
+    // en bloquant le serveur. Limite par compte, au-delà de l’usage de l’interface.
+    replays: createBudget(
+      200,
+      'too_many_refusals',
+      'Trop de modifications refusées en une minute. Rechargez le tableau puis réessayez.',
+    ),
     // Chaque reformulation consomme le quota de l’abonnement Claude : limite par compte.
     refineLimit: createLimiter(
       10,
