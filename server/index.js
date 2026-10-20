@@ -22,9 +22,28 @@ const mime = {
   '.json': 'application/json',
 };
 
+// Pages HTML : scripts, styles, polices et API de la même origine seulement ; aperçus d’images
+// locaux (blob:) ; aucun affichage dans le cadre d’un autre site.
+const HTML_HEADERS = {
+  'Content-Security-Policy':
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+  'Referrer-Policy': 'same-origin',
+  'X-Frame-Options': 'DENY',
+};
+
 export function createAppServer({ store, config = {}, dist = resolve('dist') }) {
   const api = createApi(store, config);
-  const server = createServer(async (req, res) => {
+  const server = createServer((req, res) =>
+    serve(req, res).catch(error => {
+      // Dernier recours : une erreur imprévue ferme la requête sans arrêter le serveur.
+      (config.logError || console.error)(`PlaniFiKateur : erreur sur ${req.method} ${req.url.split('?')[0]}`, error);
+      if (!res.headersSent) {
+        res.writeHead(500);
+        res.end();
+      } else res.destroy();
+    }),
+  );
+  async function serve(req, res) {
     if (await api(req, res)) return;
     if (!['GET', 'HEAD'].includes(req.method)) {
       res.writeHead(405);
@@ -60,9 +79,17 @@ export function createAppServer({ store, config = {}, dist = resolve('dist') }) 
     }
     res.setHeader('Content-Type', mime[extname(file)] || 'application/octet-stream');
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (extname(file) === '.html') for (const [name, value] of Object.entries(HTML_HEADERS)) res.setHeader(name, value);
+    // Origine HTTPS : le navigateur n’y revient plus en HTTP.
+    if (config.secureCookie) res.setHeader('Strict-Transport-Security', 'max-age=31536000');
+    // Les fichiers compilés portent l’empreinte de leur contenu : ils ne changent jamais.
     res.setHeader(
       'Cache-Control',
-      extname(file) === '.html' || path === '/build-info.json' ? 'no-store' : 'public, max-age=3600',
+      extname(file) === '.html' || path === '/build-info.json'
+        ? 'no-store'
+        : path.startsWith('/assets/')
+          ? 'public, max-age=31536000, immutable'
+          : 'public, max-age=3600',
     );
     if (req.method === 'HEAD') {
       res.end();
@@ -71,7 +98,7 @@ export function createAppServer({ store, config = {}, dist = resolve('dist') }) 
     createReadStream(file)
       .on('error', () => res.destroy())
       .pipe(res);
-  });
+  }
   // Les flux d’événements restent ouverts indéfiniment : les fermer pour que l’arrêt aboutisse.
   const close = server.close.bind(server);
   server.close = callback => {

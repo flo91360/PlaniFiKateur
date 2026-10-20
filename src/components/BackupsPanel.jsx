@@ -1,17 +1,13 @@
-import React, { useEffect, useState } from 'react';
-import { apiBlob, apiData, apiFetch } from '../lib/api-client.js';
+import React from 'react';
+import { apiBlob, apiData } from '../lib/api-client.js';
+import { useApiAction, useApiResource } from '../lib/use-api.js';
+import FormStatus from './FormStatus.jsx';
 
 export default function BackupsPanel() {
-  const [status, setStatus] = useState(null),
-    [error, setError] = useState(''),
-    [busy, setBusy] = useState(false);
-  const load = async () => {
-    // Réponse sans enveloppe data : fichiers, erreur, intervalle et rétention.
-    setStatus(await apiFetch('backups', { fallback: 'Impossible de consulter les sauvegardes.' }));
-  };
-  useEffect(() => {
-    void load().catch(cause => setError(cause.message));
-  }, []);
+  // Réponse sans enveloppe data : fichiers, erreur, intervalle et rétention.
+  const backups = useApiResource('backups', { raw: true, fallback: 'Impossible de consulter les sauvegardes.' });
+  const status = backups.data;
+  const { busy, error, run } = useApiAction();
   const download = async name => {
     const blob = await apiBlob(`backups/${name}`, { fallback: 'Impossible de télécharger la sauvegarde.' });
     const url = URL.createObjectURL(blob);
@@ -21,21 +17,15 @@ export default function BackupsPanel() {
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
-  const action = async name => {
-    setBusy(true);
-    setError('');
-    try {
+  // Sans nom : crée une copie, relit la liste puis la télécharge.
+  const action = name =>
+    run(async () => {
       if (!name) {
         name = (await apiData('backups', { method: 'POST', fallback: 'Impossible de créer la sauvegarde.' })).name;
-        await load();
+        backups.reload();
       }
       await download(name);
-    } catch (cause) {
-      setError(cause.message);
-    } finally {
-      setBusy(false);
-    }
-  };
+    });
   return (
     <section className="backup-panel">
       <h3>Sauvegardes</h3>
@@ -45,11 +35,7 @@ export default function BackupsPanel() {
           : 'Chargement des sauvegardes…'}
       </p>
       <p>Téléchargez régulièrement une copie pour la conserver en dehors du site.</p>
-      {(error || status?.error) && (
-        <p role="alert" className="form-error">
-          {error || status.error}
-        </p>
-      )}
+      <FormStatus error={error || backups.error || status?.error} />
       <button className="secondary-button" disabled={busy} onClick={() => void action()}>
         {busy ? 'Préparation…' : 'Créer et télécharger une sauvegarde SQLite'}
       </button>

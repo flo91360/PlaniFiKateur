@@ -61,7 +61,10 @@ Hors CI, Playwright cherche Chromium via `PLAYWRIGHT_CHROMIUM_EXECUTABLE` ou
   erreur ESLint.
 - Peu de dépendances : préférer les modules intégrés de Node (`node:sqlite`,
   `node:crypto`, `node:test`) avant d’ajouter un paquet.
-- Réponses API `{ "data": ... }`, erreurs `{ "error": { "code", "message" } }`.
+- Réponses API `{ "data": ... }`, erreurs `{ "error": { "code", "message" } }`. Exceptions
+  historiques gardées pour l’interface, à ne pas étendre : session et comptes (`/session`,
+  `/accounts/setup|accept|password`), `GET/PUT /workspace` et `GET /backups` renvoient leur
+  objet sans enveloppe.
   Toute route ajoutée ou modifiée se reflète dans `public/openapi.json` (le
   test `tests/openapi.test.js` compare la spécification à la table de routes)
   et dans `docs/api.md` (ou `docs/agents.md` pour le parcours agent).

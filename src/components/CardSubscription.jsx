@@ -1,71 +1,47 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Bell, BellOff, UserPlus } from 'lucide-react';
 import { apiData } from '../lib/api-client.js';
+import { useApiAction, useApiResource } from '../lib/use-api.js';
 import { useServerEvent } from '../lib/use-server-events.js';
 
 // Suivi de la carte : relu à l’ouverture, puis quand un abonnement de la carte ou le contenu de son
-// projet change (un commentaire fait suivre la carte à son auteur).
+// projet change (un commentaire fait suivre la carte à son auteur). Pas de lecture pendant un
+// enregistrement : sa réponse fait foi.
 export default function CardSubscription({ projectId, cardId }) {
-  const [version, setVersion] = useState(0);
+  const base = `projects/${projectId}/cards/${cardId}`;
+  const { busy, error: actionError, run, clear } = useApiAction();
+  const read = { enabled: !busy, fallback: 'Suivi indisponible.' };
+  const subscription = useApiResource(`${base}/subscription`, read);
+  const subscribers = useApiResource(`${base}/subscribers`, read);
   useServerEvent((type, data) => {
     if (
       (type === 'subscriptions' && data.cardId === cardId) ||
       (type === 'workspace' && (!data.projectIds || data.projectIds.includes(projectId)))
-    )
-      setVersion(value => value + 1);
-  });
-  const [following, setFollowing] = useState(null),
-    [members, setMembers] = useState(null);
-  const [selected, setSelected] = useState(''),
-    [busy, setBusy] = useState(false),
-    [error, setError] = useState('');
-  const base = `projects/${projectId}/cards/${cardId}`;
-  const request = useCallback(
-    (suffix, options = {}) => apiData(`${base}/${suffix}`, { fallback: 'Suivi indisponible.', ...options }),
-    [base],
-  );
-  const read = useCallback(
-    async signal => {
-      const [subscription, people] = await Promise.all([
-        request('subscription', { signal }),
-        request('subscribers', { signal }),
-      ]);
-      if (!signal?.aborted) {
-        setFollowing(subscription.following);
-        setMembers(people);
-      }
-    },
-    [request],
-  );
-  useEffect(() => {
-    if (busy) return;
-    const controller = new AbortController();
-    read(controller.signal).catch(cause => {
-      if (!controller.signal.aborted) setError(cause.message);
-    });
-    return () => controller.abort();
-  }, [read, version, busy]);
-  useEffect(() => {
-    setFollowing(null);
-    setMembers(null);
-    setSelected('');
-  }, [base]);
-  const update = async (suffix, data) => {
-    setBusy(true);
-    setError('');
-    try {
-      const result = await request(suffix, { method: 'PUT', data });
-      if (suffix === 'subscription') {
-        setFollowing(result.following);
-      } else {
-        setMembers(result);
-        setSelected('');
-      }
-    } catch (cause) {
-      setError(cause.message);
-    } finally {
-      setBusy(false);
+    ) {
+      subscription.reload();
+      subscribers.reload();
     }
+  });
+  const following = subscription.data?.following ?? null,
+    members = subscribers.data ?? null;
+  const [selected, setSelected] = useState('');
+  useEffect(() => setSelected(''), [base]);
+  const update = async (suffix, data) => {
+    const result = await run(() =>
+      apiData(`${base}/${suffix}`, { method: 'PUT', data, fallback: 'Suivi indisponible.' }),
+    );
+    if (result === undefined) return;
+    if (suffix === 'subscription') subscription.setData(result);
+    else {
+      subscribers.setData(result);
+      setSelected('');
+    }
+  };
+  const error = actionError || subscription.error || subscribers.error;
+  const retry = () => {
+    clear();
+    subscription.reload();
+    subscribers.reload();
   };
   const followers = members?.filter(member => member.following) || [];
   return (
@@ -127,14 +103,7 @@ export default function CardSubscription({ projectId, cardId }) {
       {error && (
         <div role="alert" className="form-error">
           {error}
-          <button
-            className="secondary-button"
-            onClick={() =>
-              read()
-                .then(() => setError(''))
-                .catch(cause => setError(cause.message))
-            }
-          >
+          <button className="secondary-button" onClick={retry}>
             Réessayer
           </button>
         </div>

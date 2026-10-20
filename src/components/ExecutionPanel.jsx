@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Bot, ExternalLink } from 'lucide-react';
 import { apiData } from '../lib/api-client.js';
+import { useApiAction } from '../lib/use-api.js';
+import FormStatus from './FormStatus.jsx';
 import { unfinished } from '../lib/use-card-executions.js';
 import { effortLabels } from '../../worker/ai-settings.mjs';
 import { usageText } from '../lib/execution-usage.js';
@@ -170,23 +172,15 @@ export default function ExecutionPanel({
 }) {
   const run = execution.current;
   const [form, setForm] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const { busy, error, run: perform } = useApiAction();
   const base = `projects/${projectId}/cards/${cardId}/work`;
-  const act = async request => {
-    setBusy(true);
-    setError('');
-    try {
+  const act = request =>
+    perform(async () => {
       await request();
       setForm(null);
       await execution.reload();
       await onChanged();
-    } catch (cause) {
-      setError(cause.message);
-    } finally {
-      setBusy(false);
-    }
-  };
+    });
   const transition = (action, message) =>
     act(() => apiData(`${base}/${run.id}/${action}`, { method: 'POST', data: { version: run.version, message } }));
   const start = () =>
@@ -363,11 +357,7 @@ export default function ExecutionPanel({
           Seuls les responsables du projet peuvent confier cette carte à l’agent ou valider son travail.
         </p>
       )}
-      {error && (
-        <p className="form-error" role="alert">
-          {error}
-        </p>
-      )}
+      <FormStatus error={error} />
     </section>
   );
 }

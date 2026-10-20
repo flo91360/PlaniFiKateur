@@ -64,6 +64,13 @@ export function createApi(store, config = {}) {
       // Une erreur sans statut HTTP est inattendue : la journaliser pour le diagnostic.
       // Seuls la méthode et le chemin sont écrits, jamais les paramètres, en-têtes ou corps.
       if (!error.status) logError(`PlaniFiKateur : erreur interne sur ${req.method} ${req.url.split('?')[0]}`, error);
+      // Réponse déjà commencée (flux d’événements, pièce jointe) : elle ne peut plus devenir une
+      // erreur JSON, la connexion est fermée.
+      if (res.headersSent) {
+        if (error.status) logError(`PlaniFiKateur : erreur sur ${req.method} ${req.url.split('?')[0]}`, error);
+        res.destroy();
+        return true;
+      }
       sendJson(res, error.status || 500, {
         error: {
           code: error.code || 'internal_error',

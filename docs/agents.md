@@ -1,4 +1,4 @@
-# Parcours agent par projet — v0.1.68
+# Parcours agent par projet — v0.1.69
 
 Un seul agent actif, sans délégation. Le site pilote les demandes et confirme la fusion GitHub ;
 l’agent s’exécute dans un service externe. Le [worker Codex](worker.md) fournit ce
@@ -102,6 +102,8 @@ utilisent `{ "data": ... }`, les erreurs `{ "error": { "code", "message" } }`.
 | `POST /api/v1/agents` | Administrateur | `{name, projectIds}` ; clé retournée une seule fois |
 | `PUT /api/v1/agents/{id}` | Administrateur | `{name, projectIds}` ; modifier les projets autorisés |
 | `DELETE /api/v1/agents/{id}` | Administrateur | Révoquer la clé |
+| `GET /api/v1/agent/projects` | Agent | Projets autorisés, avec dépôt, profil d’exécution, moteur, modèle et `webhookConfigured` |
+| `POST /api/v1/agent/projects/{projet}/diagnostic` | Agent autorisé | Diagnostic du worker pour ce projet (voir [multi-projets](multi-projets.md)) |
 | `GET /api/v1/projects/{projet}/work` | Agent | File des exécutions prêtes ou interrompues |
 | `GET /api/v1/projects/{projet}/cards/{carte}/work` | Membre ou agent autorisé | Historique des exécutions, sans réservation secrète |
 | `POST` sur cette dernière route | Membre | Préparer avec `{}` ; description de la carte, dépôt du projet, fusion automatique |
@@ -113,6 +115,7 @@ Les actions d’agent :
 | Action | JSON envoyé | Effet |
 | --- | --- | --- |
 | `claim` | `{version}` | Réserver ; réponse incluant `leaseToken`, nouvelle `version`, `leaseExpiresAt` |
+| `revise` | `{version}` | Reprendre sa propre PR en attente de fusion (branche cible avancée, corrections) ; nouvelle réservation, voir [le parcours GitHub](github.md) |
 | `heartbeat` | `{leaseToken}` | Prolonger la réservation sans changer la version |
 | `progress` | `{version, leaseToken, message}` | Enregistrer une mise à jour importante et prolonger la réservation |
 | `question` | `{version, leaseToken, message}` | Attendre une réponse humaine, sans délai d’expiration |
@@ -206,8 +209,9 @@ y compris les résultats à valider. Il faut préparer une nouvelle demande.
 
 Les événements alimentent l’historique et les `recipientIds` des futures
 notifications : demandeur, auteurs, participants et abonnés actifs, selon leurs
-préférences, sans notifier l’auteur de l’action. Cette version n’envoie pas de
-notifications et ne fournit pas encore de boîte de réception.
+préférences, sans notifier l’auteur de l’action. Elles s’affichent dans la boîte de
+notifications du site (voir [les notifications](accounts.md#notifications--v0128)) ; aucun
+e-mail n’est envoyé.
 
 ## Vérifications
 

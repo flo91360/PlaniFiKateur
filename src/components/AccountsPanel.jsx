@@ -1,39 +1,32 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { apiData } from '../lib/api-client.js';
 import { ACCENTS, DEFAULT_ACCENT } from '../lib/accents.js';
+import { useApiAction, useApiResource } from '../lib/use-api.js';
 import BackupsPanel from './BackupsPanel.jsx';
+import FormStatus from './FormStatus.jsx';
 
 const request = (path, options) => apiData(path, { fallback: 'Action impossible.', ...options });
 export default function AccountsPanel({ user, accent = DEFAULT_ACCENT, onAccent = () => {}, onLogout }) {
-  const [users, setUsers] = useState([]),
-    [name, setName] = useState(''),
-    [email, setEmail] = useState('');
-  const [link, setLink] = useState(''),
-    [message, setMessage] = useState(''),
-    [error, setError] = useState(''),
-    [busy, setBusy] = useState(false);
-  const [deletingId, setDeletingId] = useState(null);
+  const [name, setName] = useState(''),
+    [email, setEmail] = useState(''),
+    [link, setLink] = useState(''),
+    [deletingId, setDeletingId] = useState(null);
   const [currentPassword, setCurrent] = useState(''),
     [password, setPassword] = useState('');
-  const load = useCallback(async () => {
-    if (user.role === 'admin') setUsers(await request('users'));
-  }, [user.role]);
-  useEffect(() => {
-    void load().catch(cause => setError(cause.message));
-  }, [load]);
-  const action = async fn => {
-    setBusy(true);
-    setError('');
-    setMessage('');
-    try {
-      await fn();
-      await load();
-    } catch (cause) {
-      setError(cause.message);
-    } finally {
-      setBusy(false);
-    }
-  };
+  // Membres de l’espace : réservés à l’administrateur, relus après chaque action.
+  const members = useApiResource('users', { enabled: user.role === 'admin', fallback: 'Action impossible.' });
+  const users = members.data || [];
+  const { busy, error, message, run } = useApiAction();
+  // `fn` renvoie le message de réussite éventuel.
+  const action = fn =>
+    run(
+      async () => {
+        const done = await fn();
+        members.reload();
+        return done;
+      },
+      done => done || '',
+    );
   // La couleur s’applique aussitôt ; elle est rétablie si le serveur refuse de l’enregistrer.
   const chooseAccent = id =>
     action(async () => {
@@ -46,14 +39,14 @@ export default function AccountsPanel({ user, accent = DEFAULT_ACCENT, onAccent 
         onAccent(previous);
         throw cause;
       }
-      setMessage(id === DEFAULT_ACCENT ? 'Couleur par défaut rétablie.' : 'Couleur enregistrée sur votre compte.');
+      return id === DEFAULT_ACCENT ? 'Couleur par défaut rétablie.' : 'Couleur enregistrée sur votre compte.';
     });
   const invite = async id => {
     const result = await request(id ? `users/${id}/invitation` : 'users', { method: 'POST', data: { name, email } });
     setLink(`${location.origin}/#invitation=${result.token}`);
-    setMessage('Invitation valable 7 jours. Transmettez ce lien uniquement à la personne concernée.');
     setName('');
     setEmail('');
+    return 'Invitation valable 7 jours. Transmettez ce lien uniquement à la personne concernée.';
   };
   return (
     <div className="accounts-panel">
@@ -94,7 +87,7 @@ export default function AccountsPanel({ user, accent = DEFAULT_ACCENT, onAccent 
               await request('accounts/password', { method: 'POST', data: { currentPassword, password } });
               setCurrent('');
               setPassword('');
-              setMessage('Mot de passe modifié. Les autres sessions ont été déconnectées.');
+              return 'Mot de passe modifié. Les autres sessions ont été déconnectées.';
             })
           }
         >
@@ -215,7 +208,7 @@ export default function AccountsPanel({ user, accent = DEFAULT_ACCENT, onAccent 
                               await request(`users/${member.id}`, { method: 'DELETE' });
                               setDeletingId(null);
                               setLink('');
-                              setMessage(`Le compte de ${member.name} a été supprimé.`);
+                              return `Le compte de ${member.name} a été supprimé.`;
                             })
                           }
                         >
@@ -239,13 +232,12 @@ export default function AccountsPanel({ user, accent = DEFAULT_ACCENT, onAccent 
           <BackupsPanel />
         </>
       )}
-      {error && (
-        <p role="alert" className="form-error">
-          {error}
-        </p>
-      )}
-      {message && <p role="status">{message}</p>}
-      <button className="secondary-button" disabled={busy} onClick={() => void action(onLogout)}>
+      <FormStatus message={message} error={error || members.error} />
+      <button
+        className="secondary-button"
+        disabled={busy}
+        onClick={() => void action(async () => void (await onLogout()))}
+      >
         Se déconnecter
       </button>
     </div>

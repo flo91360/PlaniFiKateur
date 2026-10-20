@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.69 — 2026-10-20
+<!-- planifikateur:audit-constats-bas -->
+
+- **En-têtes de sécurité, erreurs tardives, dépendances à jour et finitions de l’audit** : Les pages du site interdisent les scripts externes et l’affichage dans un autre site, et les fichiers compilés restent en cache. Une erreur survenue pendant un flux ou un téléchargement ne peut plus arrêter le serveur. Vite passe en version 8 et lucide-react en version 1 ; les actions GitHub sont épinglées par empreinte et l’isolation du worker est réellement testée en CI. Les petits textes passent à 11 px, plusieurs panneaux utilisent les outils communs de chargement et de messages, et la documentation de l’API et du parcours agent est complétée.
+
 ## 0.1.68 — 2026-10-20
 <!-- planifikateur:audit-constats-moyens -->
 

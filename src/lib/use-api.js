@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
-import { apiData } from './api-client.js';
+import { apiData, apiFetch } from './api-client.js';
 
 // Ressource lue sur l’API (`path`, relatif à /api/v1/) : la requête est annulée au démontage ou
 // au changement de chemin, et la réponse d’un ancien chemin n’est jamais affichée.
 // - `data` vaut undefined tant que rien n’est chargé ; `setData` la remplace après une
 //   modification enregistrée, `reload` relit la ressource ;
 // - `key` relit la ressource quand une donnée dont elle dépend change (le dépôt d’un projet…) ;
-// - `every` (ms) la relit périodiquement, sans effacer la dernière valeur en cas d’échec.
-export function useApiResource(path, { enabled = true, key = '', every = 0 } = {}) {
+// - `every` (ms) la relit périodiquement, sans effacer la dernière valeur en cas d’échec ;
+// - `fallback` : message d’erreur si le serveur n’en donne pas ;
+// - `raw` : la route répond sans enveloppe `data` (exceptions historiques, voir docs/api.md).
+export function useApiResource(path, { enabled = true, key = '', every = 0, fallback, raw = false } = {}) {
   const identity = `${path}\n${key}`;
   const [state, setState] = useState({ identity: null, data: undefined, error: '' });
   const [version, setVersion] = useState(0);
@@ -15,7 +17,7 @@ export function useApiResource(path, { enabled = true, key = '', every = 0 } = {
     if (!enabled || !path) return;
     const controller = new AbortController();
     const load = first =>
-      apiData(path, { signal: controller.signal })
+      (raw ? apiFetch : apiData)(path, { signal: controller.signal, ...(fallback ? { fallback } : {}) })
         .then(data => setState({ identity, data, error: '' }))
         .catch(cause => {
           if (first && !controller.signal.aborted) setState({ identity, data: undefined, error: cause.message });
@@ -26,7 +28,7 @@ export function useApiResource(path, { enabled = true, key = '', every = 0 } = {
       controller.abort();
       clearInterval(timer);
     };
-  }, [identity, path, enabled, every, version]);
+  }, [identity, path, enabled, every, version, fallback, raw]);
   const current = state.identity === identity ? state : { data: undefined, error: '' };
   const setData = useCallback(
     update =>
