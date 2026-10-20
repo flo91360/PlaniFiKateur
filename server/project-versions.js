@@ -81,7 +81,7 @@ export function createVersionSync(
       const repositories = [
         ...new Set(
           store
-            .read()
+            .readLight()
             .projects.map(project => store.workflows.githubProject(project.id))
             .filter(Boolean)
             .map(repo => repo.toLowerCase()),

@@ -101,8 +101,10 @@ export function createAgentActions(
   };
   // Fichiers générés joints à la carte, sans invalider l’exécution qui les a produits : les
   // modifications humaines suivantes restent protégées.
+  // Seul le projet de la carte est lu, validé (limites de ses pièces jointes) et réécrit : les
+  // identifiants des fichiers générés (`generated-<exécution>-…`) ne peuvent pas exister ailleurs.
   const attachFiles = (run, files, agent) => {
-    const projects = readProjects();
+    const projects = readProjects([run.projectId]);
     const card = projects.find(project => project.id === run.projectId).cards.find(card => card.id === run.cardId);
     card.attachments = [...(card.attachments || []).filter(file => !files.some(next => next.id === file.id)), ...files];
     let clean;
@@ -115,7 +117,7 @@ export function createAgentActions(
     run.source = source(delivered);
     run.cardSnapshot = { ...run.cardSnapshot, attachments: delivered.attachments };
     // Ni révision ni date ici : save() les met à jour juste après avec le statut de la carte.
-    writeProjects(clean, undefined, { revision: false });
+    writeProjects(clean, undefined, { revision: false, scope: [run.projectId] });
     audit(
       agent,
       'card.updated',

@@ -70,19 +70,22 @@ export function settlePartial(changes, error, attempt, budget = PARTIAL_ATTEMPTS
   return { skipped, rejected, attempts };
 }
 
-// Un projet, une liste ou une carte présent avant et absent après ?
-export const removesContent = (before, after) => {
-  const ids = projects =>
-    new Set(
-      projects.flatMap(project => [
-        project.id,
-        ...project.lists.map(list => list.id),
-        ...project.cards.map(card => card.id),
-      ]),
-    );
-  const kept = ids(after);
-  return [...ids(before)].some(id => !kept.has(id));
+// Projets, listes et cartes présents avant et absents après.
+export const removedContent = (before, after) => {
+  const ids = (projects, of) => new Set(projects.flatMap(of));
+  const gone = of => {
+    const kept = ids(after, of);
+    return [...ids(before, of)].filter(id => !kept.has(id));
+  };
+  return {
+    projectIds: gone(project => [project.id]),
+    listIds: gone(project => project.lists.map(list => list.id)),
+    cardIds: gone(project => project.cards.map(card => card.id)),
+  };
 };
+// Un projet, une liste ou une carte présent avant et absent après ?
+export const removesContent = (before, after) =>
+  Object.values(removedContent(before, after)).some(ids => ids.length > 0);
 
 // Actions qui notifient leurs destinataires (recipientIds : participants et abonnés de la carte,
 // sans l’auteur de l’action). Les messages de l’agent sont déjà annoncés par leur action work.*.
@@ -209,8 +212,9 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
   let writes = 0,
     touched = new Set();
   const snapshots = new WeakMap();
-  const readProjects = () => {
-    const projects = readWorkspace(db);
+  // `projectIds` : seulement ces projets, à écrire ensuite avec `scope` (writeProjects).
+  const readProjects = (projectIds = null) => {
+    const projects = readWorkspace(db, { projectIds });
     snapshots.set(projects, writes);
     return projects;
   };
@@ -335,6 +339,7 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
     return removed;
   };
   const userById = id => db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  const projectName = projectId => db.prepare('SELECT name FROM projects WHERE id = ?').get(projectId)?.name;
   const findCard = (projectId, cardId) => {
     const [project] = readWorkspace(db, { projectIds: [projectId] });
     const card = project?.cards.find(c => c.id === cardId);
@@ -377,6 +382,8 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
   };
   const workflows = createWorkflows(db, {
     canLaunch,
+    // Projets sans le contenu des pièces jointes : lecture seule (file de l’agent, « À traiter »).
+    readLight: projectIds => readWorkspace(db, { projectIds, attachmentData: false }),
     requiresApproval: projectId => access.mergeApproval(projectId),
     transaction,
     audit,
@@ -699,12 +706,16 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
       return activeMembers(projectId).map(user => ({ ...user, following: following(card, user.id, prefs) }));
     },
     projectCardFollowers(projectId) {
-      const project = this.read().projects.find(project => project.id === projectId);
+      const [project] = readWorkspace(db, { projectIds: [projectId], attachmentData: false });
       if (!project) fail(404, 'project_not_found', 'Projet inexistant.');
       const members = activeMembers(projectId);
       // Une seule lecture des préférences pour toutes les cartes du projet.
       const prefsByCard = new Map(project.cards.map(card => [card.id, []]));
-      for (const row of db.prepare('SELECT card_id,user_id,following FROM card_subscriptions').all())
+      for (const row of db
+        .prepare(
+          'SELECT card_id,user_id,following FROM card_subscriptions WHERE card_id IN (SELECT id FROM cards WHERE project_id = ?)',
+        )
+        .all(projectId))
         prefsByCard.get(row.card_id)?.push(row);
       return Object.fromEntries(
         project.cards.map(card => [
@@ -816,7 +827,7 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
         access.setMergeApproval(projectId, data.required);
         audit(actor, 'project.approval_changed', {
           projectId,
-          projectName: this.read().projects.find(project => project.id === projectId)?.name,
+          projectName: projectName(projectId),
           details: { required: data.required },
           recipientIds: [],
         });
@@ -890,7 +901,7 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
         emit({ type: 'workspace', revision: this.getRevision() });
         audit(actor, 'project.access_changed', {
           projectId,
-          projectName: this.read().projects.find(project => project.id === projectId)?.name,
+          projectName: projectName(projectId),
           details: { memberRole: data.memberRole, members },
           recipientIds: Object.keys(members),
         });
@@ -989,14 +1000,19 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
     previewChanges(changes, actor, { strict = false, partial = false } = {}) {
       const before = this.read();
       const plan = (state, batch) => planChanges(state, batch, actor, partial ? false : strict).clean;
-      if (!partial) return { removes: removesContent(before.projects, plan(before, changes)), replays: 0 };
+      // `removed` : projets, listes et cartes retirés (voir backups.covers).
+      const result = (projects, replays) => {
+        const removed = removedContent(before.projects, projects);
+        return { removes: Object.values(removed).some(ids => ids.length > 0), removed, replays };
+      };
+      if (!partial) return result(plan(before, changes), 0);
       let state = before;
       try {
         state = { ...state, projects: plan(state, changes) };
-        return { removes: removesContent(before.projects, state.projects), replays: 0 };
+        return result(state.projects, 0);
       } catch (error) {
         if (!refusal(error)) throw error;
-        if (!Array.isArray(changes)) return { removes: false, replays: 0 };
+        if (!Array.isArray(changes)) return result(before.projects, 0);
         const { attempts } = settlePartial(changes, error, (from, to) => {
           try {
             state = { ...state, projects: plan(state, changes.slice(from, to)) };
@@ -1006,8 +1022,19 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
             return { error: failure };
           }
         });
-        return { removes: removesContent(before.projects, state.projects), replays: attempts };
+        return result(state.projects, attempts);
       }
+    },
+    // Un de ces projets, listes ou cartes a-t-il changé depuis l’action d’historique `activityId` ?
+    // Toute modification d’une carte (champs, commentaires, pièces jointes, exécution) est inscrite
+    // à l’historique avec elle ; une restauration change tout.
+    touchedSince(activityId, { projectIds = [], listIds = [], cardIds = [] }) {
+      const among = 'IN (SELECT value FROM json_each(?))';
+      return !!db
+        .prepare(
+          `SELECT 1 FROM activity WHERE id > ? AND (action = 'workspace.restored' OR project_id ${among} OR card_id ${among} OR json_extract(payload, '$.details.listId') ${among}) LIMIT 1`,
+        )
+        .get(activityId, JSON.stringify(projectIds), JSON.stringify(cardIds), JSON.stringify(listIds));
     },
     ...accounts,
     ...history,

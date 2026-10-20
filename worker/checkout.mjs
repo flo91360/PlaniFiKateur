@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { resolveWorkerCommand } from './execution-profile.mjs';
 import { runtimeEnvironment, checkRuntime } from './runtime.mjs';
 import { isolatedCommand } from './isolation.mjs';
+import { stopStrays as stopStrayProcesses } from './strays.mjs';
 import {
   checkoutProblem,
   gitGuard,
@@ -19,7 +20,15 @@ const REMOTE_GIT = new Set(['clone', 'fetch', 'ls-remote', 'push']);
 
 // Checkout d’une tâche : répertoire, environnements des commandes (projet isolé, Git local, Git
 // distant) et préparation de la branche à jour de la branche cible, dépendances installées.
-export function createCheckouts({ config, execute, state, log, clean, github }) {
+export function createCheckouts({ config, execute, state, log, clean, github, stopStrays = stopStrayProcesses }) {
+  // Avant une commande qui reçoit le jeton GitHub : dans l’image Docker, aucun processus restant du
+  // moteur IA ne doit pouvoir le lire (worker/strays.mjs).
+  async function beforeRemote() {
+    if (!config.stopStrays) return;
+    const stopped = await stopStrays();
+    if (stopped.length) log(`Processus restants arrêtés avant une commande Git distante : ${stopped.join(', ')}.`);
+  }
+
   // Répertoire de la tâche et environnements de ses commandes : celles du projet, Git local et Git
   // distant (seul à recevoir le jeton GitHub).
   function workspace({ job, reservation }) {
@@ -54,6 +63,7 @@ export function createCheckouts({ config, execute, state, log, clean, github }) 
     };
     const gitEnvFor = args => (REMOTE_GIT.has(args[1]) ? gitRemoteEnv : gitEnv);
     const command = async (args, extra = {}) => {
+      if (args[0] === 'git' && REMOTE_GIT.has(args[1])) await beforeRemote();
       const result = await execute(args, {
         cwd,
         env: args[0] === 'git' ? gitEnvFor(args) : env,
@@ -64,7 +74,7 @@ export function createCheckouts({ config, execute, state, log, clean, github }) 
       return result.output.trim();
     };
     const url = `https://github.com/${job.repository}.git`;
-    return { cwd, home, npmCache, env, gitEnv, gitRemoteEnv, gitEnvFor, command, url };
+    return { cwd, home, npmCache, env, gitEnv, gitRemoteEnv, gitEnvFor, command, url, beforeRemote };
   }
 
   // Checkout de la branche de la tâche à jour de la branche cible, dépendances installées.
@@ -77,7 +87,10 @@ export function createCheckouts({ config, execute, state, log, clean, github }) 
     // Commande du projet (installation, tests) : code de la branche, exécuté isolé du worker.
     const project = args =>
       isolatedCommand(resolveWorkerCommand(args, workerDirectory), { config, cwd, writable: [npmCache] });
-    const git = args => execute(['git', ...args], { cwd, env: gitEnvFor(['git', ...args]), signal });
+    const git = async args => {
+      if (REMOTE_GIT.has(args[0])) await beforeRemote();
+      return execute(['git', ...args], { cwd, env: gitEnvFor(['git', ...args]), signal });
+    };
     await mkdir(config.stateRoot, { recursive: true });
     await checkRuntime(profile, config, execute, signal);
     await mkdir(join(config.stateRoot, 'jobs'), { recursive: true, mode: 0o700 });
@@ -160,6 +173,7 @@ export function createCheckouts({ config, execute, state, log, clean, github }) 
       env,
       gitEnv,
       gitRemoteEnv,
+      beforeRemote,
       project,
       command,
       url,

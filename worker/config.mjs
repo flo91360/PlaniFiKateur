@@ -69,6 +69,10 @@ export function readWorkerConfig(env = process.env) {
   // bwrap dans l’image Docker ; none pour un worker de développement sans bubblewrap.
   const isolation = env.PLANIFIKATEUR_WORKER_ISOLATION || 'none';
   if (!ISOLATION_MODES.includes(isolation)) throw new Error('PLANIFIKATEUR_WORKER_ISOLATION : bwrap ou none.');
+  // 1 dans l’image Docker, où l’utilisateur du worker n’a pas d’autre processus : ceux qui restent
+  // sont arrêtés avant une commande Git distante (worker/strays.mjs).
+  const stopStrays = env.PLANIFIKATEUR_WORKER_STOP_STRAYS || '0';
+  if (!['0', '1'].includes(stopStrays)) throw new Error('PLANIFIKATEUR_WORKER_STOP_STRAYS : 0 ou 1.');
   return {
     origin: origin.origin,
     token: required('PLANIFIKATEUR_AGENT_TOKEN'),
@@ -78,6 +82,7 @@ export function readWorkerConfig(env = process.env) {
     repositories,
     stateRoot,
     isolation,
+    stopStrays: stopStrays === '1',
     discovery,
     node22Bin: resolve(env.PLANIFIKATEUR_NODE22_BIN || '/opt/node22/bin'),
     codexHome: resolve(env.CODEX_HOME || `${stateRoot}/codex`),

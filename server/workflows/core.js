@@ -152,15 +152,15 @@ export function createCore(db, { audit, findCard, readProjects, writeProjects, r
       // Question de la liste Discussion : la carte garde son statut, seule la réponse de l’agent
       // rejoint sa discussion.
       if (action === 'submit') {
-        const projects = readProjects();
-        const card = projects.find(p => p.id === run.projectId).cards.find(c => c.id === run.cardId);
+        const projects = readProjects([run.projectId]);
+        const card = projects[0].cards.find(c => c.id === run.cardId);
         addComment(card, run, actor, `work-${run.id}-answer`, run.submissions.at(-1).summary, run.updatedAt);
-        writeProjects(projects, run.updatedAt);
+        writeProjects(projects, run.updatedAt, { scope: [run.projectId] });
       }
     } else if (context && syncCard) {
-      const projects = readProjects();
-      const index = projects.findIndex(p => p.id === run.projectId);
-      const card = projects[index].cards.find(c => c.id === run.cardId);
+      // Seul le projet de l’exécution est lu et réécrit, sans les autres ni leurs pièces jointes.
+      const projects = readProjects([run.projectId]);
+      const card = projects[0].cards.find(c => c.id === run.cardId);
       card.status = CARD_STATUS[run.state];
       card.updatedAt = run.updatedAt;
       card.updatedBy = actor ? { id: actor.id, name: actor.name } : null;
@@ -170,8 +170,8 @@ export function createCore(db, { audit, findCard, readProjects, writeProjects, r
       if (['question', 'answer'].includes(action) || (action === 'checks' && run.state === 'waiting'))
         questionComments(card, run);
       // Tâche terminée (PR fusionnée, résultat accepté) : rangée dans la liste « À tester ».
-      projects[index] = withDoneList(projects[index]);
-      writeProjects(projects, run.updatedAt);
+      projects[0] = withDoneList(projects[0]);
+      writeProjects(projects, run.updatedAt, { scope: [run.projectId] });
     }
     audit(actor, `work.${action}`, {
       projectId: run.projectId,

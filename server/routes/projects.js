@@ -88,7 +88,10 @@ export function projectRoutes({ store, config, auth, guards, refiner }) {
       methods: {
         async POST(ctx) {
           store.requireProject(ctx.user, ctx.params.projectId, 'editor');
-          const project = store.read().projects.find(item => item.id === ctx.params.projectId);
+          const [project] = store.readFor(ctx.user, {
+            attachmentData: false,
+            projectIds: [ctx.params.projectId],
+          }).projects;
           const request = validateRefinement(await ctx.body());
           if (!refiner.enabled) throw httpError(503, 'ai_not_configured', notConfigured);
           auth.refineLimit(ctx.user.id);

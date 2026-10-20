@@ -580,6 +580,41 @@ test('three consecutive CI failures ask a person, and checks without a verdict n
   assert.equal(run.ciFailures, 0);
 });
 
+test('a reply written in the card discussion also gives the CI corrections a new counter', async t => {
+  const f = await fixture(t);
+  f.submit(f.prepare());
+  const failing = id => ({ ...f.check('failure'), workflow_run: { ...f.check('failure').workflow_run, id } });
+  let run;
+  for (let cycle = 1; cycle <= 3; cycle++) {
+    await f.webhook('workflow_run', failing(100 + cycle));
+    run = f.store.workflows.list(f.project.id, f.card.id)[0];
+    if (cycle < 3) {
+      run = f.store.workflows.agentAction(f.project.id, f.card.id, run.id, 'claim', { version: run.version }, f.agent);
+      f.submit(run);
+    }
+  }
+  assert.equal(run.state, 'waiting');
+  // L’interface répond par un commentaire dans la carte, pas par l’action answer.
+  f.store.change(
+    [
+      {
+        type: 'comment.create',
+        projectId: f.project.id,
+        cardId: f.card.id,
+        comment: { id: 'reponse-ci', text: 'Le test dépend du fuseau horaire.' },
+      },
+    ],
+    f.user,
+  );
+  run = f.store.workflows.list(f.project.id, f.card.id)[0];
+  assert.equal(run.state, 'ready');
+  assert.equal(run.ciFailures, 0);
+  // Un nouvel échec relance une correction au lieu de redemander aussitôt une personne.
+  f.submit(f.store.workflows.agentAction(f.project.id, f.card.id, run.id, 'claim', { version: run.version }, f.agent));
+  await f.webhook('workflow_run', failing(200));
+  assert.equal(f.store.workflows.list(f.project.id, f.card.id)[0].state, 'ready');
+});
+
 test('the server catches up on lost webhooks by reading the pull request and its checks on GitHub', async t => {
   const { createGithubSync } = await import('../server/github-sync.js');
   const f = await fixture(t);

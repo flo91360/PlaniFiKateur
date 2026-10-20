@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 import { createStore } from '../server/store.js';
 import { createAppServer } from '../server/index.js';
 import { seedAccount, loginRequest } from './helpers/accounts.mjs';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createBackups, inspectBackup } from '../server/backups.js';
 
 async function fixture(t, { backups } = {}) {
   const store = createStore(':memory:');
@@ -304,5 +308,41 @@ test('a partial batch with a few refused changes saves all the others, in order'
   assert.deepEqual(
     saved,
     changes.map((_, index) => `lot-${index}`).filter((_, index) => ![7, 50, 93].includes(index)),
+  );
+});
+
+test('a removal is backed up unless the latest copy already holds the removed elements unchanged', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'planifikateur-copies-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  let backups;
+  const { store, call, project } = await fixture(t, {
+    backups: {
+      create: options => backups.create(options),
+      covers: removed => backups.covers(removed),
+    },
+  });
+  backups = createBackups(store, { directory, start: false, onError() {} });
+  const [first, second, third] = project.cards;
+  const deletions = () => backups.list().filter(file => file.kind === 'deletion').length;
+  // Aucune copie connue : la suppression en fait une.
+  assert.equal((await call('DELETE', `/projects/${project.id}/cards/${first.id}`)).status, 200);
+  assert.equal(deletions(), 1);
+  // Carte inchangée depuis cette copie : elle y figure déjà, pas de nouvelle copie.
+  assert.equal((await call('DELETE', `/projects/${project.id}/cards/${second.id}`)).status, 200);
+  assert.equal(deletions(), 1);
+  // Carte modifiée depuis : son dernier état n’est dans aucune copie, une copie est faite.
+  await call('PATCH', '/workspace', {
+    changes: [{ type: 'card.update', projectId: project.id, cardId: third.id, fields: { title: 'Modifiée' } }],
+  });
+  assert.equal((await call('DELETE', `/projects/${project.id}/cards/${third.id}`)).status, 200);
+  assert.equal(deletions(), 2);
+  assert.ok(
+    backups
+      .list()
+      .some(
+        file =>
+          file.kind === 'deletion' &&
+          inspectBackup(join(directory, file.name)).projects[0].cards.some(card => card.title === 'Modifiée'),
+      ),
   );
 });

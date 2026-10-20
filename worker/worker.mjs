@@ -120,7 +120,15 @@ export function createWorker(config, dependencies = {}) {
     return job;
   }
 
-  const { workspace, prepareCheckout } = createCheckouts({ config, execute, state, log, clean, github });
+  const { workspace, prepareCheckout } = createCheckouts({
+    config,
+    execute,
+    state,
+    log,
+    clean,
+    github,
+    ...(dependencies.stopStrays ? { stopStrays: dependencies.stopStrays } : {}),
+  });
 
   // Fichiers générés contrôlés, puis version et changelog préparés si le dépôt a changé.
   // Lève une erreur décrivant ce que le modèle doit corriger.
@@ -382,6 +390,7 @@ export function createWorker(config, dependencies = {}) {
     await reservation.action('progress', {
       message: 'Les tests locaux ont réussi. Le worker publie la branche et prépare la PR.',
     });
+    await checkout.beforeRemote();
     const pushed = await execute(['git', 'push', 'origin', `HEAD:refs/heads/${job.branch}`], {
       cwd: checkout.cwd,
       env: checkout.gitRemoteEnv,

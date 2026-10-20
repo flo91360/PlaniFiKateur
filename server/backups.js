@@ -10,6 +10,8 @@ import { readWorkspace, TABLES_VERSION } from './workspace-tables.js';
 const backupName =
   /^planifikateur-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}(-suppression)?\.sqlite$/;
 const KINDS = { regular: '', deletion: '-suppression' };
+// Durée pendant laquelle la dernière copie peut tenir lieu de copie avant suppression.
+const COVERAGE_MS = 24 * 60 * 60 * 1000;
 const kindOf = name => (name.endsWith('-suppression.sqlite') ? 'deletion' : 'regular');
 // Réglages des projets conservés dans la copie (droits, dépôt, IA, exécution, accès des agents).
 const SETTINGS_TABLES = ['project_policies', 'project_members', 'github_projects', 'project_ai', 'project_execution'];
@@ -66,7 +68,9 @@ export function createBackups(
 ) {
   const root = resolve(directory);
   let error = '',
-    lastRevision = null;
+    lastRevision = null,
+    // Dernière copie faite par ce serveur : dernière action d’historique qu’elle contient et date.
+    latest = null;
   const list = () => {
     if (!existsSync(root)) return [];
     return readdirSync(root)
@@ -99,6 +103,7 @@ export function createBackups(
       ))
         rmSync(join(root, old.name));
       lastRevision = snapshot.version;
+      latest = { activityId: Number(snapshot.version.split(':')[1]), at: Date.now() };
       error = '';
       return list().find(file => file.name === name);
     } catch (cause) {
@@ -124,6 +129,11 @@ export function createBackups(
   timer?.unref();
   return {
     create,
+    // La dernière copie, de moins d’un jour, contient-elle déjà l’état exact de ces éléments
+    // supprimés (rien ne les a modifiés depuis) ? Une nouvelle copie complète est alors inutile.
+    covers(removed) {
+      return !!latest && Date.now() - latest.at < COVERAGE_MS && !store.touchedSince(latest.activityId, removed);
+    },
     list,
     status: () => ({ files: list(), error, intervalHours: intervalMs / 3600000, keep }),
     file(name) {

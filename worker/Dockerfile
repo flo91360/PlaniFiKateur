@@ -20,6 +20,7 @@ RUN sed -i 's/\r$//' git-askpass.mjs entrypoint.sh \
     && chmod +x git-askpass.mjs entrypoint.sh
 ENV PLANIFIKATEUR_WORKER_STATE_DIR=/data \
     PLANIFIKATEUR_WORKER_ISOLATION=bwrap \
+    PLANIFIKATEUR_WORKER_STOP_STRAYS=1 \
     CODEX_HOME=/data/codex \
     PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium
 ENTRYPOINT ["/opt/worker/entrypoint.sh"]

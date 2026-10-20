@@ -4,7 +4,7 @@ import { defaultExecutionProfile, validateExecutionProfile } from '../../worker/
 
 // Réglages d’un projet pour l’agent : dépôt GitHub, moteur et modèle IA, profil d’exécution, et
 // dernier diagnostic envoyé par le worker.
-export function createSettings(db, { transaction, audit, readProjects }, { checkAgent }) {
+export function createSettings(db, { transaction, audit }, { checkAgent }) {
   const githubProject = projectId =>
     db.prepare('SELECT repository FROM github_projects WHERE project_id=?').get(projectId)?.repository || null;
   const projectAi = projectId => {
@@ -22,7 +22,8 @@ export function createSettings(db, { transaction, audit, readProjects }, { check
     executionProfile: executionProfile(projectId),
   });
   const requireProject = projectId => {
-    if (!readProjects().some(project => project.id === projectId)) fail(404, 'project_not_found', 'Projet inexistant.');
+    if (!db.prepare('SELECT 1 FROM projects WHERE id=?').get(projectId))
+      fail(404, 'project_not_found', 'Projet inexistant.');
   };
   // Enregistre un réglage validé ; une erreur de validation devient une réponse 400 avec `code`.
   const configure = (table, projectId, data, validate, code) => {
@@ -108,7 +109,9 @@ export function createSettings(db, { transaction, audit, readProjects }, { check
       const row = db.prepare('SELECT * FROM agents WHERE id=? AND active=1').get(agent.id);
       if (!row) fail(401, 'agent_unauthorized', 'Agent révoqué.');
       const ids = JSON.parse(row.projects);
-      return readProjects()
+      return db
+        .prepare('SELECT id, name FROM projects ORDER BY position')
+        .all()
         .filter(project => ids.includes(project.id))
         .map(project => ({ id: project.id, name: project.name, ...configuration(project.id) }));
     },
