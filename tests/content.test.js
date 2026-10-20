@@ -250,3 +250,59 @@ test('with partial, a refused change is reported and the others are saved', asyn
   assert.ok(events.some(event => event.type === 'workspace'));
   assert.equal((await call('PATCH', '/workspace', { changes: [], partial: 'oui' })).status, 400);
 });
+
+test('a batch is limited in size, and isolating its refused changes stays bounded', async t => {
+  const { store, call, project, card } = await fixture(t);
+  const invalid = { type: 'card.update', projectId: project.id, cardId: card.id, fields: { title: '' } };
+  const tooMany = await call('PATCH', '/workspace', { changes: Array(1001).fill(invalid), partial: true });
+  assert.equal(tooMany.status, 413);
+  assert.equal(tooMany.body.error.code, 'too_many_changes');
+  // Mille refus : quelques dizaines de tentatives au plus, le reste renvoyé sans être tenté.
+  const started = Date.now();
+  const refused = await call('PATCH', '/workspace', { changes: Array(1000).fill(invalid), partial: true });
+  assert.equal(refused.status, 200);
+  assert.ok(Date.now() - started < 5000, 'Le serveur ne rejoue pas chaque modification.');
+  const codes = refused.body.data.rejected.map(item => item.code);
+  assert.equal(codes.length, 1000);
+  assert.ok(codes.includes('invalid_workspace'));
+  assert.ok(codes.filter(code => code === 'not_attempted').length > 900);
+  assert.equal(refused.body.data.replays, undefined);
+  assert.equal(store.read().projects[0].cards.find(item => item.id === card.id).title, card.title);
+  // Les tentatives sont limitées par compte : un compte qui enchaîne les lots refusés est arrêté.
+  const statuses = [];
+  for (let request = 0; request < 4; request++)
+    statuses.push((await call('PATCH', '/workspace', { changes: Array(1000).fill(invalid), partial: true })).status);
+  assert.deepEqual(statuses, [200, 200, 200, 429]);
+});
+
+test('a partial batch with a few refused changes saves all the others, in order', async t => {
+  const { store, call, project, card } = await fixture(t);
+  const comment = (index, text) => ({
+    type: 'comment.create',
+    projectId: project.id,
+    cardId: card.id,
+    comment: { id: `lot-${index}`, text },
+  });
+  const changes = Array.from({ length: 100 }, (_, index) =>
+    comment(index, [7, 50, 93].includes(index) ? '' : `Message ${index}`),
+  );
+  const response = await call('PATCH', '/workspace', { changes, partial: true });
+  assert.equal(response.status, 200);
+  assert.deepEqual(
+    response.body.data.rejected.map(item => [item.index, item.code]),
+    [
+      [7, 'invalid_workspace'],
+      [50, 'invalid_workspace'],
+      [93, 'invalid_workspace'],
+    ],
+  );
+  const saved = store
+    .read()
+    .projects[0].cards.find(item => item.id === card.id)
+    .comments.filter(item => item.id.startsWith('lot-'))
+    .map(item => item.id);
+  assert.deepEqual(
+    saved,
+    changes.map((_, index) => `lot-${index}`).filter((_, index) => ![7, 50, 93].includes(index)),
+  );
+});

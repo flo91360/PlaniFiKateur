@@ -5,7 +5,7 @@ import { seed } from '../data/demo.js';
 import { validateWorkspace } from './workspace.js';
 import { apiData, apiFetch } from './api-client.js';
 import { DEFAULT_ACCENT } from './accents.js';
-import { applyChanges, diffWorkspace } from './workspace-changes.js';
+import { applyChanges, diffWorkspace, MAX_BATCH } from './workspace-changes.js';
 import { useServerConnected, useServerEvent } from './use-server-events.js';
 
 const STORAGE = 'planifikateur.workspace.v1';
@@ -199,9 +199,11 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
           continue;
         }
         const sentFrom = revision.current;
+        // Un lot trop long est envoyé en plusieurs fois, dans l’ordre.
+        const sent = changes.slice(0, MAX_BATCH);
         const data = await apiData('workspace', {
           method: 'PATCH',
-          data: { changes, partial: true, scope: 'changed' },
+          data: { changes: sent, partial: true, scope: 'changed' },
           fallback: 'Le serveur ne répond pas.',
         });
         setSaveNotice(describeRefusals(data));
@@ -215,11 +217,14 @@ export function useWorkspace({ pauseRefresh = false } = {}) {
         else revision.current = data.revision;
         saved.current = canonical;
         setAccess(data.access || {});
-        // Les modifications faites pendant l’envoi sont rejouées sur l’état renvoyé par le serveur.
+        // Restent à envoyer : les modifications que le serveur n’a pas tentées (trop de refus dans le
+        // lot) et celles au-delà du lot envoyé. Elles sont rejouées sur l’état renvoyé par le
+        // serveur, comme les modifications faites pendant l’envoi.
+        const untried = new Set((data.rejected || []).filter(item => item.code === 'not_attempted').map(i => i.index));
+        const remaining = [...sent.filter((_, index) => untried.has(index)), ...changes.slice(sent.length)];
+        const next = remaining.length ? applyChanges(canonical, remaining).projects : canonical;
         current.current =
-          current.current === snapshot
-            ? canonical
-            : applyChanges(canonical, diffWorkspace(snapshot, current.current)).projects;
+          current.current === snapshot ? next : applyChanges(next, diffWorkspace(snapshot, current.current)).projects;
         setState(current.current);
       }
       setSaveStatus('saved');
@@ -311,8 +316,10 @@ export function mergeProjects(base, projects, ids) {
 }
 
 // Message pour les modifications refusées (droits, contenu) ou ignorées (élément supprimé ailleurs).
-export function describeRefusals({ rejected = [], skipped = [] } = {}) {
+export function describeRefusals({ rejected: all = [], skipped = [] } = {}) {
   const parts = [];
+  // Les modifications non tentées par le serveur restent sur la page et sont renvoyées.
+  const rejected = all.filter(item => item.code !== 'not_attempted');
   if (rejected.length) {
     const reasons = [...new Set(rejected.map(item => item.message).filter(Boolean))].slice(0, 3);
     parts.push(

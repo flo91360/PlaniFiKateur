@@ -20,6 +20,8 @@
 // cochent des critères différents de la même carte ne s'écrasent plus.
 // Les champs gérés par le serveur (auteurs, dates, cartes Infos) ne se modifient pas ainsi.
 
+// Modifications au plus par requête PATCH /api/v1/workspace : l’interface découpe ses envois.
+export const MAX_BATCH = 1000;
 export const PROJECT_FIELDS = ['name', 'description', 'emoji', 'color'];
 export const LIST_FIELDS = ['name', 'color'];
 export const CARD_FIELDS = [

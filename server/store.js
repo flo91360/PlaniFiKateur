@@ -32,6 +32,44 @@ const changedProjects = changes => {
 // Erreur qui refuse une demande (4xx), par opposition à une panne du serveur.
 const refusal = error => error?.status >= 400 && error.status < 500;
 
+// Tentatives au plus pour isoler les modifications refusées d’un lot `partial` : chacune relit et
+// revalide les projets visés, de façon synchrone. Au-delà, le reste du lot n’est pas tenté.
+export const PARTIAL_ATTEMPTS = 50;
+const NOT_ATTEMPTED = {
+  code: 'not_attempted',
+  message: 'Trop de modifications refusées dans ce lot : celle-ci n’a pas été tentée. Réessayez.',
+};
+
+// Lot `partial` refusé en entier : il est coupé en deux, récursivement, pour isoler les
+// modifications refusées ; les parties acceptées s’appliquent dans l’ordre du lot.
+// `attempt(from, to)` tente changes[from..to[ et renvoie { skipped } ou { error }.
+export function settlePartial(changes, error, attempt, budget = PARTIAL_ATTEMPTS) {
+  const skipped = [],
+    rejected = [];
+  let attempts = 0;
+  const reject = (index, { code, message }) =>
+    rejected.push({ index, type: changes[index]?.type ?? null, code, message });
+  const settle = (from, to, failure) => {
+    if (to - from === 1) return reject(from, failure);
+    const middle = from + Math.floor((to - from) / 2);
+    for (const [start, end] of [
+      [from, middle],
+      [middle, to],
+    ]) {
+      if (attempts >= budget) {
+        for (let index = start; index < end; index++) reject(index, NOT_ATTEMPTED);
+        continue;
+      }
+      attempts++;
+      const outcome = attempt(start, end);
+      if (outcome.error) settle(start, end, outcome.error);
+      else skipped.push(...outcome.skipped.map(item => ({ ...item, index: item.index + start })));
+    }
+  };
+  settle(0, changes.length, error);
+  return { skipped, rejected, attempts };
+}
+
 // Un projet, une liste ou une carte présent avant et absent après ?
 export const removesContent = (before, after) => {
   const ids = projects =>
@@ -907,11 +945,12 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
           const { clean, skipped } = planChanges(before, changes, actor, strict);
           // Rien à enregistrer (modifications ignorées ou déjà appliquées) : la révision ne bouge pas.
           if (JSON.stringify(clean) !== JSON.stringify(before.projects)) save(before, clean);
-          return respond({ skipped });
+          return respond({ skipped, replays: 0 });
         }
         // `partial` : une modification refusée (droits, contenu invalide, statut piloté par l’agent)
-        // n’empêche pas les autres. Le lot est d’abord tenté en entier ; s’il est refusé, chaque
-        // modification est rejouée seule, dans l’ordre, et les refus sont renvoyés dans `rejected`.
+        // n’empêche pas les autres. Le lot est d’abord tenté en entier ; s’il est refusé, il est
+        // découpé (settlePartial) et les refus sont renvoyés dans `rejected`. `replays` compte les
+        // tentatives supplémentaires, limitées par compte (server/routes/content.js).
         const attempt = (name, callback) => {
           db.exec(`SAVEPOINT ${name}`);
           // Les événements d’une tentative annulée ne doivent pas être diffusés.
@@ -934,35 +973,41 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
           return skipped;
         };
         const whole = attempt('batch', () => apply(before, changes));
-        if (!whole.error) return respond({ skipped: whole.result, rejected: [] });
+        if (!whole.error) return respond({ skipped: whole.result, rejected: [], replays: 0 });
         if (!Array.isArray(changes)) throw whole.error;
-        const skipped = [],
-          rejected = [];
-        changes.forEach((change, index) => {
-          const one = attempt('one', () => apply(state(), [change]));
-          if (one.error)
-            rejected.push({ index, type: change?.type ?? null, code: one.error.code, message: one.error.message });
-          else skipped.push(...one.result.map(item => ({ ...item, index })));
+        const { skipped, rejected, attempts } = settlePartial(changes, whole.error, (from, to) => {
+          const part = attempt('part', () => apply(state(), changes.slice(from, to)));
+          return part.error ? { error: part.error } : { skipped: part.result };
         });
-        return respond({ skipped, rejected });
+        return respond({ skipped, rejected, replays: attempts });
       });
     },
     // Vérifie des modifications sans les enregistrer (mêmes refus que `change`) et indique si
     // elles suppriment un élément : la sauvegarde de sécurité n’est faite qu’à cette condition.
-    // En mode `partial`, seules les modifications acceptées comptent.
+    // En mode `partial`, seules les modifications acceptées comptent, isolées comme par `change`
+    // (même découpage, même nombre de tentatives au plus), compté dans `replays`.
     previewChanges(changes, actor, { strict = false, partial = false } = {}) {
       const before = this.read();
-      if (!partial)
-        return { removes: removesContent(before.projects, planChanges(before, changes, actor, strict).clean) };
+      const plan = (state, batch) => planChanges(state, batch, actor, partial ? false : strict).clean;
+      if (!partial) return { removes: removesContent(before.projects, plan(before, changes)), replays: 0 };
       let state = before;
-      for (const change of Array.isArray(changes) ? changes : []) {
-        try {
-          state = { ...state, projects: planChanges(state, [change], actor, false).clean };
-        } catch (error) {
-          if (!refusal(error)) throw error;
-        }
+      try {
+        state = { ...state, projects: plan(state, changes) };
+        return { removes: removesContent(before.projects, state.projects), replays: 0 };
+      } catch (error) {
+        if (!refusal(error)) throw error;
+        if (!Array.isArray(changes)) return { removes: false, replays: 0 };
+        const { attempts } = settlePartial(changes, error, (from, to) => {
+          try {
+            state = { ...state, projects: plan(state, changes.slice(from, to)) };
+            return { skipped: [] };
+          } catch (failure) {
+            if (!refusal(failure)) throw failure;
+            return { error: failure };
+          }
+        });
+        return { removes: removesContent(before.projects, state.projects), replays: attempts };
       }
-      return { removes: removesContent(before.projects, state.projects) };
     },
     ...accounts,
     ...history,

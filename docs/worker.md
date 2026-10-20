@@ -129,9 +129,20 @@ l’agent est revérifiée après : une différence supprime le checkout, recré
 GitHub. Les outils de fichiers de Claude restent dans le dépôt, liens symboliques
 résolus, et n’écrivent jamais dans `.git`.
 
-Une PR qui modifie les contrôles de sa fusion (workflows GitHub, scripts npm,
-configuration des tests déclarée par le profil) attend l’approbation d’un
-responsable. Limite connue : la clé du moteur IA reste lisible par le moteur
+Une carte ne peut pas modifier les fichiers protégés : les contrôles de sa propre
+fusion (workflows GitHub, scripts npm, configuration des tests déclarée par le
+profil dans `protectedPaths`) et, pour PlaniFiKateur, le worker lui-même
+(`worker/**`, redéployé automatiquement depuis main), sa chaîne de livraison
+(`scripts/delivery.mjs`, `merge-agent-pr.mjs`, `publish-version.mjs`,
+`verify-deployment.mjs`), les consignes `AGENTS.md` et `CLAUDE.md` et les tests du
+worker. L’agent en reçoit la liste avec la demande. Avant les tests, le worker
+compare le dépôt à la branche cible (`worker/protected.mjs`) : un fichier protégé
+modifié est rétabli tel qu’il est sur la branche cible (seuls les scripts de
+`package.json`, pas sa version ni ses dépendances), puis l’agent refait la demande
+sans lui. S’il y revient à chaque tour, la carte passe « À préciser » avec une
+question qui l’explique, sans PR : cette partie relève d’une intervention directe de
+l’administrateur. Le worker revérifie la branche juste avant le push. Personne n’a
+de PR à approuver. Limite connue : la clé du moteur IA reste lisible par le moteur
 lui-même et par ses commandes (Codex, Claude Code), qui en ont besoin.
 
 `PLANIFIKATEUR_WORKER_ISOLATION=none` désactive l’isolation pour un worker de

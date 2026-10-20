@@ -4934,7 +4934,9 @@
                     "type": "array",
                     "items": {
                       "$ref": "#/components/schemas/Change"
-                    }
+                    },
+                    "maxItems": 1000,
+                    "description": "1 000 modifications au plus (413 too_many_changes)."
                   },
                   "partial": {
                     "type": "boolean",
@@ -5013,7 +5015,17 @@
             }
           },
           "413": {
-            "description": "La requête dépasse 4 Mo.",
+            "description": "La requête dépasse 4 Mo, ou le lot dépasse 1 000 modifications (too_many_changes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de tentatives pour isoler des modifications refusées en mode partial : 200 par minute et par compte (too_many_refusals).",
             "content": {
               "application/json": {
                 "schema": {
@@ -6669,8 +6681,8 @@
               }
             }
           },
-          "503": {
-            "description": "Trop de flux ouverts (too_many_streams).",
+          "429": {
+            "description": "Trop de flux ouverts par ce compte (too_many_streams, 10 au plus).",
             "content": {
               "application/json": {
                 "schema": {
@@ -6679,8 +6691,8 @@
               }
             }
           },
-          "429": {
-            "description": "Trop de flux ouverts par ce compte (too_many_streams, 10 au plus).",
+          "503": {
+            "description": "Trop de flux ouverts (too_many_streams).",
             "content": {
               "application/json": {
                 "schema": {
@@ -8703,7 +8715,7 @@
           },
           "rejected": {
             "type": "array",
-            "description": "Avec partial : modifications refusées, avec leur index, leur type et le code et le message d’erreur.",
+            "description": "Avec partial : modifications refusées, avec leur index, leur type et le code et le message d’erreur. Le code not_attempted signale une modification que le serveur n’a pas tentée (trop de refus dans le lot) : elle peut être renvoyée.",
             "items": {
               "type": "object",
               "properties": {

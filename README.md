@@ -29,7 +29,7 @@ Un tableau de projets inspiré de Trello, conçu pour préparer des demandes con
 - Comptes individuels par e-mail et mot de passe, invitations, déconnexion et gestion des membres par l’administrateur.
 - Droits par projet : lecture, contribution ou responsable, projet masqué aux autres membres ; seuls les responsables confient une carte à l’agent.
 - Validation avant fusion, en option par projet : la PR de l’agent attend l’approbation d’un responsable.
-- Worker isolé : installation et tests du projet dans bubblewrap, sans accès aux clés ni à l’état du worker ; une PR qui modifie ses propres contrôles (workflows, scripts de test) attend l’approbation d’un responsable.
+- Worker isolé : installation et tests du projet dans bubblewrap, sans accès aux clés ni à l’état du worker  ; une carte ne peut modifier ni les contrôles de sa propre fusion (workflows, scripts npm, configuration des tests), ni le worker et sa chaîne de livraison : le worker rétablit ces fichiers protégés, sans demander de validation à personne.
 - Notifications en direct (commentaires, statuts, étapes de l’agent) sur les cartes que l’on a créées, commentées ou que l’on suit.
 - Créateur des cartes et auteur des commentaires attribués par le serveur ; historique des actions pour préparer les notifications.
 - Accès agent en lecture seule avec une clé dédiée.
@@ -131,7 +131,7 @@ Conserver également des copies hors du volume Railway.
 npm run export:preview
 ```
 
-`dist/PlaniFiKateur-apercu-v0.1.66.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
+`dist/PlaniFiKateur-apercu-v0.1.67.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 

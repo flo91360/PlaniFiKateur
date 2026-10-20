@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { commandEnvironment } from './commands.mjs';
 import { parseModelResult } from './model-result.mjs';
 import { presetRules } from './execution-profile.mjs';
+import { protectedPatterns } from './protected.mjs';
 
 // Lecture du journal de session Codex (CODEX_HOME/sessions) : modèle réellement utilisé et
 // consommation cumulée de la conversation (dernier « token_count »). Le texte n’en sort jamais.
@@ -59,6 +60,7 @@ Si la carte demande un fichier téléchargeable, crée-le dans .planifikateur/ge
 Tu travailles dans une branche gérée par le worker. Ne fais aucun commit, push, PR, merge ou appel à l’API du site. Le worker réalise lui-même les tests obligatoires puis publie la PR. Ne modifie ni l’origine Git ni les accès du service. Ne délègue pas à d’autres agents.
 Pour tous les profils, y compris PlaniFiKateur, le worker prépare la nouvelle version et le changelog avec le même module que les interventions directes, avant les tests. Une version majeure ou mineure explicitement augmentée est conservée.
 Le worker ajoute aussi lui-même, à chaque livraison de code, une section à CHANGELOG.md à partir du titre de la carte et de ton résumé : n’y ajoute pas d’entrée et rédige un résumé clair des modifications.
+Ne modifie pas ces fichiers protégés, que le worker rétablirait avant de livrer : ${protectedPatterns(run.executionProfile).join(', ')}. Si la demande ne peut pas être réalisée sans eux, réponds avec status=question en l’expliquant.
 ${presetRules(run.executionProfile).instructions ? `Consignes propres à ce projet : ${presetRules(run.executionProfile).instructions}\n` : ''}Réponds en JSON conforme au schéma, avec status=result une fois les modifications prêtes.
 
 Carte : ${run.cardSnapshot.title}

@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.67 — 2026-10-20
+<!-- planifikateur:audit-lots-et-fichiers-proteges -->
+
+- **Serveur protégé des lots refusés et worker non modifiable par une carte** : Un lot de modifications compte au plus 1 000 éléments et l’isolement de ses refus est borné, avec une limite par compte : un seul compte ne peut plus bloquer le serveur. Une carte ne peut plus modifier le worker, sa chaîne de livraison ni les contrôles de sa fusion : le worker rétablit ces fichiers protégés et l’agent réalise la demande sans eux, sans qu’aucune PR ne soit à approuver.
+
 ## 0.1.66 — 2026-10-20
 <!-- planifikateur:livraison-defilement-tactile-mobile -->
 
