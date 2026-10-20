@@ -17,6 +17,18 @@ export function nextProjectVersion(base, current) {
   parseProjectVersion(before.join('.'));
   return before.join('.');
 }
+// Seules les mentions de la version courante suivent la livraison : titres des documents et nom de
+// la copie HTML (`…-v<version>.html`). Une mention historique (« Depuis la v… ») garde sa version.
+export function currentVersionReferences(source, previous, version) {
+  const escaped = previous.replaceAll('.', '\\.');
+  const anywhere = new RegExp(`(?<![0-9.])${escaped}\\b`, 'g');
+  const fileName = new RegExp(`(-v)${escaped}(\\.html)`, 'g');
+  return source
+    .split('\n')
+    .map(line => (/^#{1,6}\s/.test(line) ? line.replace(anywhere, version) : line.replace(fileName, `$1${version}$2`)))
+    .join('\n');
+}
+
 // Version suivante écrite dans le fichier que déclare le profil installé (`versioning`).
 export async function bumpProjectVersion(cwd, profile, command) {
   const versioning = presetRules(profile).versioning;
@@ -57,8 +69,7 @@ export async function bumpProjectVersion(cwd, profile, command) {
         try {
           await regular(document);
           const source = await readFile(join(cwd, document), 'utf8');
-          const pattern = new RegExp(`(?<![0-9.])${previous.replaceAll('.', '\\.')}\\b`, 'g');
-          await writeFile(join(cwd, document), source.replace(pattern, version));
+          await writeFile(join(cwd, document), currentVersionReferences(source, previous, version));
         } catch (error) {
           if (error.code !== 'ENOENT') throw error;
         }

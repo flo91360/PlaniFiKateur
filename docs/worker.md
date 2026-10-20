@@ -123,7 +123,13 @@ Les clés du worker ne restent pas dans son environnement : `entrypoint.sh` les 
 dans un fichier privé que le worker lit puis supprime (`worker/secrets.mjs`), si bien
 qu’aucun processus ne les retrouve dans `/proc/<pid>/environ`. Le code du worker
 appartient à root. Le jeton GitHub n’accompagne que `clone`, `fetch`, `ls-remote` et
-`push` ; toutes les commandes Git désactivent hooks et `core.fsmonitor`, et une
+`push`, le temps de la commande. Une commande du moteur IA mise en arrière-plan pourrait
+survivre à son tour et lire ce jeton dans l’environnement de Git : dans l’image Docker
+(`PLANIFIKATEUR_WORKER_STOP_STRAYS=1`), où l’utilisateur du worker n’a aucun autre
+processus légitime, le worker arrête avant chacune de ces commandes tous les processus de
+cet utilisateur qui ne sont ni lui ni l’un de ses ancêtres (`worker/strays.mjs`). Une
+session ouverte avec `docker exec` sous cet utilisateur serait donc fermée ; ouvrir un
+autre conteneur, comme pour `codex login`. Hors de l’image, ce réglage reste à 0. Toutes les commandes Git désactivent hooks et `core.fsmonitor`, et une
 empreinte de `.git` (configuration, attributs, hooks) prise avant le travail de
 l’agent est revérifiée après : une différence supprime le checkout, recréé depuis
 GitHub. Les outils de fichiers de Claude restent dans le dépôt, liens symboliques

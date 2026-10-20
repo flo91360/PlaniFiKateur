@@ -30,7 +30,7 @@ export const discussionAi = ai =>
 // vues (carte, badges du tableau, « À traiter ») et cohérence avec les modifications du tableau.
 export function createRuns(
   db,
-  { transaction, findCard, readProjects, writeProjects, canLaunch, requiresApproval },
+  { transaction, findCard, readProjects, readLight, writeProjects, canLaunch, requiresApproval },
   {
     rows,
     unpack,
@@ -115,8 +115,8 @@ export function createRuns(
     const prepared = save(run, actor, 'prepared');
     if (correction) {
       // Le commentaire rejoint la discussion de la carte, qui quitte la liste « À tester ».
-      const projects = readProjects();
-      const current = projects.find(item => item.id === projectId);
+      const projects = readProjects([projectId]);
+      const current = projects[0];
       const target = current.cards.find(item => item.id === cardId);
       target.comments.push({
         id: `work-${run.id}-correction`,
@@ -127,7 +127,7 @@ export function createRuns(
         date: prepared.updatedAt,
       });
       target.listId = restartList(current)?.id || target.listId;
-      writeProjects(projects, prepared.updatedAt);
+      writeProjects(projects, prepared.updatedAt, { scope: [projectId] });
     }
     return prepared;
   };
@@ -217,7 +217,8 @@ export function createRuns(
         .all(card.id)
         .map(row => row.trigger);
       if (handled.includes(pending.trigger) || (!handled.length && pending.answeredAfter)) continue;
-      prepareDiscussion(project, card, pending, pending.author);
+      // La copie de la carte remise au worker inclut le contenu de ses pièces jointes.
+      prepareDiscussion(project, findCard(projectId, card.id).card, pending, pending.author);
     }
   };
   // Carte placée dans la liste « Discussion » : son exécution en cours est annulée, l’agent n’y
@@ -325,38 +326,36 @@ export function createRuns(
     // Exécutions qui attendent une personne : question de l’agent, résultat sans PR à valider, ou
     // PR à approuver. La question technique d’un ancien worker se résout seule et n’est pas listée.
     attention() {
-      const projects = readProjects();
-      return rows("state IN ('waiting','review','merging')")
-        .map(unpack)
-        .flatMap(run => {
-          const project = projects.find(p => p.id === run.projectId);
-          const card = project?.cards.find(c => c.id === run.cardId);
-          if (!card || legacyPublicationQuestion(run)) return [];
-          if (run.state === 'merging' && !awaitingApproval(run)) return [];
-          const message = run.state === 'waiting' ? run.exchanges.at(-1)?.question : run.submissions.at(-1)?.summary;
-          return [
-            {
-              projectId: project.id,
-              projectName: project.name,
-              cardId: card.id,
-              cardTitle: card.title,
-              executionId: run.id,
-              state: run.state,
-              message: (message || '').slice(0, 500),
-              since: run.updatedAt,
-            },
-          ];
-        });
+      const runs = rows("state IN ('waiting','review','merging')").map(unpack);
+      // Noms des projets et titres des cartes : seuls les projets concernés, sans pièces jointes.
+      const projects = runs.length ? readLight([...new Set(runs.map(run => run.projectId))]) : [];
+      return runs.flatMap(run => {
+        const project = projects.find(p => p.id === run.projectId);
+        const card = project?.cards.find(c => c.id === run.cardId);
+        if (!card || legacyPublicationQuestion(run)) return [];
+        if (run.state === 'merging' && !awaitingApproval(run)) return [];
+        const message = run.state === 'waiting' ? run.exchanges.at(-1)?.question : run.submissions.at(-1)?.summary;
+        return [
+          {
+            projectId: project.id,
+            projectName: project.name,
+            cardId: card.id,
+            cardTitle: card.title,
+            executionId: run.id,
+            state: run.state,
+            message: (message || '').slice(0, 500),
+            since: run.updatedAt,
+          },
+        ];
+      });
     },
     queue(projectId, agent, { autoPrepare = true } = {}) {
       return transaction(() => {
         checkAgent(agent, projectId);
         expire();
-        if (autoPrepare && githubProject(projectId))
-          prepareReadyCards(
-            readProjects().find(p => p.id === projectId),
-            projectId,
-          );
+        // Le projet est parcouru sans le contenu des pièces jointes : seule une carte préparée le
+        // reçoit, relue entière.
+        if (autoPrepare && githubProject(projectId)) prepareReadyCards(readLight([projectId])[0], projectId);
         return rows("project_id = ? AND state IN ('ready','interrupted')", projectId).map(unpack);
       });
     },
@@ -432,6 +431,9 @@ export function createRuns(
                 date: new Date().toISOString(),
                 commentId: reply.id,
               };
+              // Comme l’action answer : une réponse humaine redonne leurs cycles de correction aux
+              // contrôles GitHub.
+              run.ciFailures = 0;
               transition(run, 'answer');
               save(run, actor, 'answer', { syncCard: false });
               card.status = CARD_STATUS[run.state];

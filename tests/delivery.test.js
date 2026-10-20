@@ -35,7 +35,10 @@ async function fixture(t) {
     JSON.stringify({ version: '1.2.3', packages: { '': { version: '1.2.3' } } }),
   );
   await writeFile(join(cwd, 'CHANGELOG.md'), '# Changelog\n\n## 1.2.3 — 2026-10-01\n\n- Version précédente.\n');
-  await writeFile(join(cwd, 'README.md'), 'Version : v1.2.3. Copie : apercu-v1.2.3.html\n');
+  await writeFile(
+    join(cwd, 'README.md'),
+    '# Projet — v1.2.3\n\nCopie : apercu-v1.2.3.html. Depuis la v1.2.3, les droits par projet s’appliquent.\n',
+  );
   await git('add', '.');
   await git('commit', '-m', 'Initial');
   await git('remote', 'add', 'origin', bare);
@@ -57,7 +60,11 @@ test('a direct CLI delivery and the worker use the same idempotent version/chang
   const before = await readFile(join(f.cwd, 'CHANGELOG.md'), 'utf8');
   assert.equal((await prepareDelivery(f.cwd, profile, f.command, details)).version, '1.2.4');
   assert.equal(await readFile(join(f.cwd, 'CHANGELOG.md'), 'utf8'), before);
-  assert.match(await readFile(join(f.cwd, 'README.md'), 'utf8'), /Version : v1\.2\.4\. Copie : apercu-v1\.2\.4\.html/);
+  // Titre et copie HTML suivent la version ; une mention historique garde la sienne.
+  assert.equal(
+    await readFile(join(f.cwd, 'README.md'), 'utf8'),
+    '# Projet — v1.2.4\n\nCopie : apercu-v1.2.4.html. Depuis la v1.2.3, les droits par projet s’appliquent.\n',
+  );
   await exec(process.execPath, [script, 'check'], { cwd: f.cwd });
 });
 test('missing, empty, obsolete or duplicate release notes and a mismatched lockfile block delivery', async t => {

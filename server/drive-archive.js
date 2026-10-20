@@ -188,7 +188,7 @@ export function createDriveArchive(
   const repositories = () => [
     ...new Map(
       store
-        .read()
+        .readLight()
         .projects.map(project => store.workflows.githubProject(project.id))
         .filter(Boolean)
         .map(repo => [repo.toLowerCase(), repo]),

@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.68 — 2026-10-20
+<!-- planifikateur:audit-constats-moyens -->
+
+- **Réponses à l’agent, documentation, performances, sauvegardes et jeton GitHub** : Répondre en commentaire à une question de l’agent après trois échecs des tests GitHub relance bien trois cycles de correction. Les mentions historiques de version de la documentation ne changent plus à chaque livraison. Le worker, « À traiter » et le suivi des exécutions ne relisent plus tout le tableau ni le contenu des pièces jointes. Supprimer une carte inchangée depuis la dernière sauvegarde ne recopie plus toute la base. Dans l’image Docker, le worker arrête les processus restants de l’agent avant chaque commande Git qui reçoit le jeton GitHub.
+
 ## 0.1.67 — 2026-10-20
 <!-- planifikateur:audit-lots-et-fichiers-proteges -->
 

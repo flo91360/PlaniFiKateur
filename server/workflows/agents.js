@@ -6,7 +6,7 @@ import { OPEN, text } from './core.js';
 
 // Identités des agents : clé (seule son empreinte est gardée), projets autorisés, révocation.
 // Retirer un projet ou révoquer la clé interrompt les exécutions en cours de cet agent.
-export function createAgents(db, { transaction, audit, readProjects }, { rows, unpack, save }) {
+export function createAgents(db, { transaction, audit }, { rows, unpack, save }) {
   const publicAgent = row => ({
     id: row.id,
     name: row.name,
@@ -42,9 +42,13 @@ export function createAgents(db, { transaction, audit, readProjects }, { rows, u
           data.projectIds.some(p => typeof p !== 'string')
         )
           fail(400, 'invalid_work', 'Sélectionnez au moins un projet.');
-        const projects = readProjects();
-        if (data.projectIds.some(id => !projects.some(p => p.id === id)))
-          fail(400, 'invalid_work', 'Projet inexistant.');
+        const projects = new Set(
+          db
+            .prepare('SELECT id FROM projects')
+            .all()
+            .map(project => project.id),
+        );
+        if (data.projectIds.some(id => !projects.has(id))) fail(400, 'invalid_work', 'Projet inexistant.');
         const projectIds = JSON.stringify([...new Set(data.projectIds)]);
         if (id) {
           requireActive(id);

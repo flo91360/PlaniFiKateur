@@ -30,7 +30,8 @@ export function contentRoutes({ store, config, auth, guards }) {
     if (config.backups && Array.isArray(changes) && changes.some(change => REMOVALS.includes(change?.type))) {
       const preview = store.previewChanges(changes, ctx.user, options);
       replays = preview.replays;
-      if (preview.removes)
+      // Rien des éléments supprimés n’a changé depuis la dernière copie : elle les contient déjà.
+      if (preview.removes && !config.backups.covers?.(preview.removed))
         try {
           config.backups.create({ kind: 'deletion' });
         } catch {

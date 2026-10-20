@@ -4,12 +4,17 @@ import { validateDriveRelease } from '../../src/lib/drive-release.js';
 // Versions publiées des dépôts : tags et releases GitHub, archives et téléchargements Google Drive.
 // Chaque enregistrement met à jour les cartes Infos des projets liés au dépôt.
 export function createReleaseStore({ db, transaction, workflows, synchronizeInfos }) {
+  // Un projet est-il lié à ce dépôt (en minuscules) ?
+  const linked = repository =>
+    db
+      .prepare('SELECT id FROM projects')
+      .all()
+      .some(project => workflows.githubProject(project.id)?.toLowerCase() === repository);
   return {
     recordDriveRelease(repository, data) {
       return transaction(() => {
         repository = repository.toLowerCase();
-        if (!this.read().projects.some(project => workflows.githubProject(project.id)?.toLowerCase() === repository))
-          return { updated: false };
+        if (!linked(repository)) return { updated: false };
         let release;
         try {
           release = validateDriveRelease(data, repository, data.version);
@@ -69,8 +74,7 @@ export function createReleaseStore({ db, transaction, workflows, synchronizeInfo
     recordGithubChangelog(repository, releases) {
       return transaction(() => {
         repository = repository.toLowerCase();
-        if (!this.read().projects.some(project => workflows.githubProject(project.id)?.toLowerCase() === repository))
-          return;
+        if (!linked(repository)) return;
         for (const release of releases) {
           if (
             !release ||
@@ -110,8 +114,7 @@ export function createReleaseStore({ db, transaction, workflows, synchronizeInfo
     recordGithubVersion(repository, version) {
       return transaction(() => {
         repository = repository.toLowerCase();
-        if (!this.read().projects.some(project => workflows.githubProject(project.id)?.toLowerCase() === repository))
-          return { updated: false };
+        if (!linked(repository)) return { updated: false };
         if (
           typeof version.tag !== 'string' ||
           !version.tag.trim() ||

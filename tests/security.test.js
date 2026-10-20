@@ -214,12 +214,23 @@ test('a safety copy is made only for authorised deletions, without rotating the 
     ).headers
       .get('set-cookie')
       .split(';')[0];
+  // Chaque carte est modifiée juste avant sa suppression : la dernière copie ne contient pas son
+  // état, une copie de sécurité est donc nécessaire (sinon elle tiendrait lieu de copie).
   const remove = (cookie, cardId) =>
     fetch(`${base}/workspace`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Cookie: cookie },
-      body: JSON.stringify({ changes: [{ type: 'card.delete', projectId: 'planifikateur', cardId }] }),
-    });
+      body: JSON.stringify({
+        partial: true,
+        changes: [{ type: 'card.update', projectId: 'planifikateur', cardId, fields: { title: `Modifiée ${cardId}` } }],
+      }),
+    }).then(() =>
+      fetch(`${base}/workspace`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({ changes: [{ type: 'card.delete', projectId: 'planifikateur', cardId }] }),
+      }),
+    );
   const files = () => readdirSync(join(dir, 'backups')).sort();
   const regular = files();
   const eve = await login('eve@example.test', 'Eve-mot-de-passe-123');
