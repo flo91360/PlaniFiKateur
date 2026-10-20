@@ -59,6 +59,10 @@ test('the isolation mode is explicit: bubblewrap in the Docker image, none for a
 });
 
 const bwrap = spawnSync('bwrap', ['--ro-bind', '/', '/', 'true']).status === 0;
+// En CI (PLANIFIKATEUR_REQUIRE_BWRAP=1), ce test ne peut pas être ignoré : bubblewrap y est installé.
+test('bubblewrap is available wherever its real test is required', () => {
+  if (process.env.PLANIFIKATEUR_REQUIRE_BWRAP === '1') assert.ok(bwrap, 'bubblewrap est requis mais inutilisable.');
+});
 test(
   'a real isolated command sees neither the worker variables nor its state',
   { skip: !bwrap && 'bubblewrap absent' },

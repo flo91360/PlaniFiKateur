@@ -70,7 +70,7 @@ Les réponses sont `{ "data": …, "meta": … }`. Une carte inclut `projectId`,
 }
 ```
 
-Les erreurs renvoient `{ "error": { "code": "…", "message": "…" } }`, avec 400 pour un paramètre invalide, 401 pour un accès non autorisé et 404 pour une ressource absente. Les modifications de cartes via la clé agent sont refusées.
+Quelques routes de l’interface, plus anciennes que cette convention, renvoient leur objet sans enveloppe `data` : `/api/v1/session`, `/api/v1/accounts/setup`, `/accounts/accept` et `/accounts/password`, `GET` et `PUT /api/v1/workspace`, `GET /api/v1/backups` (formats décrits dans `openapi.json`). Les nouvelles routes utilisent toutes `{ "data": … }`. Les erreurs renvoient `{ "error": { "code": "…", "message": "…" } }`, avec 400 pour un paramètre invalide, 401 pour un accès non autorisé et 404 pour une ressource absente. Les modifications de cartes via la clé agent sont refusées.
 
 La spécification **OpenAPI 3.1** est servie à `/openapi.json` et conservée dans `public/openapi.json`. Elle décrit toutes les routes servies, y compris celles réservées à l’interface (session, comptes, `workspace`, historique, sauvegardes, paramètres du projet, suivi des cartes) et au worker. Les routes sont déclarées par domaine dans `server/routes/` ; `tests/openapi.test.js` lit cette table et échoue si une route servie manque dans la spécification, ou si la spécification décrit une route qui n’existe pas.
 

@@ -380,7 +380,7 @@
 .refinement > header small {
   margin-left: auto;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   overflow-wrap: anywhere;
 }
 .refinement > .muted {

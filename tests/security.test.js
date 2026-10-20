@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createStore } from '../server/store.js';
@@ -8,7 +8,7 @@ import { createAppServer } from '../server/index.js';
 import { createBackups, restoreBackup } from '../server/backups.js';
 import { requirements } from '../server/access.js';
 import { hashPassword } from '../server/accounts.js';
-import { seedAccount, testEmail, testPassword } from './helpers/accounts.mjs';
+import { loginRequest, seedAccount, testEmail, testPassword } from './helpers/accounts.mjs';
 
 async function member(store, admin, name) {
   const { token } = store.inviteUser({ name, email: `${name.toLowerCase()}@example.test` }, admin);
@@ -247,4 +247,63 @@ test('a safety copy is made only for authorised deletions, without rotating the 
   );
   assert.equal(after.filter(name => name.endsWith('-suppression.sqlite')).length, 2);
   assert.ok(config.backups.list().some(file => file.kind === 'deletion'));
+});
+
+test('HTML pages carry security headers and fingerprinted assets are cached for good', async t => {
+  const dist = mkdtempSync(join(tmpdir(), 'planifikateur-dist-'));
+  mkdirSync(join(dist, 'assets'));
+  writeFileSync(join(dist, 'index.html'), '<!doctype html><title>PlaniFiKateur</title>');
+  writeFileSync(join(dist, 'assets', 'index-abc.js'), 'export {};');
+  writeFileSync(join(dist, 'build-info.json'), '{}');
+  const store = createStore(':memory:');
+  const server = createAppServer({ store, dist, config: { readToken: 'headers-read', secureCookie: true } });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+    store.close();
+    rmSync(dist, { recursive: true, force: true });
+  });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const page = await fetch(`${base}/projets`);
+  assert.match(page.headers.get('content-security-policy'), /default-src 'self'.*frame-ancestors 'none'/);
+  assert.match(page.headers.get('content-security-policy'), /script-src 'self';/);
+  assert.equal(page.headers.get('x-frame-options'), 'DENY');
+  assert.equal(page.headers.get('referrer-policy'), 'same-origin');
+  assert.equal(page.headers.get('strict-transport-security'), 'max-age=31536000');
+  assert.equal(page.headers.get('cache-control'), 'no-store');
+  const asset = await fetch(`${base}/assets/index-abc.js`);
+  assert.equal(asset.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+  assert.equal(asset.headers.get('content-security-policy'), null);
+  assert.equal((await fetch(`${base}/build-info.json`)).headers.get('cache-control'), 'no-store');
+});
+
+test('an error after a response has started closes it without stopping the server', async t => {
+  const store = createStore(':memory:');
+  seedAccount(store);
+  const errors = [];
+  const server = createAppServer({
+    store,
+    config: { readToken: 'late-error-read', logError: (...args) => errors.push(args) },
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+    store.close();
+  });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const cookie = (await loginRequest(base)).headers.get('set-cookie').split(';')[0];
+  // Le flux d’événements envoie ses en-têtes avant de lire la révision : celle-ci échoue.
+  const getRevision = store.getRevision;
+  store.getRevision = () => {
+    throw new Error('base indisponible');
+  };
+  await assert.rejects(async () => {
+    const response = await fetch(`${base}/api/v1/events`, { headers: { Cookie: cookie } });
+    await response.text();
+  });
+  store.getRevision = getRevision;
+  assert.ok(errors.some(([message]) => /GET \/api\/v1\/events/.test(message)));
+  assert.equal((await fetch(`${base}/api/v1/session`, { headers: { Cookie: cookie } })).status, 200);
 });

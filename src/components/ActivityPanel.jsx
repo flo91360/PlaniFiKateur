@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api-client.js';
+import { useApiAction } from '../lib/use-api.js';
+import FormStatus from './FormStatus.jsx';
 
 // Libellés des actions de l’historique, aussi utilisés par les notifications.
 export const activityLabels = {
@@ -52,27 +54,20 @@ export const activityLabels = {
 };
 export default function ActivityPanel({ projectId, cardId }) {
   const [events, setEvents] = useState([]),
-    [next, setNext] = useState(null),
-    [error, setError] = useState(''),
-    [busy, setBusy] = useState(false);
+    [next, setNext] = useState(null);
+  const { busy, error, run } = useApiAction();
   const path = projectId ? `projects/${projectId}/${cardId ? `cards/${cardId}/` : ''}activity` : 'activity';
+  // Historique paginé : `before` ajoute la page précédente à celles déjà affichées.
   const load = useCallback(
-    async before => {
-      setBusy(true);
-      setError('');
-      try {
+    before =>
+      run(async () => {
         const result = await apiFetch(`${path}${before ? `?before=${before}` : ''}`, {
           fallback: 'Historique indisponible.',
         });
         setEvents(previous => (before ? [...previous, ...result.data] : result.data));
         setNext(result.meta.nextBefore);
-      } catch (cause) {
-        setError(cause.message);
-      } finally {
-        setBusy(false);
-      }
-    },
-    [path],
+      }),
+    [path, run],
   );
   useEffect(() => {
     void load();
@@ -81,11 +76,7 @@ export default function ActivityPanel({ projectId, cardId }) {
     <section className="activity-panel">
       <h3>Historique des actions</h3>
       <p>Les anciennes actions, antérieures aux comptes individuels, n’ont pas d’auteur identifié.</p>
-      {error && (
-        <p role="alert" className="form-error">
-          {error}
-        </p>
-      )}
+      <FormStatus error={error} />
       <button className="secondary-button" disabled={busy} onClick={() => void load()}>
         Actualiser l’historique
       </button>
