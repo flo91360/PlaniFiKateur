@@ -205,7 +205,7 @@ saturé (`ai_busy`), 504 au-delà de deux minutes (`ai_timeout`).
 
 ## Archivage Google Drive
 
-Avec une session personnelle, `GET /api/v1/projects/{projectId}/drive` renvoie l’état de l’archivage des `.exe` des Releases du dépôt du projet : `enabled`, erreurs éventuelles (`configurationError`, `error`, `repositoryError`), `lastRun` et les dix dernières versions (`tag`, `state` parmi `archived`, `error` ou `conflict`, `message`, `folderUrl`, `files`). Aucun secret n’est renvoyé. `POST` sur la même route, réservé à l’administrateur, lance une vérification immédiate et répond `202` ; `503` (`drive_disabled`) si le serveur n’est pas configuré. Voir [l’archivage Google Drive](google-drive.md).
+Avec une session personnelle, `GET /api/v1/projects/{projectId}/drive` renvoie l’état de l’archivage des `.exe` des Releases du dépôt du projet : `enabled`, erreurs éventuelles (`configurationError`, `error`, `repositoryError`), `lastRun`, `keep` (nombre de versions gardées dans le Drive, `0` pour toutes) et les dix dernières versions (`tag`, `state` parmi `archived`, `error`, `conflict` ou `pruned` pour une version mise à la corbeille du Drive, `message`, `folderUrl`, `files`). Aucun secret n’est renvoyé. `POST` sur la même route, réservé à l’administrateur, lance une vérification immédiate et répond `202` ; `503` (`drive_disabled`) si le serveur n’est pas configuré. Voir [l’archivage Google Drive](google-drive.md).
 
 Le suivi personnel des cartes utilise les routes de souscription documentées dans [Comptes individuels](accounts.md#suivre-une-carte), avec une session et un projet explicite.
 

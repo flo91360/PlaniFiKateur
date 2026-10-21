@@ -8,6 +8,7 @@ const labels = {
   archived: 'Archivée',
   error: 'Échec, nouvel essai prévu',
   conflict: 'Non archivée : fichiers différents pour une version existante',
+  pruned: 'Retirée du Drive (toujours dans la Release GitHub)',
 };
 const date = value =>
   value && Number.isFinite(Date.parse(value))
@@ -37,6 +38,8 @@ export default function DriveArchive({ projectId, user }) {
         <p>
           Chaque Release <code>vX.Y.Z</code> de <code>{status.repository}</code> qui contient des .exe est copiée dans
           le dossier Drive, sous <code>{status.repository.split('/')[1]}/&lt;version&gt;/</code>.
+          {status.keep > 0 &&
+            ` Seules les ${status.keep} dernières versions y sont gardées : les plus anciennes vont à la corbeille du Drive.`}
           {status.lastRun && ` Dernière vérification : ${date(status.lastRun)}.`}
         </p>
       )}
