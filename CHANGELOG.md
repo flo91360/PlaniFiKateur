@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.70 — 2026-10-21
+<!-- planifikateur:drive-trois-versions -->
+
+- **Drive : seules les trois dernières versions gardées** : Pour économiser la place du Drive, l’archivage ne garde que les trois dernières versions de chaque dépôt : les dossiers des versions plus anciennes vont à la corbeille du Drive, et leurs .exe restent dans les Releases GitHub. Le nombre se règle avec PLANIFIKATEUR_GOOGLE_DRIVE_KEEP (0 pour tout garder).
+
 ## 0.1.69 — 2026-10-20
 <!-- planifikateur:audit-constats-bas -->
 

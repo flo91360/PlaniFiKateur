@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, writeFile, readFile, rm, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { publishDrive, createDriveClient } from '../scripts/google-drive.mjs';
+import { publishDrive, createDriveClient, compareVersionTags } from '../scripts/google-drive.mjs';
 import { fakeDrive, root, credentials } from './helpers/fake-drive.mjs';
 import { authorizeGoogle } from '../scripts/google-drive-login.mjs';
 import { driveFolderId, driveReleaseBody, driveReleaseFromBody } from '../src/lib/drive-release.js';
@@ -202,4 +202,11 @@ test('project versioning is idempotent and preserves a requested higher version'
   assert.match(await readFile(join(dir, 'project.godot'), 'utf8'), /config\/name="FunKart"/);
   await mkdir(join(dir, 'empty'));
   await assert.rejects(bumpProjectVersion(join(dir, 'empty'), { preset: 'planifikateur' }), { code: 'ENOENT' });
+});
+
+test('versions are ordered by number, a pre-release before its final version', () => {
+  assert.deepEqual(
+    ['v1.10.0', '1.2.0', 'v1.2.0-beta.2', 'v1.2.0-beta.10', 'v0.9.9', 'v2.0.0+build.1'].sort(compareVersionTags),
+    ['v0.9.9', 'v1.2.0-beta.2', 'v1.2.0-beta.10', '1.2.0', 'v1.10.0', 'v2.0.0+build.1'],
+  );
 });

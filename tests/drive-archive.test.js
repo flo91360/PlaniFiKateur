@@ -217,8 +217,15 @@ test('the server configuration is optional and explains invalid values', () => {
       PLANIFIKATEUR_GOOGLE_DRIVE_CREDENTIALS: JSON.stringify(credentials),
       PLANIFIKATEUR_GOOGLE_DRIVE_FOLDER: `https://drive.google.com/drive/folders/${root}`,
     }),
-    { enabled: true, credentials, folder: `https://drive.google.com/drive/folders/${root}` },
+    { enabled: true, credentials, folder: `https://drive.google.com/drive/folders/${root}`, keep: 3 },
   );
+  const valid = {
+    PLANIFIKATEUR_GOOGLE_DRIVE_CREDENTIALS: JSON.stringify(credentials),
+    PLANIFIKATEUR_GOOGLE_DRIVE_FOLDER: root,
+  };
+  assert.equal(readDriveConfig({ ...valid, PLANIFIKATEUR_GOOGLE_DRIVE_KEEP: '0' }).keep, 0);
+  assert.equal(readDriveConfig({ ...valid, PLANIFIKATEUR_GOOGLE_DRIVE_KEEP: ' 5 ' }).keep, 5);
+  assert.match(readDriveConfig({ ...valid, PLANIFIKATEUR_GOOGLE_DRIVE_KEEP: 'trois' }).error, /KEEP/);
 });
 
 test('project members read the archive status and only the administrator starts an archive run', async t => {
@@ -275,4 +282,90 @@ test('a network failure names the unreachable service and cause instead of marki
     ['archived', 'archived'],
   );
   assert.equal(archive.status('flo91360/DefilOrdi').error, '');
+});
+
+const release = (tag, id) => ({ tag_name: tag, draft: false, assets: [asset(id, `App-${tag}.exe`, Buffer.from(tag))] });
+
+test('only the latest versions are uploaded when a repository has more releases than kept', async t => {
+  const releases = ['v1.4.0', 'v1.3.0', 'v1.10.0', 'v1.2.0', 'v1.1.0'].map((tag, index) => release(tag, 100 + index));
+  const { archive, google, downloads } = await fixture(t, releases);
+  await archive.refresh();
+  // v1.10.0 is newer than v1.4.0: versions are compared by number, not by text.
+  assert.deepEqual(downloads.sort(), [100, 101, 102]);
+  assert.deepEqual(
+    folders(google)
+      .map(folder => folder.name)
+      .filter(name => name.startsWith('v'))
+      .sort(),
+    ['v1.10.0', 'v1.3.0', 'v1.4.0'],
+  );
+  assert.equal(archive.status('flo91360/DefilOrdi').keep, 3);
+});
+
+test('older version folders go to the Drive trash, are not uploaded again and foreign folders stay', async t => {
+  const releases = ['v1.2.0', 'v1.1.0', 'v1.0.0'].map((tag, index) => release(tag, 200 + index));
+  const { archive, google, downloads, store } = await fixture(t, releases);
+  const folder = (id, name, parent, appProperties) =>
+    google.entries.set(id, {
+      id,
+      name,
+      parents: [parent],
+      mimeType: 'application/vnd.google-apps.folder',
+      appProperties,
+    });
+  const ours = { repository: 'flo91360/defilordi', commit };
+  folder('project', 'DefilOrdi', root);
+  for (const tag of ['v0.1.0', 'v0.2.0', 'v0.10.0']) folder(`old-${tag}`, tag, 'project', ours);
+  // Release deleted from GitHub but newer: it counts among the kept versions.
+  folder('old-v2.0.0', 'v2.0.0', 'project', ours);
+  folder('manual', 'v0.0.1', 'project');
+  folder('notes', 'Notes', 'project', ours);
+  store.recordDriveArchive('flo91360/DefilOrdi', 'v0.10.0', {
+    signature: 'x',
+    state: 'archived',
+    folderId: 'old-v0.10.0',
+    files: [{ name: 'App.exe', size: 3 }],
+    date: '2026-01-01T00:00:00.000Z',
+  });
+  await archive.refresh();
+  const trashed = [...google.entries.values()].filter(file => file.trashed).map(file => file.name);
+  // v1.0.0 is kept on GitHub's side: trashing it would upload it again at the next check.
+  assert.deepEqual(trashed.sort(), ['v0.1.0', 'v0.10.0', 'v0.2.0']);
+  const status = archive.status('flo91360/DefilOrdi');
+  const pruned = status.releases.find(entry => entry.tag === 'v0.10.0');
+  assert.equal(pruned.state, 'pruned');
+  assert.equal(pruned.folderUrl, undefined);
+  assert.deepEqual(pruned.files, [{ name: 'App.exe', size: 3 }]);
+  assert.match(pruned.message, /3 dernières versions/);
+  assert.equal(status.error, '');
+  const uploads = google.uploads;
+  await archive.refresh({ force: true });
+  assert.equal(google.uploads, uploads);
+  assert.deepEqual(downloads.sort(), [200, 201, 202]);
+});
+
+test('keeping every version never trashes anything and a trash failure keeps the archives', async t => {
+  const releases = ['v1.3.0', 'v1.2.0', 'v1.1.0', 'v1.0.0'].map((tag, index) => release(tag, 300 + index));
+  const all = await fixture(t, releases, { drive: { ...drive, keep: 0 } });
+  await all.archive.refresh();
+  assert.equal(folders(all.google).filter(folder => folder.name.startsWith('v')).length, 4);
+  assert.ok(all.google.calls.every(call => call.request.method !== 'PATCH'));
+
+  const failing = await fixture(t, releases);
+  failing.google.options.failTrash = true;
+  await failing.archive.refresh();
+  failing.google.entries.set('old', {
+    id: 'old',
+    name: 'v0.9.0',
+    parents: [folders(failing.google).find(entry => entry.name === 'DefilOrdi').id],
+    mimeType: 'application/vnd.google-apps.folder',
+    appProperties: { repository: 'flo91360/defilordi', commit },
+  });
+  await failing.archive.refresh();
+  const status = failing.archive.status('flo91360/DefilOrdi');
+  assert.match(status.error, /^Nettoyage des anciennes versions de flo91360\/DefilOrdi : Google Drive a refusé/);
+  assert.deepEqual(
+    status.releases.map(entry => entry.state),
+    ['archived', 'archived', 'archived'],
+  );
 });

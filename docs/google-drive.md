@@ -11,7 +11,22 @@ Votre dossier/
 ```
 
 Le sous-dossier du projet porte le nom de son dépôt GitHub, celui de la version
-le tag de la Release. Les anciennes versions sont conservées.
+le tag de la Release.
+
+## Versions gardées
+
+Pour économiser le stockage, seules les **trois dernières versions** de chaque
+dépôt restent dans le Drive (ordre des numéros : `v1.10.0` est plus récent que
+`v1.9.0`). Après chaque vérification, les dossiers des versions plus anciennes
+sont mis à la **corbeille du Drive** ; leurs `.exe` restent téléchargeables dans
+les Releases GitHub. Google vide la corbeille au bout de 30 jours : la place
+n’est libérée qu’à ce moment, ou tout de suite en vidant la corbeille. Les
+versions plus anciennes que les trois dernières ne sont pas envoyées.
+
+Seuls les dossiers de version créés par l’archivage pour ce dépôt sont
+concernés : un dossier ajouté à la main n’est jamais retiré. La variable
+`PLANIFIKATEUR_GOOGLE_DRIVE_KEEP` du serveur change le nombre de versions
+gardées ; `0` les garde toutes.
 
 ## Ajouter un projet
 
@@ -80,7 +95,9 @@ L’accès est celui de **votre compte Google**, avec vos fichiers et votre quot
    l’accès. Le programme vérifie le dossier et écrit le fichier privé.
 6. Dans le service Railway du site, onglet **Variables** :
    - `PLANIFIKATEUR_GOOGLE_DRIVE_CREDENTIALS` : le contenu du fichier privé ;
-   - `PLANIFIKATEUR_GOOGLE_DRIVE_FOLDER` : le lien ou l’identifiant du dossier.
+   - `PLANIFIKATEUR_GOOGLE_DRIVE_FOLDER` : le lien ou l’identifiant du dossier ;
+   - facultatif, `PLANIFIKATEUR_GOOGLE_DRIVE_KEEP` : nombre de versions gardées
+     par dépôt (3 par défaut, `0` pour toutes).
 
    Railway redéploie le site ; le panneau d’archivage indique alors son état.
 

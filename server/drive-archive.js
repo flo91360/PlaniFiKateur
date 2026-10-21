@@ -1,13 +1,15 @@
 // Archives the .exe assets of each project's GitHub Releases in the owner's
 // Google Drive: <dossier>/<dépôt>/<version>/<fichier>.exe. Credentials live
 // only on the server, so a project needs no Drive configuration of its own.
+// Only the latest `keep` versions of each repository stay in Drive; older
+// version folders go to the Drive trash (they remain in the GitHub Releases).
 import { createWriteStream } from 'node:fs';
 import { mkdir, rm, mkdtemp } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { publishDrive } from '../scripts/google-drive.mjs';
+import { compareVersionTags, publishDrive, pruneDrive } from '../scripts/google-drive.mjs';
 import { driveFolderId } from '../src/lib/drive-release.js';
 
 export const archivableTag = tag => typeof tag === 'string' && /^v?\d+\.\d+\.\d+(?:[-+][a-zA-Z0-9.-]+)?$/.test(tag);
@@ -59,10 +61,13 @@ export function describedTransport(transport, service) {
 
 export function readDriveConfig(env = process.env) {
   const raw = env.PLANIFIKATEUR_GOOGLE_DRIVE_CREDENTIALS || '',
-    folder = env.PLANIFIKATEUR_GOOGLE_DRIVE_FOLDER || '';
+    folder = env.PLANIFIKATEUR_GOOGLE_DRIVE_FOLDER || '',
+    keepValue = (env.PLANIFIKATEUR_GOOGLE_DRIVE_KEEP || '').trim();
   if (!raw && !folder) return { enabled: false };
   let credentials,
     error = '';
+  // 0 garde toutes les versions ; par défaut, les trois dernières.
+  const keep = keepValue ? Number(keepValue) : 3;
   try {
     credentials = JSON.parse(raw);
   } catch {
@@ -75,7 +80,9 @@ export function readDriveConfig(env = process.env) {
   } catch (cause) {
     error ||= `PLANIFIKATEUR_GOOGLE_DRIVE_FOLDER : ${cause.message}`;
   }
-  return error ? { enabled: true, error } : { enabled: true, credentials, folder };
+  if (!/^\d{1,4}$/.test(String(keep)))
+    error ||= 'PLANIFIKATEUR_GOOGLE_DRIVE_KEEP doit être un nombre de versions à garder (0 pour toutes les garder).';
+  return error ? { enabled: true, error } : { enabled: true, credentials, folder, keep };
 }
 
 export function createDriveArchive(
@@ -103,7 +110,8 @@ export function createDriveArchive(
     ...driveDependencies,
     transport: describedTransport(driveDependencies?.transport || fetch, 'Google'),
   });
-  const state = { lastRun: '', error: drive.error || '' };
+  const state = { lastRun: '', error: drive.error || '' },
+    keep = drive.keep ?? 3;
   const github = async (path, accept = 'application/vnd.github+json') => {
     const response = await transport(`https://api.github.com${path}`, {
       // Asset downloads redirect to GitHub storage; fetch drops Authorization across origins.
@@ -206,13 +214,19 @@ export function createDriveArchive(
         continue;
       }
       store.recordDriveRepository(repository, { error: '', checkedAt: new Date(now()).toISOString() });
+      const candidates = (Array.isArray(releases) ? releases : []).filter(
+        r => !r.draft && archivableTag(r.tag_name) && (r.assets || []).some(executable),
+      );
+      // Versions older than the kept ones are never uploaded, only to be trashed afterwards.
+      const kept = candidates
+        .map(r => r.tag_name)
+        .sort((a, b) => compareVersionTags(b, a))
+        .slice(0, keep || undefined);
       // Oldest first, so Drive folders are created in version order.
-      for (const release of (Array.isArray(releases) ? releases : [])
-        .filter(r => !r.draft && archivableTag(r.tag_name))
-        .reverse()) {
+      for (const release of candidates.reverse()) {
         if (closed) return;
+        if (!kept.includes(release.tag_name)) continue;
         const assets = (release.assets || []).filter(executable).slice(0, 10);
-        if (!assets.length) continue;
         const signature = assetSignature(assets),
           previous = store.driveArchive(repository, release.tag_name);
         // A manual check retries failed versions now; conflicts wait for new files.
@@ -256,7 +270,35 @@ export function createDriveArchive(
           log(`Archivage Drive : ${repository} ${release.tag_name} en échec (${error.message}).`);
         }
       }
+      if (keep && !closed) await prune(repository, kept);
     }
+  };
+  const prune = async (repository, kept) => {
+    let removed;
+    try {
+      removed = await pruneDrive(
+        { credentials: drive.credentials, rootFolder: drive.folder, repository, keep, protect: kept },
+        google(),
+      );
+    } catch (error) {
+      // The next check retries; archived versions are not affected.
+      state.error = `Nettoyage des anciennes versions de ${repository} : ${error.message}`;
+      log(`Archivage Drive : nettoyage de ${repository} en échec (${error.message}).`);
+      return;
+    }
+    for (const tag of removed) {
+      const { folderId: _, ...previous } = store.driveArchive(repository, tag) || {};
+      store.recordDriveArchive(repository, tag, {
+        files: [],
+        date: new Date(now()).toISOString(),
+        ...previous,
+        state: 'pruned',
+        message: `Mise à la corbeille du Drive : seules les ${keep} dernières versions sont gardées.`,
+        prunedAt: new Date(now()).toISOString(),
+      });
+    }
+    if (removed.length)
+      log(`Archivage Drive : ${repository}, ${removed.length} ancienne(s) version(s) mise(s) à la corbeille.`);
   };
   let forced = false;
   const refresh = ({ force = false } = {}) => {
@@ -297,6 +339,7 @@ export function createDriveArchive(
         error: state.error,
         lastRun: state.lastRun,
         running: !!running,
+        keep,
         repository: repository || '',
         ...(repository ? store.driveStatus(repository) : { checkedAt: '', repositoryError: '', releases: [] }),
       };

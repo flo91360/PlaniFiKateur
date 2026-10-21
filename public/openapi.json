@@ -8003,6 +8003,11 @@
           "running": {
             "type": "boolean"
           },
+          "keep": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Nombre de versions gardées dans le Drive par dépôt (0 : toutes). Les plus anciennes vont à la corbeille du Drive."
+          },
           "repository": {
             "type": "string",
             "description": "Dépôt GitHub du projet, vide s’il n’est pas configuré."
@@ -8034,8 +8039,10 @@
                   "enum": [
                     "archived",
                     "error",
-                    "conflict"
-                  ]
+                    "conflict",
+                    "pruned"
+                  ],
+                  "description": "`pruned` : version mise à la corbeille du Drive, toujours dans la Release GitHub."
                 },
                 "message": {
                   "type": "string"

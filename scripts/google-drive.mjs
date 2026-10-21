@@ -9,6 +9,15 @@ import { driveFolderId, validateDriveRelease } from '../src/lib/drive-release.js
 // (version déjà archivée depuis d’autres fichiers, jamais remplacée).
 export const driveError = (code, message) => Object.assign(new Error(message), { code });
 const escapeQuery = value => value.replaceAll('\\', '\\\\').replaceAll("'", "\\'");
+const versionPattern = /^v?(\d+)\.(\d+)\.(\d+)(?:-([a-zA-Z0-9.-]+))?(?:\+[a-zA-Z0-9.-]+)?$/;
+// Ordre des versions : numéros, puis une préversion (-beta) avant la version finale.
+export function compareVersionTags(a, b) {
+  const [, ...left] = versionPattern.exec(a),
+    [, ...right] = versionPattern.exec(b);
+  for (let index = 0; index < 3; index++) if (+left[index] !== +right[index]) return +left[index] - +right[index];
+  if (!left[3] !== !right[3]) return left[3] ? -1 : 1;
+  return (left[3] || '').localeCompare(right[3] || '', 'en', { numeric: true });
+}
 export async function fileIdentity(path) {
   const details = await stat(path),
     md5 = createHash('md5');
@@ -93,13 +102,16 @@ export function createDriveClient(
       );
     return response.json();
   };
+  // Sans nom : les sous-dossiers du dossier parent.
   const list = async (parent, name) => {
     if (!folders.has(parent)) throw new Error('Le dossier doit rester sous la destination autorisée.');
     const out = [];
     let pageToken = '';
     do {
+      const filter =
+        name === undefined ? "mimeType = 'application/vnd.google-apps.folder'" : `name = '${escapeQuery(name)}'`;
       const query = new URLSearchParams({
-        q: `'${escapeQuery(parent)}' in parents and name = '${escapeQuery(name)}' and trashed = false`,
+        q: `'${escapeQuery(parent)}' in parents and ${filter} and trashed = false`,
         spaces: 'drive',
         fields: 'nextPageToken,files(id,name,mimeType,parents,appProperties,md5Checksum,size)',
         pageSize: '100',
@@ -110,7 +122,7 @@ export function createDriveClient(
       const data = await json(`files?${query}`);
       out.push(...data.files);
       pageToken = data.nextPageToken || '';
-      if (out.length > 1000) throw new Error('Trop de fichiers homonymes dans le dossier de destination.');
+      if (out.length > 1000) throw new Error('Trop d’éléments dans le dossier de destination.');
     } while (pageToken);
     return out;
   };
@@ -163,6 +175,26 @@ export function createDriveClient(
         );
       folders.add(selected.id);
       return selected.id;
+    },
+    // Dossier existant, sans le créer : '' s’il est absent.
+    async existing(parent, name) {
+      const found = await list(parent, name);
+      if (found.length !== 1 || found[0].mimeType !== 'application/vnd.google-apps.folder') return '';
+      folders.add(found[0].id);
+      return found[0].id;
+    },
+    subfolders(parent) {
+      return list(parent);
+    },
+    // Corbeille plutôt que suppression définitive : Google la vide après 30 jours.
+    async trash(parent, file) {
+      if (!folders.has(parent) || !file.parents?.includes(parent))
+        throw new Error('Le dossier doit rester sous la destination autorisée.');
+      await json(`files/${encodeURIComponent(file.id)}?fields=id,trashed&supportsAllDrives=true`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trashed: true }),
+      });
     },
     async upload(parent, path) {
       const identity = await fileIdentity(path),
@@ -258,4 +290,31 @@ export async function publishDrive({ credentials, rootFolder, repository, versio
   const files = [];
   for (const path of paths) files.push(await drive.upload(folderId, path));
   return validateDriveRelease({ repository, version, commit, folderId, files }, repository, version);
+}
+
+// Met à la corbeille les dossiers de version du dépôt au-delà des `keep` plus récents.
+// Seuls les dossiers créés par l’archivage (même dépôt dans appProperties) sont concernés,
+// et jamais une version de `protect` : celles que l’archivage enverrait de nouveau.
+export async function pruneDrive({ credentials, rootFolder, repository, keep, protect = [] }, dependencies) {
+  if (!/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(repository) || !Number.isSafeInteger(keep) || keep < 1)
+    throw new Error('Dépôt ou nombre de versions à garder invalide.');
+  const drive = createDriveClient(credentials, rootFolder, dependencies);
+  const root = await drive.validateRoot();
+  const project = await drive.existing(root, repository.split('/')[1]);
+  if (!project) return [];
+  const versions = (await drive.subfolders(project))
+    .filter(
+      folder =>
+        versionPattern.test(folder.name) &&
+        folder.parents?.includes(project) &&
+        folder.appProperties?.repository === repository.toLowerCase(),
+    )
+    .sort((a, b) => compareVersionTags(b.name, a.name));
+  const removed = [];
+  for (const folder of versions.slice(keep)) {
+    if (protect.includes(folder.name)) continue;
+    await drive.trash(project, folder);
+    removed.push(folder.name);
+  }
+  return removed;
 }

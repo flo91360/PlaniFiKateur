@@ -77,12 +77,24 @@ export function fakeDrive(options = {}) {
         entries.set(data.id, data);
         return Response.json(data);
       }
-      const query = /^'([^']+)' in parents and name = '([^']+)'/.exec(url.searchParams.get('q'));
+      const query = /^'([^']+)' in parents and (?:name = '([^']+)'|mimeType = '([^']+)') and trashed = false$/.exec(
+        url.searchParams.get('q'),
+      );
       return Response.json({
-        files: [...entries.values()].filter(file => file.parents?.includes(query[1]) && file.name === query[2]),
+        files: [...entries.values()].filter(
+          file =>
+            !file.trashed &&
+            file.parents?.includes(query[1]) &&
+            (query[2] === undefined || file.name === query[2]) &&
+            (query[3] === undefined || file.mimeType === query[3]),
+        ),
       });
     }
     const file = entries.get(url.pathname.split('/').at(-1));
+    if (file && request.method === 'PATCH') {
+      if (options.failTrash) return new Response(null, { status: 403 });
+      Object.assign(file, JSON.parse(request.body));
+    }
     return file ? Response.json(file) : new Response(null, { status: 404 });
   };
   return {

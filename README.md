@@ -131,7 +131,7 @@ Conserver également des copies hors du volume Railway.
 npm run export:preview
 ```
 
-`dist/PlaniFiKateur-apercu-v0.1.69.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
+`dist/PlaniFiKateur-apercu-v0.1.70.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 
@@ -207,7 +207,8 @@ GitHub refuse une livraison PlaniFiKateur sans nouvelle version ni changelog.
 
 Le serveur archive automatiquement les `.exe` des Releases GitHub de chaque projet
 dans votre dossier Google Drive, avec un sous-dossier par dépôt et par version. Un
-nouveau projet n’a besoin que de son dépôt GitHub. La carte Infos reçoit le lien de
+nouveau projet n’a besoin que de son dépôt GitHub. Seules les trois dernières versions
+de chaque dépôt restent dans le Drive. La carte Infos reçoit le lien de
 téléchargement. Voir [l’archivage Google Drive](docs/google-drive.md).
 
 Héberger le serveur sur une origine HTTPS avec un volume de données persistant. Le parcours d’un seul agent est disponible : préparation, réservation exclusive, questions, résultats et validation humaine. Connecter un service agent externe avec sa clé dédiée ; voir [le guide agent](docs/agents.md). Les droits des membres sont réglés par projet ([droits par projet](docs/accounts.md#droits-par-projet--v0127)) ; les notifications sont affichées dans le site ([notifications](docs/accounts.md#notifications--v0128)) ; l’envoi par e-mail et la délégation restent à ajouter.
