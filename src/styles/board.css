@@ -469,10 +469,6 @@
   gap: 7px;
 }
 
-.card-meta .checklist-complete {
-  color: var(--primary);
-}
-
 .card-meta .card-due {
   display: inline-flex;
   align-items: center;
