@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.71 — 2026-10-22
+<!-- planifikateur:retrait-liste-controle -->
+
+- **Retrait de la liste de contrôle** : La liste de contrôle n’apparaît plus dans le détail des cartes ni sur le tableau : l’agent IA ne s’en servait pas. Les critères déjà enregistrés restent en base.
+
 ## 0.1.70 — 2026-10-21
 <!-- planifikateur:drive-trois-versions -->
 

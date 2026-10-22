@@ -106,35 +106,15 @@ test.describe('board features', () => {
     expect(titles.indexOf(first.title)).toBeLessThan(titles.indexOf(moved.title));
   });
 
-  test('checklist items are added, checked, renamed and removed from the card', async ({ page, appServer }) => {
+  test('cards no longer show a checklist', async ({ page, appServer }) => {
     await login(page, appServer);
-    const card = seed[0].cards.find(item => !isSystemCard(seed[0].id, item.id));
-    await page.getByRole('heading', { name: card.title, exact: true }).click();
-    const checklist = page.getByRole('region', { name: 'Liste de contrôle' });
-    for (const text of ['Écrire le test', 'Relire le texte']) {
-      await checklist.getByLabel('Nouveau critère', { exact: true }).fill(text);
-      await checklist.getByRole('button', { name: 'Ajouter', exact: true }).click();
-    }
-    const done = card.checklist.filter(item => item.done).length,
-      total = card.checklist.length;
-    await checklist.getByRole('checkbox', { name: 'Écrire le test' }).check();
-    await expect(checklist.locator('h3')).toContainText(`${done + 1}/${total + 2}`);
-    const rename = checklist.getByLabel('Texte du critère « Relire le texte »');
-    await rename.fill('Relire tout le texte');
-    await rename.blur();
-    await expect(checklist.getByRole('checkbox', { name: 'Relire tout le texte' })).toBeVisible();
-    await checklist.getByRole('button', { name: 'Retirer « Écrire le test »' }).click();
-    await expect(checklist.getByRole('checkbox')).toHaveCount(total + 1);
-    await expect(page.locator('.save-indicator')).toHaveText('Sauvegardé sur le serveur');
-    await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+    const card = seed[0].cards.find(item => !isSystemCard(seed[0].id, item.id) && item.checklist.length);
     await expect(
       page.getByRole('article').filter({ has: page.getByRole('heading', { name: card.title, exact: true }) }),
-    ).toContainText(`${done}/${total + 1}`);
-    await page.reload();
+    ).not.toContainText(`/${card.checklist.length}`);
     await page.getByRole('heading', { name: card.title, exact: true }).click();
-    await expect(
-      page.getByRole('region', { name: 'Liste de contrôle' }).getByRole('checkbox', { name: 'Relire tout le texte' }),
-    ).not.toBeChecked();
+    await expect(page.getByRole('button', { name: 'Terminé', exact: true })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Liste de contrôle' })).toHaveCount(0);
   });
 
   test('a card gets a due date and an assignee, then is archived and restored', async ({ page, appServer }) => {

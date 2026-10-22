@@ -8,7 +8,6 @@ import {
   Layers3,
   LayoutGrid,
   Lightbulb,
-  ListChecks,
   ListFilter,
   MessageSquare,
   Pencil,
@@ -156,15 +155,6 @@ function CardPreview({
             >
               <CalendarDays size={13} />
               {dueLabel(card.dueDate)}
-            </span>
-          )}
-          {card.checklist.length > 0 && (
-            <span
-              className={card.checklist.every(item => item.done) ? 'checklist-complete' : ''}
-              aria-label={`Liste de contrôle : ${card.checklist.filter(item => item.done).length} sur ${card.checklist.length}`}
-            >
-              <ListChecks size={13} />
-              {card.checklist.filter(item => item.done).length}/{card.checklist.length}
             </span>
           )}
           {card.comments.length > 0 && (
