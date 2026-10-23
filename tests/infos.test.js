@@ -79,6 +79,13 @@ test('Changelog links the CHANGELOG.md of the associated repository and keeps it
     },
   ]);
   assert.equal(cardLinks(linked.cards[1])[0].href, 'https://github.com/owner/repo#readme');
+  assert.deepEqual(cardLinks({ downloads: { folderId: 'drive-version-folder' } }), [
+    {
+      href: 'https://drive.google.com/drive/folders/drive-version-folder',
+      label: 'Télécharger sur Google Drive',
+      detail: 'Télécharger cette version sur Google Drive',
+    },
+  ]);
   const released = withInfos(linked, {
     ...version,
     repository: 'owner/repo',

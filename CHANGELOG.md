@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.72 — 2026-10-23
+<!-- planifikateur:lien-drive-carte-version -->
+
+- **Lien Drive sur la carte Version** : La carte Version de la liste Infos affiche directement un lien vers le dossier Google Drive de la version, comme les cartes Mode d’emploi et Changelog vers GitHub.
+
 ## 0.1.71 — 2026-10-22
 <!-- planifikateur:retrait-liste-controle -->
 

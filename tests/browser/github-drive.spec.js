@@ -94,6 +94,10 @@ test.describe('automatic GitHub delivery', () => {
       'https://github.com/owner/first/blob/HEAD/CHANGELOG.md',
     );
     await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+    await expect(infos.getByRole('link', { name: 'Télécharger sur Google Drive' })).toHaveAttribute(
+      'href',
+      'https://drive.google.com/drive/folders/drive-version-folder',
+    );
     await version.click();
     await expect(page.getByRole('link', { name: 'Télécharger cette version sur Google Drive' })).toHaveAttribute(
       'href',
