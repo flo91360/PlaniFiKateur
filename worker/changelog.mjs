@@ -14,9 +14,13 @@ const line = (value, max) =>
     .replace(/</g, '&lt;');
 const day = date => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(date);
 
+// Début du titre d’une version : « ## 1.2.3 — date », ou « ## [1.2.3] - date » (`bracketed`, format
+// Keep a Changelog attendu par la CI du projet).
+export const versionHeading = (version, style) => (style === 'bracketed' ? `## [${version}] - ` : `## ${version} — `);
+
 // Une section par livraison, sous la nouvelle version du projet quand le profil la fixe.
 // Réécrire la même exécution (nouvelle tentative, reprise sur main à jour) remplace sa section.
-export function changelogEntry(source, { runId, version, date = new Date(), title, summary }) {
+export function changelogEntry(source, { runId, version, style, date = new Date(), title, summary }) {
   if (!/^[A-Za-z0-9_-]{1,80}$/.test(runId || ''))
     throw new Error('Identifiant d’exécution invalide pour le changelog.');
   const sections = (source.trim() ? source.replace(/\r\n/g, '\n') : header).split(/^(?=## )/m);
@@ -25,7 +29,7 @@ export function changelogEntry(source, { runId, version, date = new Date(), titl
     .slice(1)
     .filter(section => !section.includes(marker(runId)))
     .map(section => section.trimEnd() + '\n');
-  const heading = version ? `## ${version} — ${day(date)}` : `## ${day(date)}`;
+  const heading = version ? `${versionHeading(version, style)}${day(date)}` : `## ${day(date)}`;
   const entry = `${heading}\n${marker(runId)}\n\n- **${line(title, 140) || 'Modification'}** : ${line(summary, 2000) || 'Modification livrée.'}\n`;
   return [intro, entry, ...kept].join('\n');
 }

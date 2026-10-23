@@ -152,7 +152,7 @@ export function createWorker(config, dependencies = {}) {
     const repository = { command: checkout.command, cwd: checkout.cwd, base: `origin/${checkout.targetBranch}` };
     const touched = await protectedChanges(task.job.executionProfile, repository);
     if (touched.length) {
-      await restoreProtected(touched, repository);
+      await restoreProtected(touched, { ...repository, profile: task.job.executionProfile });
       throw Object.assign(
         new Error(
           `fichiers protégés modifiés (${touched.join(', ')}). Le worker les a rétablis tels qu’ils sont sur ${checkout.targetBranch} : une carte ne peut pas les changer. Réalise la demande sans les modifier ; si elle ne peut pas l’être, réponds avec status=question en l’expliquant.`,

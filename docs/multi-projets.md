@@ -35,26 +35,26 @@ fusionne automatiquement. Le webhook signé termine la carte.
 | PlaniFiKateur | Node 24 ; `npm ci`, `npm test`, `npm run test:browser` | `ci.yml`, nom **Tests**, jobs **Tests serveur** et **Tests navigateur** |
 | DefilOrdi | Node 22 ; `npm ci`, `npm run typecheck`, `npm test`, `npm run build` | `build-windows.yml`, nom **Windows .exe**, job **build** |
 | FunKart | Godot 4.4.1 ; import, `tests/test_profiles.gd`, `tests/autoplay.gd -- --fast` | `build.yml`, nom **Construire le jeu**, job **export** |
-| TrameErgo | Python 3 ; contrôle `worker/checks/qt_project.py` du worker | `build-windows.yml`, nom **Windows .exe**, job **build** |
+| TrameErgo | Node 22 ; dans `tablette/` : `npm ci`, `npm test`, `npm run build` | `tablette.yml`, nom **Application tablette et Windows**, jobs **tablette** et **build** |
 
-TrameErgo est une application Qt 6 qui pilote Word par ActiveQt : elle ne se
-compile que sous Windows. Le worker Linux vérifie donc seulement la cohérence du
-projet avant la PR (fichiers déclarés dans le `.pro` présents et uniques,
-formulaires `.ui` valides sans widgets homonymes, parenthèses et accolades
-équilibrées, classes `Q_OBJECT` déclarées dans `HEADERS`, `VERSION` au format
-`x.y.z`). La compilation complète est le job **build** du workflow Windows,
-exigé avant la fusion. Le contrôle est un fichier installé avec le worker
-(`@worker/checks/…` dans le profil), jamais un script du dépôt modifié. Le worker
-augmente la ligne `VERSION = x.y.z` du `.pro` à chaque livraison de code.
+TrameErgo est une application Vue 3 placée dans `tablette/`, publiée sur
+GitHub Pages pour les tablettes et empaquetée par Tauri en `.exe` Windows. Le
+worker Linux lance les tests Vitest et la construction web ; les parcours
+Playwright (Chromium et WebKit) et l’installateur Windows sont les jobs
+**tablette** et **build** du workflow, exigés avant la fusion. À chaque
+livraison de code, le worker augmente la même version dans
+`tablette/package.json`, son lockfile, `tablette/src-tauri/Cargo.toml` et
+l’entrée du paquet dans `Cargo.lock`, comme le vérifie la CI du dépôt.
 
 Chaque profil est une entrée du registre `executionPresets` de
 `worker/execution-profile.mjs`, installé avec le worker. Il déclare tout ce qui
 lui est propre : outils, commandes et contrôles GitHub, mais aussi les dépôts qui
 le choisissent par défaut (`repositories`), son fichier de version
-(`versioning.format` : `npm` pour `package.json` et son lockfile, `godot` pour
-`project.godot`, `qmake` pour l’unique `.pro`, avec les documents dont le numéro
-suit la version), ses consignes au modèle (`instructions`, par exemple le format
-Qt Designer pour TrameErgo seulement), ses variables d’environnement et les
+(`versioning.format` : `npm` pour `package.json` et son lockfile, éventuellement
+dans un sous-dossier `directory`, `godot` pour `project.godot` ; `cargo` pour le
+paquet Rust à garder à la même version, `changelog` pour le format du titre, et
+les documents dont le numéro suit la version), ses consignes au modèle
+(`instructions`, par exemple l’emplacement de l’application pour TrameErgo), ses variables d’environnement et les
 fichiers protégés (`protectedPaths`) : une carte ne peut pas les modifier, pas plus
 que les workflows GitHub ou les scripts npm (voir [le worker](worker.md#isolation-du-code-exécuté)). Ajouter un
 projet revient à ajouter une entrée : le reste du worker s’en déduit sans tester
@@ -66,7 +66,8 @@ les noms de profils.
 une section en tête du fichier `CHANGELOG.md` du dépôt (créé s’il manque), avant
 les tests locaux et dans le même commit que la PR. Pour DefilOrdi, FunKart et
 TrameErgo, la section porte la nouvelle version préparée par le worker et sa
-date (`## 1.4.2 — 2026-10-13`) ; pour PlaniFiKateur, dont la version n’est pas
+date (`## 1.4.2 — 2026-10-13`, ou `## [1.4.2] - 2026-10-13` pour TrameErgo,
+format attendu par sa CI) ; pour PlaniFiKateur, dont la version n’est pas
 augmentée automatiquement, seulement la date. Elle reprend le titre de la carte
 et le résumé de l’agent, ramenés à une ligne, avec un marqueur de l’exécution :
 une nouvelle tentative ou une reprise sur `main` à jour remplace la section de

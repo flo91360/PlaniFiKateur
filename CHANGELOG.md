@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.74 — 2026-10-23
+<!-- planifikateur:profil-trameergo-tauri -->
+
+- **Profil TrameErgo pour l’application Vue et Tauri** : Le profil TrameErgo suit la nouvelle application tablette (Vue 3 et Tauri) : installation, tests Vitest et construction dans tablette/ avec Node 22, jobs tablette et build exigés avant la fusion, version augmentée ensemble dans package.json, son lockfile, Cargo.toml et Cargo.lock, et changelog au format attendu par sa CI. Le contrôle Qt est retiré.
+
 ## 0.1.73 — 2026-10-23
 <!-- planifikateur:worker-droits-lecture -->
 

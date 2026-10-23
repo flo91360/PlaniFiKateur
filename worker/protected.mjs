@@ -2,6 +2,7 @@ import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import picomatch from 'picomatch';
 import { presetRules } from './execution-profile.mjs';
+import { npmFiles } from './project-version.mjs';
 
 // Fichiers qu’une carte ne peut pas modifier : workflows GitHub, scripts npm et fichiers déclarés
 // par le profil installé (`protectedPaths` : configuration des tests, et pour PlaniFiKateur le
@@ -10,6 +11,11 @@ import { presetRules } from './execution-profile.mjs';
 // l’approuver : le worker rétablit ces fichiers et l’agent réalise la demande sans eux.
 const ALWAYS = ['.github/**'];
 export const SCRIPTS = 'package.json (scripts)';
+// package.json dont les scripts sont protégés : celui du profil npm, à la racine ou dans `directory`.
+const manifest = profile => {
+  const versioning = presetRules(profile).versioning;
+  return versioning?.format === 'npm' ? npmFiles(versioning).manifest : null;
+};
 
 const scriptsOf = source => {
   try {
@@ -39,9 +45,10 @@ export async function protectedChanges(profile, { command, cwd, base }) {
   const changed = await changedPaths(command, base);
   const matches = picomatch([...ALWAYS, ...(presetRules(profile).protectedPaths || [])], { dot: true });
   const found = changed.filter(path => matches(path));
-  if (presetRules(profile).versioning?.format === 'npm' && changed.includes('package.json')) {
-    const target = await command(['git', 'show', `${base}:package.json`]).catch(() => '');
-    const current = await readFile(join(cwd, 'package.json'), 'utf8').catch(() => '');
+  const scripts = manifest(profile);
+  if (scripts && changed.includes(scripts)) {
+    const target = await command(['git', 'show', `${base}:${scripts}`]).catch(() => '');
+    const current = await readFile(join(cwd, scripts), 'utf8').catch(() => '');
     if (scriptsOf(target) !== scriptsOf(current)) found.push(SCRIPTS);
   }
   return [...new Set(found)].sort();
@@ -50,7 +57,7 @@ export async function protectedChanges(profile, { command, cwd, base }) {
 // Rétablit les fichiers protégés tels qu’ils sont sur la branche cible : contenu d’origine, ou
 // suppression d’un fichier qu’elle n’a pas. Seuls les scripts de package.json sont rétablis, la
 // version et les dépendances restant celles de la branche.
-export async function restoreProtected(changes, { command, cwd, base }) {
+export async function restoreProtected(changes, { command, cwd, base, profile }) {
   for (const path of changes) {
     if (path === SCRIPTS) continue;
     const existing = await command(['git', 'cat-file', '-e', `${base}:${path}`]).then(
@@ -64,24 +71,25 @@ export async function restoreProtected(changes, { command, cwd, base }) {
     }
   }
   if (!changes.includes(SCRIPTS)) return;
-  const target = JSON.parse(await command(['git', 'show', `${base}:package.json`]));
+  const scripts = manifest(profile) || 'package.json';
+  const target = JSON.parse(await command(['git', 'show', `${base}:${scripts}`]));
   let current;
   try {
-    current = JSON.parse(await readFile(join(cwd, 'package.json'), 'utf8'));
+    current = JSON.parse(await readFile(join(cwd, scripts), 'utf8'));
   } catch {
-    await command(['git', '--literal-pathspecs', 'checkout', base, '--', 'package.json']);
+    await command(['git', '--literal-pathspecs', 'checkout', base, '--', scripts]);
     return;
   }
   if (target.scripts === undefined) delete current.scripts;
   else current.scripts = target.scripts;
-  await writeFile(join(cwd, 'package.json'), JSON.stringify(current, null, 2) + '\n');
+  await writeFile(join(cwd, scripts), JSON.stringify(current, null, 2) + '\n');
 }
 
 // Fichiers protégés d’un profil, tels qu’annoncés à l’agent dans sa consigne.
 export const protectedPatterns = profile => [
   ...ALWAYS,
   ...(presetRules(profile).protectedPaths || []),
-  ...(presetRules(profile).versioning?.format === 'npm' ? ['scripts npm de package.json'] : []),
+  ...(manifest(profile) ? [`scripts npm de ${manifest(profile)}`] : []),
 ];
 
 // Question posée sur la carte quand l’agent ne peut pas réaliser la demande sans ces fichiers.
