@@ -16,8 +16,11 @@ COPY worker/package.json worker/package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
 COPY worker/ ./
 # Windows checkouts may contain CRLF even before .gitattributes is applied.
+# Le checkout du VPS est créé avec un umask 077 : sans lecture pour tous, l'utilisateur node
+# ne pourrait pas lire le code copié en root.
 RUN sed -i 's/\r$//' git-askpass.mjs entrypoint.sh \
-    && chmod +x git-askpass.mjs entrypoint.sh
+    && chmod +x git-askpass.mjs entrypoint.sh \
+    && chmod -R a+rX,go-w /opt/worker
 ENV PLANIFIKATEUR_WORKER_STATE_DIR=/data \
     PLANIFIKATEUR_WORKER_ISOLATION=bwrap \
     PLANIFIKATEUR_WORKER_STOP_STRAYS=1 \
