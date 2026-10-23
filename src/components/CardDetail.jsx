@@ -47,15 +47,6 @@ function CardResources({ card }) {
       ))}
       {card.downloads && (
         <div className="download-release">
-          <a
-            className="secondary-button"
-            href={`https://drive.google.com/drive/folders/${card.downloads.folderId}`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Télécharger cette version sur Google Drive
-            <ArrowRight size={16} />
-          </a>
           <ul>
             {card.downloads.files.map(file => (
               <li key={file.id}>

@@ -74,6 +74,7 @@ export function withInfos(project, version) {
 export const readmeUrl = repository => `https://github.com/${repository}#readme`;
 // HEAD suit la branche par défaut du dépôt, où le worker tient CHANGELOG.md à jour.
 export const changelogUrl = repository => `https://github.com/${repository}/blob/HEAD/CHANGELOG.md`;
+export const driveFolderUrl = folderId => `https://drive.google.com/drive/folders/${folderId}`;
 
 // Liens affichés sous la carte du tableau (label) et dans son détail (detail).
 export function cardLinks(card) {
@@ -93,6 +94,15 @@ export function cardLinks(card) {
             href: changelogUrl(card.changelog),
             label: 'Lire le changelog (CHANGELOG.md)',
             detail: 'Consulter le changelog (CHANGELOG.md)',
+          },
+        ]
+      : []),
+    ...(card.downloads?.folderId
+      ? [
+          {
+            href: driveFolderUrl(card.downloads.folderId),
+            label: 'Télécharger sur Google Drive',
+            detail: 'Télécharger cette version sur Google Drive',
           },
         ]
       : []),
