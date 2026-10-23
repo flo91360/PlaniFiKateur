@@ -1,4 +1,4 @@
-import { readFile, writeFile, lstat, readdir } from 'node:fs/promises';
+import { readFile, writeFile, lstat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { presetRules } from './execution-profile.mjs';
 
@@ -29,13 +29,28 @@ export function currentVersionReferences(source, previous, version) {
     .join('\n');
 }
 
+// Fichiers de version npm du profil : package.json et son lockfile, dans `versioning.directory`.
+export const npmFiles = versioning => {
+  const prefix = versioning?.directory ? `${versioning.directory}/` : '';
+  return { manifest: `${prefix}package.json`, lock: `${prefix}package-lock.json` };
+};
+// Paquet Rust (Tauri) : la première ligne `version` de Cargo.toml, celle du paquet, et son entrée
+// dans Cargo.lock.
+const cargoName = source => /^name = "([^"]+)"$/m.exec(source)?.[1];
+const lockEntry = name =>
+  new RegExp(`^(name = "${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"\nversion = ")([^"]+)(")`, 'm');
+export const cargoVersions = (toml, lock) => {
+  const name = cargoName(toml);
+  return { toml: /^version = "([^"]+)"$/m.exec(toml)?.[1], lock: name ? lockEntry(name).exec(lock)?.[2] : undefined };
+};
+
 // Version suivante écrite dans le fichier que déclare le profil installé (`versioning`).
 export async function bumpProjectVersion(cwd, profile, command) {
   const versioning = presetRules(profile).versioning;
-  if (versioning?.format === 'qmake') return bumpQmakeVersion(cwd, profile, command);
   if (!['npm', 'godot'].includes(versioning?.format)) return null;
   const npm = versioning.format === 'npm',
-    file = npm ? 'package.json' : 'project.godot';
+    files = npmFiles(versioning),
+    file = npm ? files.manifest : 'project.godot';
   const regular = async name => {
     const details = await lstat(join(cwd, name));
     if (!details.isFile()) throw new Error(`Le fichier de version ${name} doit être un fichier ordinaire.`);
@@ -50,13 +65,14 @@ export async function bumpProjectVersion(cwd, profile, command) {
   );
   if (npm) {
     const json = JSON.parse(current);
-    await regular('package-lock.json');
-    const lock = JSON.parse(await readFile(join(cwd, 'package-lock.json'), 'utf8'));
+    await regular(files.lock);
+    const lock = JSON.parse(await readFile(join(cwd, files.lock), 'utf8'));
     json.version = version;
     lock.version = version;
     if (lock.packages?.['']) lock.packages[''].version = version;
     await writeFile(join(cwd, file), JSON.stringify(json, null, 2) + '\n');
-    await writeFile(join(cwd, 'package-lock.json'), JSON.stringify(lock, null, 2) + '\n');
+    await writeFile(join(cwd, files.lock), JSON.stringify(lock, null, 2) + '\n');
+    if (versioning.cargo) await bumpCargoVersion(cwd, versioning.cargo, version, regular);
     if (versioning.documents?.length) {
       const previous = JSON.parse(base).version;
       try {
@@ -79,18 +95,16 @@ export async function bumpProjectVersion(cwd, profile, command) {
   return version;
 }
 
-// qmake : "VERSION = x.y.z" dans l'unique fichier .pro, qui fixe aussi la version de l'exe Windows.
-const qmakeVersion = source => /^VERSION\s*=\s*(\S+)\s*$/m.exec(source)?.[1];
-async function bumpQmakeVersion(cwd, profile, command) {
-  const projects = (await readdir(cwd)).filter(name => name.endsWith('.pro'));
-  if (projects.length !== 1) return null;
-  const [file] = projects,
-    details = await lstat(join(cwd, file));
-  if (!details.isFile()) throw new Error(`Le fichier de version ${file} doit être un fichier ordinaire.`);
-  const current = await readFile(join(cwd, file), 'utf8'),
-    base = qmakeVersion(await command(['git', 'show', `origin/${profile.branch}:${file}`]));
-  if (!base || !qmakeVersion(current)) return null;
-  const version = nextProjectVersion(base, qmakeVersion(current));
-  await writeFile(join(cwd, file), current.replace(/^VERSION\s*=\s*\S+\s*$/m, `VERSION = ${version}`));
-  return version;
+async function bumpCargoVersion(cwd, directory, version, regular) {
+  const toml = `${directory}/Cargo.toml`,
+    lock = `${directory}/Cargo.lock`;
+  await regular(toml);
+  await regular(lock);
+  const manifest = await readFile(join(cwd, toml), 'utf8'),
+    locked = await readFile(join(cwd, lock), 'utf8');
+  const name = cargoName(manifest),
+    found = cargoVersions(manifest, locked);
+  if (!found.toml || !found.lock) throw new Error(`Version du paquet Rust introuvable dans ${toml} ou ${lock}.`);
+  await writeFile(join(cwd, toml), manifest.replace(/^version = "[^"]+"$/m, `version = "${version}"`));
+  await writeFile(join(cwd, lock), locked.replace(lockEntry(name), `$1${version}$3`));
 }

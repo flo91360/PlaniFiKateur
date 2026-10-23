@@ -283,7 +283,7 @@ test('each installed profile declares its repositories, versioning and own instr
   const { executionPresets, defaultExecutionProfile } = await import('../worker/execution-profile.mjs');
   const { taskPrompt } = await import('../worker/codex.mjs');
   for (const [preset, rules] of Object.entries(executionPresets)) {
-    assert.ok(['npm', 'godot', 'qmake'].includes(rules.versioning?.format), preset);
+    assert.ok(['npm', 'godot'].includes(rules.versioning?.format), preset);
     for (const name of rules.repositories) assert.equal(defaultExecutionProfile(`owner/${name}`).preset, preset);
   }
   assert.equal(defaultExecutionProfile('owner/inconnu').preset, 'planifikateur');
@@ -296,7 +296,7 @@ test('each installed profile declares its repositories, versioning and own instr
       updates: [],
       executionProfile: defaultExecutionProfile(`owner/${preset}`),
     });
-  // La consigne Qt Designer ne part qu’avec le profil Qt.
-  assert.match(prompt('trameergo'), /Consignes propres à ce projet : .*Qt Designer/);
-  for (const preset of ['planifikateur', 'defilordi', 'funkart']) assert.doesNotMatch(prompt(preset), /Qt/);
+  // La consigne de l’application tablette ne part qu’avec le profil TrameErgo.
+  assert.match(prompt('trameergo'), /Consignes propres à ce projet : L’application est dans tablette\//);
+  for (const preset of ['planifikateur', 'defilordi', 'funkart']) assert.doesNotMatch(prompt(preset), /tablette/);
 });

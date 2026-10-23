@@ -2,8 +2,9 @@
 // Registre des profils : chaque entrée déclare tout ce qui lui est propre, et le reste du worker
 // s’en déduit sans tester les noms de profils.
 // - repositories : noms de dépôt qui choisissent ce profil par défaut ;
-// - versioning : fichier de version (npm : package.json et son lockfile, godot : project.godot,
-//   qmake : l’unique fichier .pro) et documents dont le numéro suit la version ;
+// - versioning : fichier de version (npm : package.json et son lockfile, dans `directory` s’il est
+//   donné, godot : project.godot), version du paquet Rust de `cargo` (Cargo.toml et Cargo.lock),
+//   titre du changelog (`bracketed` : « ## [x.y.z] - date ») et documents dont le numéro suit la version ;
 // - instructions : consignes propres au projet ajoutées à la demande envoyée au modèle ;
 // - protectedPaths : fichiers qu’une carte ne peut pas modifier, comme les workflows GitHub et
 //   les scripts npm (configuration des tests, worker et livraison) : le worker les rétablit
@@ -66,18 +67,22 @@ export const executionPresets = {
     environment: { ELECTRON_SKIP_BINARY_DOWNLOAD: '1' },
   },
   trameergo: {
-    label: 'TrameErgo — Qt Windows',
-    description: 'C++ Qt 6 et ActiveQt (Word) · cohérence du projet ici, compilation Windows sur GitHub',
-    nodeMajor: 24,
+    label: 'TrameErgo — Vue et Tauri',
+    description: 'Node 22 · application tablette Vue 3 (Vitest, build) et installateur Windows Tauri sur GitHub',
+    nodeMajor: 22,
     godotVersion: '',
     branch: 'main',
-    installCommands: [['python3', '--version']],
-    testCommands: [['python3', '@worker/checks/qt_project.py']],
-    workflow: { file: 'build-windows.yml', name: 'Windows .exe', jobs: ['build'] },
+    installCommands: [['npm', 'ci', '--prefix', 'tablette']],
+    testCommands: [
+      ['npm', '--prefix', 'tablette', 'test'],
+      ['npm', '--prefix', 'tablette', 'run', 'build'],
+    ],
+    workflow: { file: 'tablette.yml', name: 'Application tablette et Windows', jobs: ['tablette', 'build'] },
     repositories: ['trameergo'],
-    versioning: { format: 'qmake' },
+    versioning: { format: 'npm', directory: 'tablette', cargo: 'tablette/src-tauri', changelog: 'bracketed' },
+    protectedPaths: ['tablette/vite.config.*', 'tablette/playwright.config.*', 'tablette/tsconfig*.json'],
     instructions:
-      'Un formulaire Qt Designer demandé en fichier téléchargeable est un véritable document XML <ui version="4.0">, ouvrable dans Qt Designer, avec les champs demandés.',
+      'L’application est dans tablette/ (Vue 3, TypeScript), empaquetée par Tauri pour Windows. Le CLAUDE.md du dépôt demande d’augmenter la version et de compléter CHANGELOG.md : ici le worker le fait lui-même, ne modifie donc ni les versions de tablette/package.json, src-tauri/Cargo.toml et Cargo.lock, ni CHANGELOG.md.',
   },
   funkart: {
     label: 'FunKart — Godot',
