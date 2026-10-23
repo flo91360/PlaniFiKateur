@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.73 — 2026-10-23
+<!-- planifikateur:worker-droits-lecture -->
+
+- **Mises à jour du worker rétablies** : L’image du worker rend son code lisible par l’utilisateur node, même quand le dépôt du VPS est récupéré avec un umask 077. Les mises à jour automatiques du worker AWS, bloquées depuis la 0.1.46, peuvent de nouveau aboutir.
+
 ## 0.1.72 — 2026-10-23
 <!-- planifikateur:lien-drive-carte-version -->
 

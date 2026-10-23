@@ -81,8 +81,8 @@ test('stopping remaining processes is explicit: on in the Docker image only', as
   assert.equal(readWorkerConfig({ ...base, PLANIFIKATEUR_WORKER_STOP_STRAYS: '1' }).stopStrays, true);
   assert.throws(() => readWorkerConfig({ ...base, PLANIFIKATEUR_WORKER_STOP_STRAYS: 'oui' }), /0 ou 1/);
   const { readFile } = await import('node:fs/promises');
-  assert.match(
-    await readFile(new URL('../worker/Dockerfile', import.meta.url), 'utf8'),
-    /PLANIFIKATEUR_WORKER_STOP_STRAYS=1/,
-  );
+  const dockerfile = await readFile(new URL('../worker/Dockerfile', import.meta.url), 'utf8');
+  assert.match(dockerfile, /PLANIFIKATEUR_WORKER_STOP_STRAYS=1/);
+  // Un checkout en umask 077 rendrait le code illisible pour l'utilisateur node.
+  assert.match(dockerfile, /chmod -R a\+rX,go-w \/opt\/worker/);
 });
