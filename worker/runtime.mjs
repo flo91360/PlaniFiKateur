@@ -57,6 +57,20 @@ export async function checkRuntime(profile, config, execute, signal) {
     if (godot.code !== 0 || !godot.output.split('\n').some(line => line.trim().startsWith(`${profile.godotVersion}.`)))
       throw new Error(`Godot ${profile.godotVersion} est requis pour ce projet. Mettez à jour l’image du worker.`);
   }
+  const python = presetRules(profile).python;
+  if (python) {
+    // venv et ensurepip : l’installation crée l’environnement virtuel du projet.
+    const found = await execute(
+      ['python3', '-c', 'import sys, venv, ensurepip; ensurepip.version(); print("%d.%d" % sys.version_info[:2])'],
+      { cwd: config.stateRoot, env, signal },
+    );
+    const version = found.code === 0 ? found.output.trim().split('.').map(Number) : [];
+    const [major, minor] = python.split('.').map(Number);
+    if (!(version[0] === major && version[1] >= minor))
+      throw new Error(
+        `Python ${python} ou plus, avec venv, est requis pour ce projet. Mettez à jour l’image du worker.`,
+      );
+  }
   return env;
 }
 export async function projectDiagnostic(project, config, github, execute, signal) {
@@ -78,7 +92,8 @@ export async function projectDiagnostic(project, config, github, execute, signal
   };
   await check('Outils du projet', async () => {
     await checkRuntime(installedProfile(project.executionProfile), config, execute, signal);
-    return `Node ${project.executionProfile.nodeMajor}${project.executionProfile.godotVersion ? ` · Godot ${project.executionProfile.godotVersion}` : ''} disponibles.`;
+    const python = presetRules(project.executionProfile).python;
+    return `Node ${project.executionProfile.nodeMajor}${project.executionProfile.godotVersion ? ` · Godot ${project.executionProfile.godotVersion}` : ''}${python ? ` · Python ${python}+` : ''} disponibles.`;
   });
   await check('Isolation des tests', async () => {
     // Vérifiée au démarrage (index.mjs) ; l’image Docker l’active toujours. Désactivée, elle

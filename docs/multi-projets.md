@@ -36,6 +36,7 @@ fusionne automatiquement. Le webhook signé termine la carte.
 | DefilOrdi | Node 22 ; `npm ci`, `npm run typecheck`, `npm test`, `npm run build` | `build-windows.yml`, nom **Windows .exe**, job **build** |
 | FunKart | Godot 4.4.1 ; import, `tests/test_profiles.gd`, `tests/autoplay.gd -- --fast` | `build.yml`, nom **Construire le jeu**, job **export** |
 | TrameErgo | Node 22 ; dans `tablette/` : `npm ci`, `npm test`, `npm run build` | `tablette.yml`, nom **Application tablette et Windows**, jobs **tablette** et **build** |
+| AutoCorrectNEPSY | Python 3.10+ ; environnement virtuel `.planifikateur/venv`, `pip install -e ".[test]"`, `pytest -q` | `tests.yml`, nom **Tests**, jobs **tests (3.10)** et **tests (3.12)** |
 
 TrameErgo est une application Vue 3 placée dans `tablette/`, publiée sur
 GitHub Pages pour les tablettes et empaquetée par Tauri en `.exe` Windows. Le
@@ -46,15 +47,28 @@ livraison de code, le worker augmente la même version dans
 `tablette/package.json`, son lockfile, `tablette/src-tauri/Cargo.toml` et
 l’entrée du paquet dans `Cargo.lock`, comme le vérifie la CI du dépôt.
 
+AutoCorrectNEPSY est un paquet Python (correction du subtest Copie de figures de
+la NEPSY-II). Le worker crée un environnement virtuel dans `.planifikateur/venv`,
+exclu de Git, y installe le paquet en mode modifiable avec ses dépendances de
+test, puis lance `pytest` ; le contrôle « Outils du projet » exige Python 3.10 ou
+plus avec `venv` dans l’image. La CI rejoue les tests sous Python 3.10 et 3.12,
+les deux jobs étant exigés avant la fusion. À chaque livraison, le worker
+augmente la version de la table `[project]` de `pyproject.toml` et le
+`__version__` de `autocorrect_nepsy/__init__.py`. Le dépôt étant public, son
+`.gitignore`, qui écarte scans et cotations d’enfants, est protégé, comme les
+fichiers qui pourraient reconfigurer pytest à la racine.
+
 Chaque profil est une entrée du registre `executionPresets` de
 `worker/execution-profile.mjs`, installé avec le worker. Il déclare tout ce qui
 lui est propre : outils, commandes et contrôles GitHub, mais aussi les dépôts qui
 le choisissent par défaut (`repositories`), son fichier de version
 (`versioning.format` : `npm` pour `package.json` et son lockfile, éventuellement
-dans un sous-dossier `directory`, `godot` pour `project.godot` ; `cargo` pour le
+dans un sous-dossier `directory`, `godot` pour `project.godot`, `pyproject` pour
+`pyproject.toml` et le `__version__` des modules de `modules` ; `cargo` pour le
 paquet Rust à garder à la même version, `changelog` pour le format du titre, et
 les documents dont le numéro suit la version), ses consignes au modèle
-(`instructions`, par exemple l’emplacement de l’application pour TrameErgo), ses variables d’environnement et les
+(`instructions`, par exemple l’emplacement de l’application pour TrameErgo), ses variables d’environnement, la
+version minimale de Python exigée (`python`) et les
 fichiers protégés (`protectedPaths`) : une carte ne peut pas les modifier, pas plus
 que les workflows GitHub ou les scripts npm (voir [le worker](worker.md#isolation-du-code-exécuté)). Ajouter un
 projet revient à ajouter une entrée : le reste du worker s’en déduit sans tester
@@ -64,8 +78,8 @@ les noms de profils.
 
 À chaque livraison de code, quel que soit le profil, le worker ajoute lui-même
 une section en tête du fichier `CHANGELOG.md` du dépôt (créé s’il manque), avant
-les tests locaux et dans le même commit que la PR. Pour DefilOrdi, FunKart et
-TrameErgo, la section porte la nouvelle version préparée par le worker et sa
+les tests locaux et dans le même commit que la PR. Pour DefilOrdi, FunKart,
+TrameErgo et AutoCorrectNEPSY, la section porte la nouvelle version préparée par le worker et sa
 date (`## 1.4.2 — 2026-10-13`, ou `## [1.4.2] - 2026-10-13` pour TrameErgo,
 format attendu par sa CI) ; pour PlaniFiKateur, dont la version n’est pas
 augmentée automatiquement, seulement la date. Elle reprend le titre de la carte
@@ -79,8 +93,8 @@ modifications livrées depuis la mise en place du changelog.
 Cette règle fait partie du code installé du worker : elle ne dépend pas des
 workflows des dépôts et ne peut pas être modifiée par la branche livrée.
 
-Le conteneur contient Node 22 et 24, Chromium et le binaire officiel Godot 4.4.1
-avec vérification SHA-512. La fabrication des exécutables Windows de DefilOrdi
+Le conteneur contient Node 22 et 24, Chromium, Python 3 avec `venv` et le
+binaire officiel Godot 4.4.1 avec vérification SHA-512. La fabrication des exécutables Windows de DefilOrdi
 et des exports Windows/Linux de FunKart reste sur GitHub Actions. Le worker
 évite le téléchargement du binaire Electron pendant ses vérifications locales.
 

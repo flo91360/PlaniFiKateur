@@ -44,13 +44,49 @@ export const cargoVersions = (toml, lock) => {
   return { toml: /^version = "([^"]+)"$/m.exec(toml)?.[1], lock: name ? lockEntry(name).exec(lock)?.[2] : undefined };
 };
 
+// Paquet Python : la ligne `version = "…"` de la table [project] de pyproject.toml, et la ligne
+// `__version__ = "…"` des modules qui l’exposent.
+const projectTable = source => {
+  const start = /^\[project\][ \t]*$/m.exec(source);
+  if (!start) return null;
+  const from = start.index + start[0].length;
+  const next = /^\[/m.exec(source.slice(from));
+  return { from, to: next ? from + next.index : source.length };
+};
+const PYPROJECT_VERSION = /^(version[ \t]*=[ \t]*")([^"]+)(")[ \t]*$/m;
+const MODULE_VERSION = /^(__version__[ \t]*=[ \t]*["'])([^"']+)(["'])[ \t]*$/m;
+export const pyprojectVersion = source => {
+  const table = projectTable(source);
+  return table ? PYPROJECT_VERSION.exec(source.slice(table.from, table.to))?.[2] : undefined;
+};
+export const moduleVersion = source => MODULE_VERSION.exec(source)?.[2];
+const withPyprojectVersion = (source, version) => {
+  const table = projectTable(source);
+  return (
+    source.slice(0, table.from) +
+    source.slice(table.from, table.to).replace(PYPROJECT_VERSION, `$1${version}$3`) +
+    source.slice(table.to)
+  );
+};
+const VERSION_FILES = { npm: null, godot: 'project.godot', pyproject: 'pyproject.toml' };
+const readers = {
+  godot: source => /^config\/version="([^"]+)"$/m.exec(source)?.[1],
+  pyproject: pyprojectVersion,
+};
+// Fichier qui porte la version du profil, et lecture de sa version.
+export const versionFile = versioning =>
+  versioning?.format === 'npm' ? npmFiles(versioning).manifest : VERSION_FILES[versioning?.format];
+export const readVersionText = (source, format) =>
+  format === 'npm' ? JSON.parse(source).version : readers[format]?.(source);
+
 // Version suivante écrite dans le fichier que déclare le profil installé (`versioning`).
 export async function bumpProjectVersion(cwd, profile, command) {
   const versioning = presetRules(profile).versioning;
-  if (!['npm', 'godot'].includes(versioning?.format)) return null;
-  const npm = versioning.format === 'npm',
+  if (!Object.hasOwn(VERSION_FILES, versioning?.format || '')) return null;
+  const format = versioning.format,
+    npm = format === 'npm',
     files = npmFiles(versioning),
-    file = npm ? files.manifest : 'project.godot';
+    file = versionFile(versioning);
   const regular = async name => {
     const details = await lstat(join(cwd, name));
     if (!details.isFile()) throw new Error(`Le fichier de version ${name} doit être un fichier ordinaire.`);
@@ -58,11 +94,7 @@ export async function bumpProjectVersion(cwd, profile, command) {
   await regular(file);
   const base = await command(['git', 'show', `origin/${profile.branch}:${file}`]);
   const current = await readFile(join(cwd, file), 'utf8');
-  const godotVersion = source => /^config\/version="([^"]+)"$/m.exec(source)?.[1];
-  const version = nextProjectVersion(
-    npm ? JSON.parse(base).version : godotVersion(base),
-    npm ? JSON.parse(current).version : godotVersion(current),
-  );
+  const version = nextProjectVersion(readVersionText(base, format), readVersionText(current, format));
   if (npm) {
     const json = JSON.parse(current);
     await regular(files.lock);
@@ -90,6 +122,14 @@ export async function bumpProjectVersion(cwd, profile, command) {
           if (error.code !== 'ENOENT') throw error;
         }
       }
+    }
+  } else if (format === 'pyproject') {
+    await writeFile(join(cwd, file), withPyprojectVersion(current, version));
+    for (const module of versioning.modules || []) {
+      await regular(module);
+      const source = await readFile(join(cwd, module), 'utf8');
+      if (!moduleVersion(source)) throw new Error(`Ligne __version__ introuvable dans ${module}.`);
+      await writeFile(join(cwd, module), source.replace(MODULE_VERSION, `$1${version}$3`));
     }
   } else await writeFile(join(cwd, file), current.replace(/^config\/version="[^"]+"$/m, `config/version="${version}"`));
   return version;

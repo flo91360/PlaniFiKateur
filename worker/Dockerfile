@@ -2,7 +2,7 @@ FROM node:22-bookworm-slim AS node22
 FROM node:24-bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git ca-certificates chromium python3 make g++ gosu bubblewrap socat ripgrep libfontconfig1 libgl1 libpulse0 \
+    git ca-certificates chromium python3 python3-venv make g++ gosu bubblewrap socat ripgrep libfontconfig1 libgl1 libpulse0 \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /opt/worker
 COPY --from=node22 /usr/local/bin/node /opt/node22/bin/node
