@@ -283,7 +283,7 @@ test('each installed profile declares its repositories, versioning and own instr
   const { executionPresets, defaultExecutionProfile } = await import('../worker/execution-profile.mjs');
   const { taskPrompt } = await import('../worker/codex.mjs');
   for (const [preset, rules] of Object.entries(executionPresets)) {
-    assert.ok(['npm', 'godot'].includes(rules.versioning?.format), preset);
+    assert.ok(['npm', 'godot', 'pyproject'].includes(rules.versioning?.format), preset);
     for (const name of rules.repositories) assert.equal(defaultExecutionProfile(`owner/${name}`).preset, preset);
   }
   assert.equal(defaultExecutionProfile('owner/inconnu').preset, 'planifikateur');

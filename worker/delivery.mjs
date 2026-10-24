@@ -1,6 +1,14 @@
 import { readFile, lstat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { bumpProjectVersion, cargoVersions, npmFiles, parseProjectVersion } from './project-version.mjs';
+import {
+  bumpProjectVersion,
+  cargoVersions,
+  moduleVersion,
+  npmFiles,
+  parseProjectVersion,
+  readVersionText,
+  versionFile,
+} from './project-version.mjs';
 import { recordChangelog, versionHeading } from './changelog.mjs';
 import { presetRules } from './execution-profile.mjs';
 
@@ -8,16 +16,8 @@ const regularText = async (cwd, file) => {
   if (!(await lstat(join(cwd, file))).isFile()) throw new Error(`${file} doit être un fichier ordinaire.`);
   return readFile(join(cwd, file), 'utf8');
 };
-function versionFile(profile) {
-  const versioning = presetRules(profile).versioning;
-  if (versioning?.format === 'npm') return npmFiles(versioning).manifest;
-  if (versioning?.format === 'godot') return 'project.godot';
-  throw new Error('Le profil doit désigner un fichier de version unique.');
-}
-function readVersion(source, file) {
-  const version = file.endsWith('package.json')
-    ? JSON.parse(source).version
-    : /^config\/version="([^"]+)"$/m.exec(source)?.[1];
+function readVersion(source, versioning) {
+  const version = readVersionText(source, versioning.format);
   parseProjectVersion(version);
   return version;
 }
@@ -30,9 +30,10 @@ export async function verifyDelivery(cwd, profile, command, base = `origin/${pro
     );
   }
   const versioning = presetRules(profile).versioning;
-  const file = versionFile(profile);
-  const previous = readVersion(await command(['git', 'show', `${base}:${file}`]), file);
-  const version = readVersion(await regularText(cwd, file), file);
+  const file = versionFile(versioning);
+  if (!file) throw new Error('Le profil doit désigner un fichier de version unique.');
+  const previous = readVersion(await command(['git', 'show', `${base}:${file}`]), versioning);
+  const version = readVersion(await regularText(cwd, file), versioning);
   const before = parseProjectVersion(previous),
     after = parseProjectVersion(version);
   const changed = after.findIndex((number, i) => number !== before[i]);
@@ -53,6 +54,9 @@ export async function verifyDelivery(cwd, profile, command, base = `origin/${pro
     if (found.toml !== version || found.lock !== version)
       throw new Error('Cargo.toml et Cargo.lock doivent porter la même version que package.json.');
   }
+  for (const module of versioning.modules || [])
+    if (moduleVersion(await regularText(cwd, module)) !== version)
+      throw new Error(`${module} doit porter la même version (__version__) que ${file}.`);
   const changelog = await regularText(cwd, 'CHANGELOG.md');
   const sections = changelog
     .replaceAll('\r\n', '\n')

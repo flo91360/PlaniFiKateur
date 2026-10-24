@@ -9,7 +9,8 @@
 // - protectedPaths : fichiers qu’une carte ne peut pas modifier, comme les workflows GitHub et
 //   les scripts npm (configuration des tests, worker et livraison) : le worker les rétablit
 //   avant de livrer (worker/protected.mjs) ;
-// - environment : variables ajoutées aux commandes (hors du profil validé, qui reste comparable).
+// - environment : variables ajoutées aux commandes (hors du profil validé, qui reste comparable) ;
+// - python : version minimale de python3 (avec venv) exigée de l’image du worker.
 export const executionPresets = {
   planifikateur: {
     label: 'PlaniFiKateur',
@@ -43,6 +44,7 @@ export const executionPresets = {
       'tests/worker*.test.js',
       'tests/execution-profiles.test.js',
       'tests/trameergo-profile.test.js',
+      'tests/autocorrectnepsy-profile.test.js',
       'tests/delivery.test.js',
       'tests/deploy.test.js',
       'tests/deploy/**',
@@ -99,6 +101,29 @@ export const executionPresets = {
     repositories: ['funkart'],
     versioning: { format: 'godot' },
     protectedPaths: ['tests/test_profiles.gd', 'tests/autoplay.gd'],
+  },
+  autocorrectnepsy: {
+    label: 'AutoCorrectNEPSY — Python',
+    description: 'Python 3 · paquet de correction NEPSY-II, tests pytest dans un environnement virtuel',
+    nodeMajor: 24,
+    godotVersion: '',
+    branch: 'main',
+    // Environnement virtuel dans .planifikateur/, exclu de Git par le worker ; installation
+    // modifiable (-e) pour que les tests lisent le code modifié par l’agent.
+    installCommands: [
+      ['python3', '-m', 'venv', '.planifikateur/venv'],
+      ['.planifikateur/venv/bin/python', '-m', 'pip', 'install', '-e', '.[test]'],
+    ],
+    testCommands: [['.planifikateur/venv/bin/python', '-m', 'pytest', '-q']],
+    workflow: { file: 'tests.yml', name: 'Tests', jobs: ['tests (3.10)', 'tests (3.12)'] },
+    repositories: ['autocorrectnepsy'],
+    versioning: { format: 'pyproject', modules: ['autocorrect_nepsy/__init__.py'] },
+    python: '3.10',
+    // Le dépôt est public : son .gitignore tient à l’écart les scans et cotations d’enfants.
+    protectedPaths: ['.gitignore', 'pytest.ini', 'tox.ini', 'setup.cfg', 'conftest.py'],
+    environment: { PIP_DISABLE_PIP_VERSION_CHECK: '1' },
+    instructions:
+      'Paquet Python autocorrect_nepsy/ (Python 3.10 ou plus), testé par pytest sur les dessins synthétiques de tests/synth.py. Les dépendances sont installées dans .planifikateur/venv : lance les tests avec .planifikateur/venv/bin/python -m pytest -q. Ce dépôt est public : n’y ajoute jamais de scan, de cotation d’enfant, de page du manuel ou du cahier de réponses, ni aucun PDF, image ou CSV réel. Le worker augmente lui-même la version (pyproject.toml et __version__ de autocorrect_nepsy/__init__.py) et complète CHANGELOG.md : ne les modifie pas.',
   },
 };
 // Profil par défaut d’un dépôt : celui qui le déclare dans `repositories`, sinon PlaniFiKateur.

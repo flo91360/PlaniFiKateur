@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.75 — 2026-10-24
+<!-- planifikateur:profil-autocorrectnepsy -->
+
+- **Profil AutoCorrectNEPSY pour le paquet Python** : Nouveau profil d’exécution AutoCorrectNEPSY : environnement virtuel Python dans .planifikateur/venv, installation du paquet et tests pytest, jobs tests (3.10) et tests (3.12) du workflow Tests exigés avant la fusion, version augmentée ensemble dans pyproject.toml et __version__, .gitignore protégé car le dépôt est public. L’image du worker ajoute python3-venv et le contrôle des outils vérifie Python 3.10 ou plus.
+
 ## 0.1.74 — 2026-10-23
 <!-- planifikateur:profil-trameergo-tauri -->
 

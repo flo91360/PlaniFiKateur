@@ -15,7 +15,8 @@ Une livraison de code augmente au minimum le correctif par rapport à la branche
 cible. Une version majeure ou mineure explicitement supérieure est conservée.
 Les profils PlaniFiKateur et DefilOrdi mettent à jour `package.json` et le
 lockfile ; FunKart met à jour `config/version` et TrameErgo `tablette/package.json`,
-son lockfile, `Cargo.toml` et `Cargo.lock`.
+son lockfile, `Cargo.toml` et `Cargo.lock` ; AutoCorrectNEPSY met à jour
+`pyproject.toml` et `autocorrect_nepsy/__init__.py`.
 PlaniFiKateur synchronise aussi les références courantes dans README.md,
 docs/agents.md et docs/github.md.
 
