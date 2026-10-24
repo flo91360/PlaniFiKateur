@@ -11,13 +11,19 @@ import { checkRuntime, runtimeEnvironment } from '../worker/runtime.mjs';
 
 const pyproject = version =>
   `[build-system]\nrequires = ["setuptools>=68"]\nbuild-backend = "setuptools.build_meta"\n\n[project]\nname = "autocorrect-nepsy"\nversion = "${version}"\ndependencies = [\n    "numpy>=1.24",\n]\n\n[project.optional-dependencies]\ntest = ["pytest>=7"]\n\n[tool.other]\nversion = "9.9.9"\n`;
+const changelog =
+  '# Journal des modifications\n\nToutes les évolutions notables.\n\n<!-- nouvelles versions -->\n\n## [0.1.0] - 2026-10-24\n\n- Prototype.\n';
 const init = version => `"""Correction automatique."""\n\n__version__ = "${version}"\n`;
 
 async function project(t) {
   const dir = await mkdtemp(join(tmpdir(), 'planifikateur-nepsy-'));
   t.after(() => rm(dir, { recursive: true, force: true }));
   await mkdir(join(dir, 'autocorrect_nepsy'));
-  const files = { 'pyproject.toml': pyproject('0.1.0'), 'autocorrect_nepsy/__init__.py': init('0.1.0') };
+  const files = {
+    'pyproject.toml': pyproject('0.1.0'),
+    'autocorrect_nepsy/__init__.py': init('0.1.0'),
+    'CHANGELOG.md': changelog,
+  };
   for (const [name, content] of Object.entries(files)) await writeFile(join(dir, name), content);
   return { dir, files };
 }
@@ -28,7 +34,7 @@ const git = files => async args => {
   throw new Error(`Commande inattendue : ${args.join(' ')}`);
 };
 
-test('the AutoCorrectNEPSY repository receives its Python profile with both pytest jobs required before merging', () => {
+test('the AutoCorrectNEPSY repository requires its version, test and Windows executable jobs before merging', () => {
   const profile = defaultExecutionProfile('flo91360/AutoCorrectNEPSY');
   assert.equal(profile.preset, 'autocorrectnepsy');
   assert.deepEqual(profile.installCommands, [
@@ -36,7 +42,17 @@ test('the AutoCorrectNEPSY repository receives its Python profile with both pyte
     ['.planifikateur/venv/bin/python', '-m', 'pip', 'install', '-e', '.[test]'],
   ]);
   assert.deepEqual(profile.testCommands, [['.planifikateur/venv/bin/python', '-m', 'pytest', '-q']]);
-  assert.deepEqual(profile.workflow, { file: 'tests.yml', name: 'Tests', jobs: ['tests (3.10)', 'tests (3.12)'] });
+  assert.deepEqual(profile.workflow, {
+    file: 'tests.yml',
+    name: 'Tests et exécutable Windows',
+    jobs: [
+      'Version',
+      'Tests Python 3.10 (Linux)',
+      'Tests Python 3.12 (Linux)',
+      'Tests Python 3.12 (Windows)',
+      'Exécutable Windows',
+    ],
+  });
   assert.deepEqual(validateExecutionProfile({ preset: 'autocorrectnepsy' }), profile);
   assert.equal(runtimeEnvironment(profile, {}).PIP_DISABLE_PIP_VERSION_CHECK, '1');
 });
@@ -51,7 +67,7 @@ test('AutoCorrectNEPSY deliveries raise pyproject.toml and __version__ together'
   assert.equal(await readFile(join(dir, 'autocorrect_nepsy/__init__.py'), 'utf8'), init('0.1.1'));
 });
 
-test('an AutoCorrectNEPSY delivery creates its changelog and checks __version__', async t => {
+test('an AutoCorrectNEPSY delivery writes the changelog heading its CI expects and checks __version__', async t => {
   const { dir, files } = await project(t),
     profile = defaultExecutionProfile('flo91360/AutoCorrectNEPSY');
   const result = await prepareDelivery(dir, profile, git(files), {
@@ -61,7 +77,10 @@ test('an AutoCorrectNEPSY delivery creates its changelog and checks __version__'
     date: new Date('2026-10-24T10:00:00Z'),
   });
   assert.equal(result.version, '0.1.1');
-  assert.match(await readFile(join(dir, 'CHANGELOG.md'), 'utf8'), /^## 0\.1\.1 — 2026-10-24\n/m);
+  // Titre « ## [x.y.z] - date » attendu par le job « Version » du dépôt, sous son repère.
+  const changelog = await readFile(join(dir, 'CHANGELOG.md'), 'utf8');
+  assert.match(changelog, /<!-- nouvelles versions -->\n\n## \[0\.1\.1\] - 2026-10-24\n/);
+  assert.ok(changelog.indexOf('## [0.1.1]') < changelog.indexOf('## [0.1.0]'));
   await writeFile(join(dir, 'autocorrect_nepsy/__init__.py'), init('0.1.0'));
   await assert.rejects(verifyDelivery(dir, profile, git(files)), /__version__/);
 });
@@ -70,12 +89,13 @@ test('the .gitignore that keeps children’s data out of the public repository i
   const { dir, files } = await project(t),
     profile = defaultExecutionProfile('flo91360/AutoCorrectNEPSY');
   const command = async args => {
-    if (args[1] === 'diff') return '.gitignore\0tests/conftest.py\0';
+    if (args[1] === 'diff') return '.gitignore\0tests/conftest.py\0packaging/verifier_version.py\0';
     if (args[1] === 'ls-files') return 'pytest.ini\0';
     return git(files)(args);
   };
   assert.deepEqual(await protectedChanges(profile, { command, cwd: dir, base: 'origin/main' }), [
     '.gitignore',
+    'packaging/verifier_version.py',
     'pytest.ini',
   ]);
 });
