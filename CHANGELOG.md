@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.76 — 2026-10-25
+<!-- planifikateur:profil-autocorrectnepsy-livraison -->
+
+- **AutoCorrectNEPSY livré comme les autres projets** : Le profil AutoCorrectNEPSY suit le nouveau workflow du dépôt : jobs Version, tests Linux et Windows et Exécutable Windows exigés avant la fusion, changelog au format [x.y.z] attendu par sa CI, contrôle de version packaging/verifier_version.py protégé.
+
 ## 0.1.75 — 2026-10-24
 <!-- planifikateur:profil-autocorrectnepsy -->
 
