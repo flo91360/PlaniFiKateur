@@ -86,6 +86,20 @@ test('Changelog links the CHANGELOG.md of the associated repository and keeps it
       detail: 'Télécharger cette version sur Google Drive',
     },
   ]);
+  const release = { repository: 'owner/repo', tag: 'v1.2.0', files: [{ name: 'Produit Setup.exe', size: 10 }] };
+  assert.deepEqual(cardLinks({ release, downloads: { folderId: 'drive-version-folder' } }), [
+    {
+      href: 'https://github.com/owner/repo/releases/download/v1.2.0/Produit%20Setup.exe',
+      label: 'Télécharger l’exe sur GitHub',
+      detail: 'Télécharger Produit Setup.exe depuis GitHub',
+    },
+  ]);
+  assert.deepEqual(
+    cardLinks({ release: { ...release, files: [...release.files, { name: 'Outil.exe', size: 5 }] } }).map(
+      link => link.href,
+    ),
+    ['https://github.com/owner/repo/releases/tag/v1.2.0'],
+  );
   const released = withInfos(linked, {
     ...version,
     repository: 'owner/repo',

@@ -364,3 +364,32 @@ test('a local failure while refreshing versions is reported instead of crashing 
   sync.close();
   assert.match(errors[0], /versions GitHub impossible \(base indisponible\)/);
 });
+
+test('the Version card links the .exe of the GitHub Release instead of Google Drive', t => {
+  const { store, first, second } = fixture(t);
+  store.recordGithubVersion('owner/first', { tag: 'v2.0.0', date });
+  store.recordDriveRelease('owner/first', driveDownload);
+  const asset = (name, size, state = 'uploaded') => ({ name, size, state, browser_download_url: 'ignorée' });
+  store.recordGithubChangelog('owner/first', [
+    {
+      tag_name: 'v2.0.0',
+      published_at: date,
+      draft: false,
+      body: '',
+      assets: [asset('CHANGELOG.md', 10), asset('Product-Installation-2.0.0.exe', 120), asset('Partiel.exe', 5, 'new')],
+    },
+    { tag_name: 'v1.0.0', published_at: '2026-10-01T07:32:00Z', draft: false, body: '', assets: [asset('Old.exe', 9)] },
+  ]);
+  const version = card(store, first);
+  assert.deepEqual(version.release, {
+    repository: 'owner/first',
+    tag: 'v2.0.0',
+    files: [{ name: 'Product-Installation-2.0.0.exe', size: 120 }],
+  });
+  assert.equal(version.downloads.folderId, 'drive-version-folder', 'l’archive Drive reste connue');
+  assert.equal(card(store, second).release, undefined);
+  // Une Release sans exécutable ne propose pas de lien GitHub.
+  store.recordGithubVersion('owner/second', { tag: 'v0.1.0', date });
+  store.recordGithubChangelog('owner/second', [{ tag_name: 'v0.1.0', published_at: date, draft: false, assets: [] }]);
+  assert.equal(card(store, second).release, undefined);
+});
