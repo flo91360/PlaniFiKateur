@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.78 — 2026-10-28
+<!-- planifikateur:arret-archivage-drive -->
+
+- **Archivage Google Drive retiré** : Le serveur ne copie plus les .exe des Releases GitHub dans Google Drive : le service d’archivage, sa route /api/v1/projects/{projectId}/drive, son panneau dans les paramètres du projet et les scripts Google Drive sont retirés. Les exe se téléchargent depuis GitHub par la carte Version ; rien n’est supprimé dans le Drive.
+
 ## 0.1.77 — 2026-10-28
 <!-- planifikateur:exe-github-carte-version -->
 

@@ -247,16 +247,6 @@
   margin: 8px 0;
   font-size: 13px;
 }
-.drive-releases {
-  margin: 8px 0;
-  padding-left: 18px;
-  font-size: 13px;
-  line-height: 1.7;
-  overflow-wrap: anywhere;
-}
-.drive-message {
-  color: var(--muted);
-}
 
 .description-assistant {
   margin: -8px 0 16px;

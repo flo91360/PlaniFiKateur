@@ -4,7 +4,7 @@ Tableau de projets façon Trello dont les cartes servent de demandes à un agent
 Une carte passée **Prête à démarrer** est prise par le worker, qui code, teste,
 ouvre une PR, attend la CI puis fusionne ; le webhook GitHub termine la carte.
 Documentation fonctionnelle : `README.md` et `docs/` (API, agents, worker, GitHub,
-comptes, sauvegardes, Google Drive, multi-projets).
+comptes, sauvegardes, multi-projets).
 
 ## Structure
 
@@ -16,7 +16,7 @@ comptes, sauvegardes, Google Drive, multi-projets).
   viennent de `useProjectAccess()` (`src/lib/project-access.js`). Styles par
   zone dans `src/styles/`, couleurs communes en variables dans `base.css`.
   `src/lib/` est aussi partagé avec le serveur (validation du workspace, infos,
-  releases Drive).
+  releases GitHub).
 - `server/` : API Node sans framework, montée dans Vite en dev (`vite.config.js`)
   et par `server/index.js` en production. `api.js` assemble la table de routes
   (`router.js`) décrite par domaine dans `server/routes/` ; `auth.js` gère
@@ -29,8 +29,7 @@ comptes, sauvegardes, Google Drive, multi-projets).
   `execution-profile.mjs` (dépôts, version, consignes, environnement) ;
   `worker.mjs` enchaîne les étapes d’une tâche, `checkout.mjs` prépare le dépôt
   et `follow-up.mjs` suit les PR jusqu’à la fusion.
-- `scripts/` : client agent de référence, sauvegarde/restauration, export HTML,
-  Google Drive.
+- `scripts/` : client agent de référence, sauvegarde/restauration, export HTML.
 - `public/openapi.json` : spécification de l’API, servie à `/openapi.json`.
 - `tests/*.test.js` : tests `node:test` (serveur et worker) ;
   `tests/browser/` : Playwright, un fichier par domaine, serveur de test et

@@ -1,4 +1,4 @@
-# PR d’agent : tests puis fusion automatique — v0.1.77
+# PR d’agent : tests puis fusion automatique — v0.1.78
 
 Toutes les nouvelles tâches sont livrées par PR GitHub avec fusion automatique,
 sans sélection du mode de livraison. Depuis la v0.1.28, un responsable peut exiger
@@ -34,8 +34,8 @@ le tag et la version réellement servie par Railway.
    - URL : `https://votre-site/api/v1/github/webhook`.
    - Type : `application/json`.
    - Secret : même valeur que `PLANIFIKATEUR_GITHUB_WEBHOOK_SECRET`.
-   - Événements : **Pull requests**, **Workflow runs** et **Releases** (archivage
-     Google Drive immédiat, voir [google-drive.md](google-drive.md)) ; webhook actif.
+   - Événements : **Pull requests**, **Workflow runs** et **Releases** (lien de
+     téléchargement de l’exe sur la carte Version mis à jour aussitôt) ; webhook actif.
 5. Le worker crée le label `planifikateur-agent` s’il manque lors de la livraison.
 6. Laisser une première exécution du workflow **Tests** enregistrer les contrôles.
    Dans la protection de la branche cible, exiger les contrôles du profil,
