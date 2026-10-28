@@ -91,6 +91,33 @@ test('the accent chosen in « Mon compte » applies at once and follows the acco
   await expect(page.locator('.sidebar')).toHaveCSS('background-color', 'rgb(23, 46, 87)');
 });
 
+test('the dark theme follows the system, then the choice remembered on this device', async ({ page, appServer }) => {
+  const pageColor = () =>
+    page.locator('body').evaluate(() => getComputedStyle(document.documentElement).backgroundColor);
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await login(page, appServer);
+  await expect.poll(pageColor).toBe('rgb(17, 24, 22)');
+  await page.getByRole('button', { name: 'Passer au thème clair', exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'clair');
+  await expect.poll(pageColor).toBe('rgb(247, 250, 249)');
+
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Passer au thème sombre', exact: true })).toBeVisible();
+  await expect.poll(pageColor).toBe('rgb(247, 250, 249)');
+
+  await page.getByRole('button', { name: 'Mon compte', exact: true }).click();
+  const themes = page.getByRole('group', { name: 'Thème', exact: true });
+  await themes.getByRole('button', { name: 'Sombre', exact: true }).click();
+  await expect(themes.getByRole('button', { name: 'Sombre', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(pageColor).toBe('rgb(17, 24, 22)');
+  await page.emulateMedia({ colorScheme: 'light' });
+  await expect.poll(pageColor).toBe('rgb(17, 24, 22)');
+  await themes.getByRole('button', { name: 'Comme le système', exact: true }).click();
+  await expect(page.locator('html')).not.toHaveAttribute('data-theme');
+  await expect.poll(pageColor).toBe('rgb(247, 250, 249)');
+  expect(await page.evaluate(() => localStorage.getItem('planifikateur.theme'))).toBeNull();
+});
+
 test(
   'project roles hide, open read-only or reserve the agent to managers',
   { tag: '@mobile' },

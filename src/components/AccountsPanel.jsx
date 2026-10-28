@@ -1,12 +1,20 @@
 import React, { useState } from 'react';
 import { apiData } from '../lib/api-client.js';
 import { ACCENTS, DEFAULT_ACCENT } from '../lib/accents.js';
+import { THEMES } from '../lib/theme.js';
 import { useApiAction, useApiResource } from '../lib/use-api.js';
 import BackupsPanel from './BackupsPanel.jsx';
 import FormStatus from './FormStatus.jsx';
 
 const request = (path, options) => apiData(path, { fallback: 'Action impossible.', ...options });
-export default function AccountsPanel({ user, accent = DEFAULT_ACCENT, onAccent = () => {}, onLogout }) {
+export default function AccountsPanel({
+  user,
+  accent = DEFAULT_ACCENT,
+  onAccent = () => {},
+  theme = 'systeme',
+  onTheme = () => {},
+  onLogout,
+}) {
   const [name, setName] = useState(''),
     [email, setEmail] = useState(''),
     [link, setLink] = useState(''),
@@ -120,6 +128,20 @@ export default function AccountsPanel({ user, accent = DEFAULT_ACCENT, onAccent 
         >
           Rétablir la couleur par défaut
         </button>
+        <p>Thème clair ou sombre, mémorisé sur cet appareil.</p>
+        <div className="accent-palette" role="group" aria-label="Thème">
+          {THEMES.map(option => (
+            <button
+              key={option.id}
+              type="button"
+              className="accent-option theme-option"
+              aria-pressed={theme === option.id}
+              onClick={() => onTheme(option.id)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
       </div>
       {user.role === 'admin' && (
         <>

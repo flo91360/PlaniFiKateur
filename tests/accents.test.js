@@ -143,13 +143,24 @@ test('the accent is stored with the account, follows it on every session and sta
   assert.deepEqual(f.store.preferences(bobId), { accent: DEFAULT_ACCENT });
 });
 
-test('secondary texts stay readable on light surfaces and no text is smaller than 10 px', () => {
+test('secondary texts stay readable on the light and dark surfaces and no text is smaller than 10 px', () => {
   const styles = new URL('../src/styles/', import.meta.url);
   const base = readFileSync(new URL('base.css', styles), 'utf8');
-  const variable = name => new RegExp(`--${name}: (#[0-9a-f]{6})`).exec(base)[1];
-  for (const name of ['muted', 'text-muted', 'text-faint', 'text-soft', 'text'])
-    for (const background of ['#ffffff', variable('page')])
-      readable(variable(name), background, `--${name} sur ${background}`);
+  // Chaque couleur commune donne sa valeur claire puis sombre : light-dark(#clair, #sombre).
+  const variable = name => {
+    const [, light, dark] = new RegExp(`--${name}: light-dark\\((#[0-9a-f]{3,6}), (#[0-9a-f]{6})\\)`).exec(base);
+    return { light: light === '#fff' ? '#ffffff' : light, dark };
+  };
+  for (const name of ['muted', 'text-muted', 'text-faint', 'text-soft', 'text']) {
+    for (const background of ['#ffffff', variable('page').light])
+      readable(variable(name).light, background, `--${name} sur ${background}`);
+    for (const background of ['surface', 'page', 'surface-tint', 'surface-hover'].map(key => variable(key).dark))
+      readable(variable(name).dark, background, `--${name} sombre sur ${background}`);
+  }
+  // En thème sombre, les liens et états actifs prennent la teinte claire de la navigation.
+  for (const accent of ACCENTS)
+    for (const background of ['surface', 'page', 'surface-hover'].map(key => variable(key).dark))
+      readable(accent.sidebarAccent, background, `${accent.id} : lien sombre sur ${background}`);
   for (const file of readdirSync(styles))
     for (const [, size] of readFileSync(new URL(file, styles), 'utf8').matchAll(/font-size: ([\d.]+)px/g))
       assert.ok(Number(size) >= 10, `${file} : police de ${size} px`);

@@ -13,6 +13,7 @@ import { withProjectLists } from './lib/discussion-list.js';
 import { createId as uid } from './lib/id.js';
 import { apiData } from './lib/api-client.js';
 import { applyAccent } from './lib/accents.js';
+import { applyTheme, storedTheme, useTheme } from './lib/theme.js';
 import { useWorkspace, offlineMode, exportWithAlert } from './lib/use-workspace.js';
 import { useCardFollowers } from './lib/use-card-followers.js';
 import { useWorkStatus } from './lib/use-work-status.js';
@@ -125,6 +126,7 @@ const routeOf = (projectId, cardId) =>
 const initialRoute = offlineMode ? null : parseRoute(globalThis.location?.hash || '');
 
 function App() {
+  const theme = useTheme();
   const [acceptingInvitation, setAcceptingInvitation] = useState(() =>
     /^#invitation=[a-f0-9]{64}$/.test(location.hash),
   );
@@ -369,6 +371,8 @@ function App() {
             user={workspace.user}
             accent={workspace.accent}
             onAccent={workspace.setAccent}
+            theme={theme.theme}
+            onTheme={theme.setTheme}
             onLogout={async () => {
               await workspace.logout();
               close();
@@ -482,6 +486,8 @@ function App() {
             offline={offlineMode}
             attentionCount={attention.length}
             unreadCount={notifications.unread}
+            dark={theme.dark}
+            onToggleTheme={() => theme.setTheme(theme.dark ? 'clair' : 'sombre')}
             onOpenSidebar={() => setSidebar(true)}
             onOpenModal={setModal}
           />
@@ -607,6 +613,8 @@ function App() {
   );
 }
 
+// Thème choisi sur l’appareil, posé avant le premier rendu.
+applyTheme(storedTheme());
 createRoot(document.getElementById('root')).render(
   <ErrorBoundary
     fallback={() => (

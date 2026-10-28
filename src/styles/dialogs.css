@@ -2,7 +2,7 @@
 .overlay {
   position: fixed;
   inset: 0;
-  background: #172c2466;
+  background: light-dark(#172c2466, #000000a6);
   backdrop-filter: blur(4px);
   z-index: 50;
   display: flex;
@@ -107,7 +107,7 @@ textarea::placeholder {
   padding: 12px;
   border-radius: 6px;
   background: var(--danger-surface);
-  color: #974f3e;
+  color: light-dark(#974f3e, #f0a68f);
   font-size: 12px;
   line-height: 1.6;
 }
@@ -148,7 +148,7 @@ textarea::placeholder {
   padding: 16px;
   margin-bottom: 24px;
   background: var(--warning-soft);
-  border: 1px solid #ebd8ae;
+  border: 1px solid light-dark(#ebd8ae, #5a4a26);
   border-radius: 8px;
   font-size: 12px;
 }
@@ -257,7 +257,7 @@ textarea::placeholder {
   font-family: Manrope, sans-serif;
   font-size: 22px;
   font-weight: 700;
-  color: #37564a;
+  color: light-dark(#37564a, #dbe7e1);
   padding: 9px 0;
   margin-bottom: 8px;
 }
@@ -316,7 +316,7 @@ textarea::placeholder {
   color: var(--text-muted);
 }
 .criterion input {
-  accent-color: var(--primary);
+  accent-color: var(--primary-text);
   width: 15px;
   height: 15px;
 }
@@ -353,7 +353,7 @@ textarea::placeholder {
   line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  color: #6a8379;
+  color: light-dark(#6a8379, #a9bdb4);
   margin: 7px 0 0;
 }
 .comments-section form > button {
@@ -369,13 +369,13 @@ textarea::placeholder {
   gap: 7px;
   border: none;
   background: none;
-  color: #b18e79;
+  color: light-dark(#b18e79, #dfb59c);
   font-size: 11px;
   padding: 6px 0;
 }
 .delete-confirm p {
   font-size: 11px;
-  color: #a37563;
+  color: light-dark(#a37563, #e0a892);
   line-height: 1.6;
 }
 .delete-confirm button {
@@ -414,7 +414,7 @@ textarea::placeholder {
 .info-content p {
   font-size: 12px;
   line-height: 1.8;
-  color: #7c978c;
+  color: light-dark(#7c978c, #a3b8af);
 }
 .info-note {
   background: var(--surface-hover);
@@ -435,7 +435,7 @@ textarea::placeholder {
 .info-illustration {
   display: inline-flex;
   padding: 12px;
-  color: var(--primary);
+  color: var(--primary-text);
   border-radius: 12px;
   background: var(--primary-soft);
 }
@@ -460,7 +460,7 @@ textarea::placeholder {
   bottom: 0;
   left: 244px;
   right: 0;
-  background: #fff0d2;
+  background: light-dark(#fff0d2, #3a3019);
   padding: 12px 20px;
   font-size: 12px;
   z-index: 30;

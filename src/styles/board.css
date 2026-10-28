@@ -14,12 +14,12 @@
   font-size: 12px;
   font-weight: 600;
   border-bottom: 2px solid var(--primary);
-  color: var(--primary);
+  color: var(--primary-text);
 }
 .board-tab > span {
   font-size: 11px;
   font-weight: 400;
-  color: var(--primary);
+  color: var(--primary-text);
   border-radius: 4px;
   background: var(--primary-soft);
   padding: 3px 6px;
@@ -47,7 +47,7 @@
   width: 170px;
   outline: none;
   font-size: 11px;
-  color: #415d52;
+  color: light-dark(#415d52, #d2ddd8);
   min-width: 0;
 }
 .search-field input::placeholder {
@@ -61,7 +61,7 @@
   background: none;
   padding: 0;
   display: flex;
-  color: #708e82;
+  color: light-dark(#708e82, #9fb5ac);
 }
 .filter-field select {
   font-size: 11px;
@@ -112,7 +112,7 @@
   margin-bottom: 26px;
   padding: 4px 0;
   background: var(--page);
-  scrollbar-color: #a9bdb5 transparent;
+  scrollbar-color: light-dark(#a9bdb5, #4a5d56) transparent;
 }
 .board-scrollbar[hidden] {
   display: none;
@@ -181,7 +181,7 @@
 }
 .list-count {
   background: var(--border-strong);
-  color: #789489;
+  color: light-dark(#789489, #a3b8af);
   font-size: 11px;
   border-radius: 4px;
   padding: 2px 5px;
@@ -233,7 +233,7 @@
   outline: none;
 }
 .card:has(.card-open:focus-visible) {
-  outline: 3px solid var(--primary);
+  outline: 3px solid var(--primary-text);
   outline-offset: 3px;
 }
 .card-group:hover .card {
@@ -280,15 +280,15 @@
 }
 .tag.green {
   background: var(--success-surface);
-  color: #749164;
+  color: light-dark(#749164, #a9c79a);
 }
 .tag.purple {
-  background: #efebf6;
-  color: #9480b2;
+  background: light-dark(#efebf6, #2b2638);
+  color: light-dark(#9480b2, #c3b2e0);
 }
 .tag.orange {
   background: var(--danger-surface);
-  color: #b18b6a;
+  color: light-dark(#b18b6a, #e0b590);
 }
 .untagged {
   font-size: 11px;
@@ -324,27 +324,27 @@
   white-space: nowrap;
 }
 .status.draft {
-  color: #66715d;
-  background: #f1f3eb;
+  color: light-dark(#66715d, #c3cdb8);
+  background: light-dark(#f1f3eb, #262b22);
 }
 .status.ready {
-  color: #597047;
+  color: light-dark(#597047, #b5cfa0);
   background: var(--success-surface);
 }
 .status.progress {
-  color: #507286;
-  background: #edf4f7;
+  color: light-dark(#507286, #a9cbe0);
+  background: light-dark(#edf4f7, #1c2a33);
 }
 .status.clarify {
   color: var(--warning-text);
   background: var(--warning-soft);
 }
 .status.review {
-  color: #79648b;
-  background: #f2edf6;
+  color: light-dark(#79648b, #cfb8e2);
+  background: light-dark(#f2edf6, #2d2536);
 }
 .status.flo {
-  color: #91603c;
+  color: light-dark(#91603c, #e6b48c);
   background: var(--danger-surface);
 }
 .status.done {
@@ -367,7 +367,7 @@
   color: var(--text-faint);
 }
 .priority.high {
-  color: #b3907b;
+  color: light-dark(#b3907b, #e0b49a);
 }
 .priority.low {
   color: var(--text-faint);
@@ -383,7 +383,7 @@
   flex-wrap: wrap;
   gap: 9px;
   min-width: 0;
-  color: #9cada6;
+  color: light-dark(#9cada6, #8fa29a);
   font-size: 11px;
 }
 .card-followers-avatars {
@@ -410,8 +410,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #efe6ce;
-  color: #a08c64;
+  background: light-dark(#efe6ce, #3b3424);
+  color: light-dark(#a08c64, #e0cb9c);
   font-size: 11px;
 }
 .add-card {
@@ -419,14 +419,14 @@
   border: none;
   background: none;
   font-size: 11px;
-  color: #809b90;
+  color: light-dark(#809b90, #93aca2);
   display: flex;
   gap: 7px;
   width: 100%;
   align-items: center;
 }
 .add-card:hover {
-  color: #376351;
+  color: light-dark(#376351, #cfe3da);
 }
 .add-list {
   padding: 17px 13px;
@@ -448,7 +448,7 @@
 .empty-list {
   padding: 35px 15px;
   text-align: center;
-  color: #98ada5;
+  color: light-dark(#98ada5, #8ea39b);
   font-size: 11px;
 }
 .empty-list p {
@@ -475,7 +475,7 @@
   gap: 4px;
 }
 .card-meta .card-due.late {
-  color: #a23b20;
+  color: light-dark(#a23b20, #f08a6e);
   font-weight: 600;
 }
 .card-assignee {
@@ -484,7 +484,7 @@
   display: inline-flex;
 }
 .card-avatar.assignee {
-  outline: 2px solid var(--primary);
+  outline: 2px solid var(--primary-text);
   outline-offset: 1px;
 }
 .archive-toggle {
@@ -493,6 +493,6 @@
   gap: 6px;
 }
 .archive-toggle.active {
-  border-color: var(--primary);
-  color: var(--primary);
+  border-color: var(--primary-text);
+  color: var(--primary-text);
 }
