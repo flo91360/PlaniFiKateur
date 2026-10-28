@@ -19,10 +19,9 @@ export const readToken = 'agent-browser-test-key';
 export const test = base.extend({
   githubEnabled: [false, { option: true }],
   initialAccounts: [true, { option: true }],
-  driveArchive: [null, { option: true }],
   refiner: [null, { option: true }],
   repositoryContext: [null, { option: true }],
-  appServer: async ({ initialAccounts, githubEnabled, driveArchive, refiner, repositoryContext }, use) => {
+  appServer: async ({ initialAccounts, githubEnabled, refiner, repositoryContext }, use) => {
     const store = createStore(':memory:');
     const user = initialAccounts ? seedAccount(store) : null;
     if (githubEnabled) {
@@ -43,7 +42,6 @@ export const test = base.extend({
         readToken,
         backups,
         githubWebhookSecret: githubEnabled ? 'browser-github-secret' : '',
-        ...(driveArchive ? { driveArchive } : {}),
         ...(refiner ? { refiner } : {}),
         ...(repositoryContext ? { repositoryContext } : {}),
       },

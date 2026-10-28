@@ -4,7 +4,6 @@ import AgentSetup from './AgentSetup.jsx';
 import { useApiResource } from '../lib/use-api.js';
 import AiSettings from './AiSettings.jsx';
 import ExecutionSettings from './ExecutionSettings.jsx';
-import DriveArchive from './DriveArchive.jsx';
 import ProjectMembers, { roleLabels } from './ProjectMembers.jsx';
 import MergeApproval from './MergeApproval.jsx';
 import { useProjectAccess } from '../lib/project-access.js';
@@ -118,7 +117,6 @@ export default function ProjectAutomation({ project, user, onAiConfigured, onAcc
                   Dépôt : {configuration.repository || 'non configuré'}. Un administrateur peut modifier ces paramètres.
                 </p>
               )}
-              <DriveArchive key={configuration.repository || ''} projectId={project.id} user={user} />
             </>,
           )}
         </>

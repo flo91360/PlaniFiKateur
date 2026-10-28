@@ -18,7 +18,6 @@ export function githubRoutes({ store, config, auth }) {
     const version = published ? store.recordGithubVersion(published.repository, published.version) : { updated: false };
     ctx.send(200, { data: downloads ? store.recordDriveRelease(repository, downloads) : version });
     if (downloads) void config.versions?.refresh();
-    if (listed && !release?.draft) void config.driveArchive?.refresh();
   };
   return [
     {

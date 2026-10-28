@@ -3,7 +3,7 @@ import { httpError } from '../http.js';
 
 const editableExecution = ['preset', 'branch'];
 
-// Paramètres d’un projet : dépôt GitHub, IA, profil d’exécution, worker, Drive et reformulation.
+// Paramètres d’un projet : dépôt GitHub, IA, profil d’exécution, worker et reformulation.
 export function projectRoutes({ store, config, auth, guards, refiner }) {
   const { workflows } = store;
   return [
@@ -27,7 +27,6 @@ export function projectRoutes({ store, config, auth, guards, refiner }) {
           ctx.send(200, { data: workflows.configureGithub(ctx.params.projectId, data?.repository, admin) });
           store.refreshInfos();
           void config.versions?.refresh();
-          void config.driveArchive?.refresh();
         },
       },
     },
@@ -67,20 +66,6 @@ export function projectRoutes({ store, config, auth, guards, refiner }) {
       path: '/api/v1/projects/:projectId/worker-status',
       guard: guards.project,
       methods: { GET: ctx => ctx.send(200, { data: workflows.workerStatus(ctx.params.projectId) }) },
-    },
-    {
-      path: '/api/v1/projects/:projectId/drive',
-      guard: guards.project,
-      methods: {
-        GET: ctx => ctx.send(200, { data: driveStatus(ctx.params.projectId) }),
-        POST(ctx) {
-          auth.requireAdmin(ctx.req);
-          if (!config.driveArchive)
-            throw httpError(503, 'drive_disabled', 'L’archivage Google Drive n’est pas configuré sur le serveur.');
-          void config.driveArchive.refresh({ force: true });
-          ctx.send(202, { data: driveStatus(ctx.params.projectId) });
-        },
-      },
     },
     {
       path: '/api/v1/projects/:projectId/refine',
@@ -132,11 +117,4 @@ export function projectRoutes({ store, config, auth, guards, refiner }) {
       },
     },
   ];
-
-  function driveStatus(projectId) {
-    const repository = workflows.githubProject(projectId);
-    return config.driveArchive
-      ? config.driveArchive.status(repository)
-      : { enabled: false, repository: repository || '', releases: [] };
-  }
 }

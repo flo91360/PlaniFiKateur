@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { createReadStream, existsSync, statSync } from 'node:fs';
-import { resolve, extname, sep, join, dirname } from 'node:path';
+import { resolve, extname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApi } from './api.js';
 import { createStore } from './store.js';
@@ -9,7 +9,6 @@ import { createBackups } from './backups.js';
 import { createRetention } from './retention.js';
 import { createGithubSync } from './github-sync.js';
 import { createVersionSync } from './project-versions.js';
-import { createDriveArchive, readDriveConfig } from './drive-archive.js';
 import { createRepositoryContext } from './repository-context.js';
 
 const mime = {
@@ -113,11 +112,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const store = createStore(config.database, { backupDirectory: config.backupDirectory, demo: config.demo });
   config.versions = createVersionSync(store, { token: process.env.PLANIFIKATEUR_GITHUB_TOKEN || '' });
   config.repositoryContext = createRepositoryContext({ token: process.env.PLANIFIKATEUR_GITHUB_TOKEN || '' });
-  config.driveArchive = createDriveArchive(store, {
-    drive: readDriveConfig(),
-    token: process.env.PLANIFIKATEUR_GITHUB_TOKEN || '',
-    directory: join(dirname(config.database), 'drive-transfers'),
-  });
   config.backups = createBackups(store, {
     directory: config.backupDirectory,
     intervalMs: config.backupIntervalMs,
@@ -135,7 +129,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const stop = () =>
     server.close(() => {
       config.versions.close();
-      config.driveArchive.close();
       config.backups.close();
       retention.close();
       githubSync.close();
