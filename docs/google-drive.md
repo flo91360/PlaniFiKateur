@@ -55,8 +55,12 @@ archiver la nouvelle compilation.
 dernières versions, leur état, le lien du dossier Drive et l’erreur éventuelle.
 L’administrateur peut **Vérifier les Releases maintenant**. Une erreur passagère
 (téléchargement interrompu, Google indisponible) est retentée automatiquement,
-avec un délai croissant de 15 minutes à 24 heures. La carte **Infos** affiche le
-lien de la version courante une fois archivée.
+avec un délai croissant de 15 minutes à 24 heures.
+
+La carte **Version** de la liste Infos ne pointe plus vers le Drive : elle
+télécharge l’exe directement depuis la Release GitHub de la version courante (la
+page de la Release quand elle contient plusieurs `.exe`). Le lien du dossier
+Drive n’y apparaît que si la Release ne porte aucun `.exe`.
 
 ## Fonctionnement et sécurité
 

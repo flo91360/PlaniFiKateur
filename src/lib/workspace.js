@@ -1,6 +1,7 @@
 export const STATUSES = ['draft', 'ready', 'progress', 'clarify', 'review', 'flo', 'done'];
 import { efforts } from '../../worker/ai-settings.mjs';
 import { validateDriveRelease } from './drive-release.js';
+import { validateGithubRelease } from './github-release.js';
 const priorities = ['low', 'normal', 'high'];
 // Pièces jointes : par fichier, par carte et par projet (un projet chargé ne bloque pas les autres).
 export const ATTACHMENT_LIMITS = Object.freeze({
@@ -105,6 +106,7 @@ export function validateWorkspace(projects, { attachmentData = true } = {}) {
         ...(c.downloads
           ? { downloads: validateDriveRelease(c.downloads, c.downloads.repository, c.downloads.version) }
           : {}),
+        ...(c.release ? { release: validateGithubRelease(c.release) } : {}),
         attachments: array(c.attachments ?? [], 'attachments', ATTACHMENT_LIMITS.files).map(a => {
           object(a, 'attachment');
           const attachmentId = id(a.id, 'attachment.id');

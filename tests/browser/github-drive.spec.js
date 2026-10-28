@@ -107,6 +107,34 @@ test.describe('automatic GitHub delivery', () => {
       'href',
       'https://drive.google.com/file/d/drive-executable-id/view',
     );
+    await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+    // Dès que la Release porte l’exécutable, le lien de la carte Version mène à GitHub.
+    const withAsset = JSON.stringify({
+      ...JSON.parse(release),
+      release: {
+        ...JSON.parse(release).release,
+        assets: [{ name: 'Product-Installation-2.0.0.exe', size: 100, state: 'uploaded' }],
+      },
+    });
+    expect(
+      (
+        await request.post(`${appServer}/api/v1/github/webhook`, {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-GitHub-Event': 'release',
+            'X-Hub-Signature-256':
+              'sha256=' + createHmac('sha256', 'browser-github-secret').update(withAsset).digest('hex'),
+          },
+          data: withAsset,
+        })
+      ).status(),
+    ).toBe(200);
+    await page.reload();
+    await expect(infos.getByRole('link', { name: 'Télécharger l’exe sur GitHub' })).toHaveAttribute(
+      'href',
+      'https://github.com/owner/first/releases/download/v2.0.0/Product-Installation-2.0.0.exe',
+    );
+    await expect(infos.getByRole('link', { name: 'Télécharger sur Google Drive' })).toHaveCount(0);
   });
   test(
     'repositories persist separately for each project and missing configuration blocks preparation',

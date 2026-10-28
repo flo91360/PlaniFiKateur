@@ -406,7 +406,15 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
       .all(repository.toLowerCase())
       .map(row => JSON.parse(row.data))
       .sort((a, b) => Date.parse(b.date) - Date.parse(a.date) || b.tag.localeCompare(a.tag));
-    return { ...version, repository, changelog, ...(downloads ? { downloads: JSON.parse(downloads.data) } : {}) };
+    // Exécutables de la Release GitHub de la version affichée, téléchargés depuis GitHub.
+    const files = changelog.find(entry => entry.tag === version.tag)?.files;
+    return {
+      ...version,
+      repository,
+      changelog,
+      ...(downloads ? { downloads: JSON.parse(downloads.data) } : {}),
+      ...(files?.length ? { release: { repository, tag: version.tag, files } } : {}),
+    };
   };
   transaction(synchronizeInfos);
   // Projets antérieurs aux listes « Discussion » et « À tester » : elles sont ajoutées au démarrage
@@ -496,10 +504,10 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
     );
     for (const projectId of leftovers) forgetProject(projectId);
   });
-  // Champs que seul le serveur renseigne (cartes Infos : téléchargement, README, changelog).
+  // Champs que seul le serveur renseigne (cartes Infos : téléchargements, README, changelog).
   const withoutSystemFields = card => {
     if (!card || typeof card !== 'object') return card;
-    const { downloads, readme, changelog, ...rest } = card;
+    const { downloads, release, readme, changelog, ...rest } = card;
     return rest;
   };
   // Le navigateur reçoit les pièces jointes sans leur contenu : une pièce jointe déjà connue

@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.77 — 2026-10-28
+<!-- planifikateur:exe-github-carte-version -->
+
+- **Exe téléchargé depuis GitHub** : La carte Version de chaque projet télécharge l’exe directement depuis sa Release GitHub (la page de la Release s’il y a plusieurs .exe) au lieu du dossier Google Drive, qui ne sert plus qu’en l’absence d’exe dans la Release. L’archivage Drive continue pour l’instant.
+
 ## 0.1.76 — 2026-10-25
 <!-- planifikateur:profil-autocorrectnepsy-livraison -->
 

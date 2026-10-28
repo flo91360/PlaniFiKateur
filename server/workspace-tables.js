@@ -90,6 +90,7 @@ export function readWorkspace(db, { projectIds = null, attachmentData = true } =
           ...(infos.readme ? { readme: infos.readme } : {}),
           ...(infos.changelog ? { changelog: infos.changelog } : {}),
           ...(infos.downloads ? { downloads: infos.downloads } : {}),
+          ...(infos.release ? { release: infos.release } : {}),
           attachments: (attachments.get(c.id) || []).map(a => ({
             id: a.id,
             name: a.name,
@@ -124,6 +125,7 @@ function rowsOf(projects, positions = null) {
         ...(c.readme ? { readme: c.readme } : {}),
         ...(c.changelog ? { changelog: c.changelog } : {}),
         ...(c.downloads ? { downloads: c.downloads } : {}),
+        ...(c.release ? { release: c.release } : {}),
       };
       rows.cards.push([
         c.id,

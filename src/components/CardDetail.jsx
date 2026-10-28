@@ -10,6 +10,7 @@ import LocalForm from './LocalForm.jsx';
 import Status, { PriorityOptions, StatusOptions } from './Status.jsx';
 import { EffortSelect } from './AiSettings.jsx';
 import { cardLinks, isSystemCard } from '../lib/infos.js';
+import { githubDownloadUrl } from '../lib/github-release.js';
 import { isDiscussionCard } from '../lib/discussion-list.js';
 import { createId as uid } from '../lib/id.js';
 import { parseTags } from '../lib/tags.js';
@@ -33,7 +34,7 @@ function CommentText({ text }) {
   );
 }
 
-// Mode d’emploi, changelog et téléchargements Google Drive d’une carte Infos.
+// Mode d’emploi, changelog et téléchargements (Release GitHub, sinon Google Drive) d’une carte Infos.
 function CardResources({ card }) {
   return (
     <>
@@ -45,7 +46,20 @@ function CardResources({ card }) {
           </a>
         </div>
       ))}
-      {card.downloads && (
+      {card.release?.files.length > 1 && (
+        <div className="download-release">
+          <ul>
+            {card.release.files.map(file => (
+              <li key={file.name}>
+                <a href={githubDownloadUrl(card.release, file)} target="_blank" rel="noreferrer">
+                  {file.name}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {card.downloads && !card.release && (
         <div className="download-release">
           <ul>
             {card.downloads.files.map(file => (

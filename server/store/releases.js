@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from 'node:util';
 import { validateDriveRelease } from '../../src/lib/drive-release.js';
+import { releaseExecutables } from '../../src/lib/github-release.js';
 
 // Versions publiées des dépôts : tags et releases GitHub, archives et téléchargements Google Drive.
 // Chaque enregistrement met à jour les cartes Infos des projets liés au dépôt.
@@ -86,6 +87,7 @@ export function createReleaseStore({ db, transaction, workflows, synchronizeInfo
             !Number.isFinite(Date.parse(release.published_at))
           )
             continue;
+          const files = releaseExecutables(release.assets);
           const entry = {
             tag: release.tag_name,
             date: new Date(release.published_at).toISOString(),
@@ -96,6 +98,7 @@ export function createReleaseStore({ db, transaction, workflows, synchronizeInfo
                     .trim()
                     .slice(0, 20000)
                 : '',
+            ...(files.length ? { files } : {}),
           };
           db.prepare(
             'INSERT INTO github_changelog VALUES(?,?,?) ON CONFLICT(repository,tag) DO UPDATE SET data=excluded.data',
