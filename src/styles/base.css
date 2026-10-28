@@ -3,13 +3,14 @@
   font-family: 'DM Sans', sans-serif;
   color: var(--text);
   background: var(--page);
+  color-scheme: light dark;
   font-synthesis: none;
   font-weight: 400;
   /* Couleur dominante : valeurs par défaut, remplacées selon le choix du compte (src/lib/accents.js). */
   --primary: #28734b;
   --primary-hover: #1e5939;
-  --primary-soft: #e9f3ef;
-  --primary-ring: #a5c8ba;
+  --primary-soft: light-dark(#e9f3ef, color-mix(in srgb, #28734b 32%, #1a2320));
+  --primary-ring: light-dark(#a5c8ba, color-mix(in srgb, #a4dfc7 45%, #1a2320));
   --sidebar: #193d2f;
   --sidebar-raised: #24483a;
   --sidebar-hover: #2a4d3f;
@@ -19,24 +20,33 @@
   --sidebar-soft: #b7cac2;
   --sidebar-muted: #88a69a;
   --sidebar-accent: #a4dfc7;
-  --border: #e2e9e6;
-  --muted: #646f6b;
-  --text: #263b33;
-  --page: #f7faf9;
-  /* Couleurs communes : surfaces, bordures, textes et états. */
-  --surface: #fff; /* cartes, panneaux et champs */
-  --surface-tint: #f2f7f4; /* fond teinté d’un encadré */
-  --surface-hover: #e7f1ed; /* survol d’un élément clair */
-  --border-strong: #dae6e1; /* bordure appuyée */
-  --border-accent: #b0cbc0; /* bordure d’un élément actif */
-  --text-soft: #395147; /* texte secondaire foncé */
-  --text-muted: #5f736b; /* texte d’appoint */
-  --text-faint: #5f7369; /* libellés discrets (contraste 4,5:1 minimum sur les fonds clairs) */
-  --success-surface: #e7f1e8; /* fond d’une réussite */
-  --warning-surface: #fdf8ea; /* fond d’un avertissement */
-  --warning-soft: #fbf1dc; /* fond appuyé d’un avertissement */
-  --warning-text: #8e6d29; /* texte d’un avertissement */
-  --danger-surface: #fbede3; /* fond d’une erreur ou d’une suppression */
+  /* Couleurs communes : chaque variable donne sa valeur claire puis sombre (light-dark), selon
+     color-scheme : le thème du système par défaut, ou celui choisi sur l’appareil (src/lib/theme.js). */
+  --border: light-dark(#e2e9e6, #2c3a35);
+  --muted: light-dark(#646f6b, #9fb0a9);
+  --text: light-dark(#263b33, #e3ece8);
+  --page: light-dark(#f7faf9, #111816);
+  --surface: light-dark(#fff, #1a2320); /* cartes, panneaux et champs */
+  --surface-tint: light-dark(#f2f7f4, #1f2a26); /* fond teinté d’un encadré */
+  --surface-hover: light-dark(#e7f1ed, #25322d); /* survol d’un élément clair */
+  --border-strong: light-dark(#dae6e1, #34443e); /* bordure appuyée */
+  --border-accent: light-dark(#b0cbc0, #4f6a5f); /* bordure d’un élément actif */
+  --text-soft: light-dark(#395147, #cbd8d2); /* texte secondaire foncé */
+  --text-muted: light-dark(#5f736b, #a7b7b0); /* texte d’appoint */
+  --text-faint: light-dark(#5f7369, #9cada6); /* libellés discrets (contraste 4,5:1 minimum sur les fonds) */
+  --success-surface: light-dark(#e7f1e8, #1d3326); /* fond d’une réussite */
+  --warning-surface: light-dark(#fdf8ea, #2c2616); /* fond d’un avertissement */
+  --warning-soft: light-dark(#fbf1dc, #3a3019); /* fond appuyé d’un avertissement */
+  --warning-text: light-dark(#8e6d29, #e3c27a); /* texte d’un avertissement */
+  --danger-surface: light-dark(#fbede3, #3a241c); /* fond d’une erreur ou d’une suppression */
+  /* Texte et contours dans la couleur dominante : sa teinte claire de navigation sur fond sombre. */
+  --primary-text: light-dark(var(--primary), var(--sidebar-accent));
+}
+:root[data-theme='clair'] {
+  color-scheme: light;
+}
+:root[data-theme='sombre'] {
+  color-scheme: dark;
 }
 * {
   box-sizing: border-box;
@@ -68,11 +78,11 @@ button:disabled {
   opacity: 0.45;
 }
 a {
-  color: var(--primary);
+  color: var(--primary-text);
 }
 button:focus-visible,
 a:focus-visible {
-  outline: 3px solid var(--primary);
+  outline: 3px solid var(--primary-text);
   outline-offset: 3px;
 }
 input:focus,
@@ -83,7 +93,7 @@ select:focus {
 }
 input[type='checkbox'],
 input[type='radio'] {
-  accent-color: var(--primary);
+  accent-color: var(--primary-text);
 }
 button {
   transition:

@@ -147,5 +147,14 @@ export function applyAccent(id, root = globalThis.document?.documentElement) {
   if (!root) return;
   const accent = accentById(id);
   for (const [key, variable] of Object.entries(ACCENT_VARIABLES)) root.style.setProperty(variable, accent[key]);
+  // Fonds teintés pour le thème sombre : la couleur dominante mélangée à la surface sombre.
+  root.style.setProperty(
+    '--primary-soft',
+    `light-dark(${accent.soft}, color-mix(in srgb, ${accent.primary} 32%, #1a2320))`,
+  );
+  root.style.setProperty(
+    '--primary-ring',
+    `light-dark(${accent.ring}, color-mix(in srgb, ${accent.sidebarAccent} 45%, #1a2320))`,
+  );
   root.dataset.accent = accent.id;
 }

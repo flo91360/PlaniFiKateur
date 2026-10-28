@@ -31,6 +31,8 @@ Les personnes déjà connectées peuvent également ouvrir un lien d’activatio
 
 Dans **Mon compte → Apparence**, chaque membre choisit la couleur dominante du site parmi une palette prédéfinie (Forêt, Océan, Prune, Framboise, Cuivre, Ardoise). La couleur s’applique aussitôt aux boutons principaux, liens, états actifs, à la navigation et à l’en-tête. Le choix est enregistré avec le compte sur le serveur : il est retrouvé après reconnexion, sur tout appareil ou navigateur, et ne change pas l’affichage des autres membres. **Rétablir la couleur par défaut** revient à la couleur Forêt d’origine. Chaque couleur de la palette respecte un contraste minimal du texte (4,5:1) et des contrôles (3:1), vérifié par les tests. Voir [l’API](api.md#apparence-personnelle).
 
+Le site existe aussi en **thème sombre**. Par défaut, il suit le réglage clair ou sombre du système. Le bouton lune/soleil de l’en-tête bascule entre les deux thèmes, et **Mon compte → Apparence** propose aussi « Comme le système », « Clair » ou « Sombre ». Ce choix est mémorisé dans le navigateur de l’appareil, sans être envoyé au serveur ; la couleur dominante du compte s’applique dans les deux thèmes.
+
 ## Droits
 
 | Action | Administrateur | Membre | Agent avec clé de lecture |

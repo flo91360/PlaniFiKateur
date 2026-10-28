@@ -97,14 +97,14 @@
 .activity-list time,
 .card-authorship {
   font-size: 11px;
-  color: #71807a;
+  color: light-dark(#71807a, #9eaea7);
   line-height: 1.6;
 }
 .header-avatar {
   border: 0;
   cursor: pointer;
   background: var(--primary-soft);
-  color: var(--primary-hover);
+  color: light-dark(var(--primary-hover), var(--sidebar-accent));
 }
 .appearance-settings p {
   margin: 0;
@@ -128,10 +128,10 @@
   font-size: 12px;
 }
 .accent-option:hover:not(:disabled) {
-  border-color: var(--primary);
+  border-color: var(--primary-text);
 }
 .accent-option[aria-pressed='true'] {
-  border-color: var(--primary);
+  border-color: var(--primary-text);
   box-shadow: inset 0 0 0 1px var(--primary);
   font-weight: 600;
 }
@@ -142,8 +142,11 @@
   box-shadow: inset 0 0 0 1px #0000001f;
 }
 .accent-option[aria-pressed='true'] .accent-swatch {
-  outline: 2px solid var(--primary);
+  outline: 2px solid var(--primary-text);
   outline-offset: 2px;
+}
+.theme-option {
+  padding-left: 12px;
 }
 
 .card-subscription p {
@@ -214,7 +217,7 @@
   align-items: center;
   gap: 12px;
   padding: 10px 0;
-  border-bottom: 1px solid #e7e9e2;
+  border-bottom: 1px solid light-dark(#e7e9e2, #2c3a35);
 }
 .attachments li a {
   overflow-wrap: anywhere;
@@ -228,7 +231,7 @@
 }
 .attachment-paste {
   padding: 10px;
-  border: 1px dashed #8d947f;
+  border: 1px dashed light-dark(#8d947f, #6b7363);
   border-radius: 8px;
   margin-top: 10px;
 }
@@ -268,7 +271,7 @@
   border-radius: 18px;
   border: 1px solid var(--border-strong);
   background: var(--surface-tint);
-  color: #3f6656;
+  color: light-dark(#3f6656, #c3dbd0);
   font-size: 11px;
   font-weight: 500;
   white-space: nowrap;
@@ -277,20 +280,20 @@
   background: var(--surface-hover);
 }
 .assistant-button.magic {
-  border-color: #d9d3ec;
-  background: #f6f3fd;
-  color: #5b4a8f;
+  border-color: light-dark(#d9d3ec, #463d63);
+  background: light-dark(#f6f3fd, #26213a);
+  color: light-dark(#5b4a8f, #c9bbf2);
 }
 .assistant-button.magic:hover:not(:disabled) {
-  background: #ece6fa;
+  background: light-dark(#ece6fa, #312a4a);
 }
 .assistant-button.recording {
-  border-color: #e9b8a8;
-  background: #fdf0eb;
-  color: #a2442b;
+  border-color: light-dark(#e9b8a8, #6b3a2c);
+  background: light-dark(#fdf0eb, #35211b);
+  color: light-dark(#a2442b, #f2a58f);
 }
 .assistant-button.recording:hover {
-  background: #fae2d9;
+  background: light-dark(#fae2d9, #432820);
 }
 .assistant-timer {
   font-variant-numeric: tabular-nums;
@@ -303,9 +306,9 @@
   margin: 0;
   padding: 10px 12px;
   border-radius: 8px;
-  background: #fbf6f3;
-  border: 1px dashed #e9c3b5;
-  color: #6e5b52;
+  background: light-dark(#fbf6f3, #2a211d);
+  border: 1px dashed light-dark(#e9c3b5, #6b4a3e);
+  color: light-dark(#6e5b52, #dccac1);
   font-size: 12px;
   line-height: 1.6;
   font-style: italic;
@@ -340,7 +343,7 @@
   gap: 6px 12px;
   margin: 0;
   font-size: 11px;
-  color: #6b8a7d;
+  color: light-dark(#6b8a7d, #9fb8ad);
 }
 .link-button {
   display: inline-flex;
@@ -349,13 +352,13 @@
   padding: 4px 0;
   border: 0;
   background: none;
-  color: var(--primary);
+  color: var(--primary-text);
   font-size: 11px;
   font-weight: 500;
   text-decoration: underline;
 }
 .refinement {
-  border: 1px solid #ddd6f0;
+  border: 1px solid light-dark(#ddd6f0, #463d63);
   border-radius: 10px;
   background: var(--surface);
   padding: 14px;
@@ -364,7 +367,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #5b4a8f;
+  color: light-dark(#5b4a8f, #c9bbf2);
   font-size: 12px;
 }
 .refinement > header small {
@@ -379,7 +382,7 @@
 .refinement-sources {
   margin: 6px 0 0;
   font-size: 11px;
-  color: #6b5f93;
+  color: light-dark(#6b5f93, #bfb3e6);
 }
 .refinement textarea {
   width: 100%;
@@ -398,7 +401,7 @@
 .refinement-questions h4 {
   margin: 0;
   font-size: 12px;
-  color: #4b4070;
+  color: light-dark(#4b4070, #d8cff5);
 }
 .refinement-questions label {
   display: flex;
@@ -406,7 +409,7 @@
   gap: 7px;
   margin: 0 0 12px;
   font-size: 12px;
-  color: #4f6a5f;
+  color: light-dark(#4f6a5f, #bcd0c7);
   font-weight: 500;
   line-height: 1.5;
 }

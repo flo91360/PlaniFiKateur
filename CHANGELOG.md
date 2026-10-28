@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.79 — 2026-10-28
+<!-- planifikateur:theme-sombre -->
+
+- **Thème sombre** : Le site propose un thème sombre : il suit le réglage du système par défaut, se bascule depuis l’en-tête et se choisit dans Mon compte, mémorisé sur l’appareil.
+
 ## 0.1.78 — 2026-10-28
 <!-- planifikateur:arret-archivage-drive -->
 

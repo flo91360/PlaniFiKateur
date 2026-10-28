@@ -231,11 +231,11 @@ main {
   align-items: center;
   gap: 13px;
   font-size: 11px;
-  color: #8a9691;
+  color: light-dark(#8a9691, #8f9e98);
   min-width: 0;
 }
 .breadcrumb strong {
-  color: #43574f;
+  color: light-dark(#43574f, #d2ddd8);
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -262,11 +262,11 @@ main {
   align-items: center;
   justify-content: center;
   border-radius: 5px;
-  color: #8a9792;
+  color: light-dark(#8a9792, #9aa9a3);
 }
 .icon-button:hover {
   background: var(--primary-soft);
-  color: var(--primary-hover);
+  color: light-dark(var(--primary-hover), var(--sidebar-accent));
 }
 .mobile-menu {
   display: none;
@@ -377,19 +377,19 @@ h1 {
 }
 .neutral {
   background: var(--surface-hover);
-  color: #65907f;
+  color: light-dark(#65907f, #9cc4b3);
 }
 .blue {
-  background: #eaf1f5;
-  color: #7c98aa;
+  background: light-dark(#eaf1f5, #1d2a31);
+  color: light-dark(#7c98aa, #a5c0d1);
 }
 .amber {
   background: var(--warning-soft);
-  color: #bd9a50;
+  color: light-dark(#bd9a50, #e2c27f);
 }
 .green {
   background: var(--success-surface);
-  color: #6b9576;
+  color: light-dark(#6b9576, #a3cfae);
 }
 .stat strong {
   font-family: Manrope, sans-serif;

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bell, ChevronRight, CircleHelp, FolderKanban, History, Inbox, Menu } from 'lucide-react';
+import { Bell, ChevronRight, CircleHelp, FolderKanban, History, Inbox, Menu, Moon, Sun } from 'lucide-react';
 import { avatarLabel } from './Avatar.jsx';
 
 function saveLabel(saveStatus, offline) {
@@ -15,6 +15,8 @@ export default function Topbar({
   offline,
   attentionCount = 0,
   unreadCount = 0,
+  dark = false,
+  onToggleTheme,
   onOpenSidebar,
   onOpenModal,
 }) {
@@ -56,6 +58,14 @@ export default function Topbar({
             {unreadCount > 0 && <span className="attention-count">{unreadCount}</span>}
           </button>
         )}
+        <button
+          className="icon-button"
+          aria-label={dark ? 'Passer au thème clair' : 'Passer au thème sombre'}
+          title={dark ? 'Passer au thème clair' : 'Passer au thème sombre'}
+          onClick={onToggleTheme}
+        >
+          {dark ? <Sun size={19} /> : <Moon size={19} />}
+        </button>
         <button className="icon-button" aria-label="Informations sur PlaniFiKateur" onClick={() => onOpenModal('info')}>
           <CircleHelp size={19} />
         </button>
