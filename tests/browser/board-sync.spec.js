@@ -281,6 +281,8 @@ test('cards, lists and the project are rearranged and edited without drag and dr
   const ideas = seed[0].cards.filter(item => !isSystemCard(seed[0].id, item.id)).length;
   expect(ideas).toBeLessThan(seed[0].cards.length);
   await expect(page.locator('.stats')).toContainText(`${ideas}idées au total`);
+  const drafts = seed[0].cards.filter(item => !isSystemCard(seed[0].id, item.id) && item.status === 'draft').length;
+  await expect(page.locator('.stats')).toContainText(`${drafts}à explorer`);
   // Déplacer une carte vers une autre liste, puis la remonter dans sa liste.
   const card = seed[0].cards[0];
   const target = seed[0].lists[1];

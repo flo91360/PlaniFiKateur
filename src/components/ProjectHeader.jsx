@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCheck, CircleHelp, Clock3, Lightbulb, Pencil, Trash2 } from 'lucide-react';
+import { CheckCheck, CircleHelp, Clock3, Lightbulb, Pencil, PencilLine, Trash2 } from 'lucide-react';
 import { ideaCards } from '../lib/infos.js';
 import { useProjectAccess } from '../lib/project-access.js';
 
@@ -32,6 +32,13 @@ function ProjectStats({ cards }) {
         value={total}
         label="idées au total"
         hint="Toutes vos pistes, au même endroit"
+      />
+      <Stat
+        icon={PencilLine}
+        tone="slate"
+        value={count('draft')}
+        label="à explorer"
+        hint="Des demandes à finir de saisir"
       />
       <Stat icon={Clock3} tone="blue" value={count('progress')} label="en cours" hint="Des idées qui prennent forme" />
       <Stat
