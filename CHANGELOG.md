@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.80 — 2026-10-30
+<!-- planifikateur:compteur-a-explorer -->
+
+- **Cartes à explorer dans le récapitulatif** : Le récapitulatif en haut d’un projet affiche le nombre de cartes encore « À explorer », c’est-à-dire les demandes à finir de saisir.
+
 ## 0.1.79 — 2026-10-28
 <!-- planifikateur:theme-sombre -->
 

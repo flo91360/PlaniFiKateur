@@ -353,7 +353,7 @@ h1 {
 }
 .stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 12px;
   margin-bottom: 33px;
 }
@@ -378,6 +378,10 @@ h1 {
 .neutral {
   background: var(--surface-hover);
   color: light-dark(#65907f, #9cc4b3);
+}
+.slate {
+  background: light-dark(#eef0f3, #262a30);
+  color: light-dark(#7d8796, #b3bcc8);
 }
 .blue {
   background: light-dark(#eaf1f5, #1d2a31);
