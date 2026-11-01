@@ -19,6 +19,9 @@ const mime = {
   '.woff2': 'font/woff2',
   '.svg': 'image/svg+xml',
   '.json': 'application/json',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
+  '.webmanifest': 'application/manifest+json',
 };
 
 // Pages HTML : scripts, styles, polices et API de la même origine seulement ; aperçus d’images
