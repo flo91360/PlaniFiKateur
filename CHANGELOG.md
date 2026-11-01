@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.83 — 2026-11-01
+<!-- planifikateur:sauvegardes-cinq-max -->
+
+- **Cinq sauvegardes conservées** : Le serveur ne garde plus que les 5 dernières sauvegardes de chaque sorte (régulières et d’avant suppression) au lieu de 28, ce qui libère le volume. Les copies en trop sont supprimées à la prochaine sauvegarde ; PLANIFIKATEUR_BACKUP_KEEP permet toujours d’en garder davantage.
+
 ## 0.1.82 — 2026-11-01
 <!-- planifikateur:railway-veille-compression -->
 

@@ -2,7 +2,7 @@
 
 À partir de la v0.1.6, le serveur crée une sauvegarde au démarrage (omise depuis la v0.1.82 si la dernière copie régulière contient déjà l’état exact de la base, ce qui évite une copie complète à chaque réveil d’un service mis en veille), puis toutes les **6 heures lorsque les projets, les comptes ou leur historique ont changé**. Il crée aussi une copie avant une suppression de projet, de liste ou de carte, une fois les droits vérifiés et seulement si un élément est réellement retiré : une demande refusée ou sans effet ne déclenche aucune copie. Une suppression n’est pas enregistrée si cette copie de sécurité échoue. La copie est omise lorsque la dernière sauvegarde du serveur, de moins de 24 heures, contient déjà l’état exact des éléments retirés : aucune action de l’historique ne les a modifiés depuis (champs, commentaires, pièces jointes, exécution, restauration). Supprimer une à une des cartes restées inchangées ne copie donc pas toute la base à chaque fois.
 
-Les copies utilisent `VACUUM INTO` : chaque fichier SQLite est autonome et inclut les modifications validées, même si elles étaient dans le journal WAL. Les copies sont vérifiées avant publication ; un fichier partiel n’est jamais proposé au téléchargement. Les **28 dernières copies** de chaque sorte sont conservées : d’un côté les copies régulières (démarrage, intervalle, manuelles), de l’autre les copies d’avant suppression, nommées `…-suppression.sqlite`. Depuis la v0.1.31, des suppressions répétées ne remplacent donc plus les copies régulières ; ces dernières ne garantissent pas 7 jours d’historique si vous redéployez souvent.
+Les copies utilisent `VACUUM INTO` : chaque fichier SQLite est autonome et inclut les modifications validées, même si elles étaient dans le journal WAL. Les copies sont vérifiées avant publication ; un fichier partiel n’est jamais proposé au téléchargement. Les **5 dernières copies** de chaque sorte sont conservées (28 jusqu’à la v0.1.82) : d’un côté les copies régulières (démarrage, intervalle, manuelles), de l’autre les copies d’avant suppression, nommées `…-suppression.sqlite`. Depuis la v0.1.31, des suppressions répétées ne remplacent donc plus les copies régulières ; avec 5 copies toutes les 6 heures, l’historique couvre au plus un peu plus d’un jour, moins si vous redéployez souvent ; augmentez `PLANIFIKATEUR_BACKUP_KEEP` pour remonter plus loin.
 
 ## Passage au stockage en tables (v0.1.25)
 
@@ -12,7 +12,7 @@ Jusqu’à la v0.1.24, tout le tableau était un seul document JSON. À partir d
 2. il convertit le tableau, relit les tables et vérifie que le résultat est identique au document d’origine ;
 3. il valide la conversion en une seule transaction. Au moindre écart, rien n’est modifié et le démarrage échoue avec un message explicite.
 
-Cette copie n’est pas comptée dans les 28 sauvegardes tournantes et n’est jamais supprimée automatiquement. Pour revenir à une version antérieure à la v0.1.25, restaurer cette copie (voir ci-dessous) **avant** de redémarrer l’ancienne version : une ancienne version ne lit pas les tables. Les sauvegardes des deux formats se restaurent avec la version actuelle.
+Cette copie n’est pas comptée dans les sauvegardes tournantes et n’est jamais supprimée automatiquement. Pour revenir à une version antérieure à la v0.1.25, restaurer cette copie (voir ci-dessous) **avant** de redémarrer l’ancienne version : une ancienne version ne lit pas les tables. Les sauvegardes des deux formats se restaurent avec la version actuelle.
 
 ## Railway
 
@@ -24,7 +24,7 @@ Paramètres facultatifs dans les variables du service :
 | --- | --- | --- |
 | `PLANIFIKATEUR_BACKUP_DIR` | `backups` à côté de la base | Répertoire sur un volume persistant, hors du répertoire web `dist` |
 | `PLANIFIKATEUR_BACKUP_INTERVAL_HOURS` | `6` | 1 à 168 heures |
-| `PLANIFIKATEUR_BACKUP_KEEP` | `28` | 1 à 100 fichiers de chaque sorte |
+| `PLANIFIKATEUR_BACKUP_KEEP` | `5` | 1 à 100 fichiers de chaque sorte |
 
 La base elle-même est limitée par une **rétention** appliquée au démarrage puis chaque jour :
 
