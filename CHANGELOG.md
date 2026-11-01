@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.81 — 2026-11-01
+<!-- planifikateur:icone-site-fk -->
+
+- **Icône du site** : Le site a désormais une icône FK : elle s’affiche dans l’onglet du navigateur et sur l’écran d’accueil d’un téléphone lorsqu’on y ajoute PlaniFiKateur.
+
 ## 0.1.80 — 2026-10-30
 <!-- planifikateur:compteur-a-explorer -->
 

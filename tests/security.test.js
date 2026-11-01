@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { createStore } from '../server/store.js';
 import { createAppServer } from '../server/index.js';
 import { createBackups, restoreBackup } from '../server/backups.js';
@@ -306,4 +306,35 @@ test('an error after a response has started closes it without stopping the serve
   store.getRevision = getRevision;
   assert.ok(errors.some(([message]) => /GET \/api\/v1\/events/.test(message)));
   assert.equal((await fetch(`${base}/api/v1/session`, { headers: { Cookie: cookie } })).status, 200);
+});
+
+test('the site icons and the web manifest are served with their own types', async t => {
+  const store = createStore(':memory:');
+  const server = createAppServer({ store, dist: resolve('public'), config: { readToken: 'icons-read' } });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+    store.close();
+  });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const types = {
+    '/favicon.ico': 'image/x-icon',
+    '/favicon.svg': 'image/svg+xml',
+    '/icons/apple-touch-icon.png': 'image/png',
+    '/manifest.webmanifest': 'application/manifest+json',
+  };
+  for (const [path, type] of Object.entries(types)) {
+    const response = await fetch(`${base}${path}`);
+    assert.equal(response.status, 200, path);
+    assert.equal(response.headers.get('content-type'), type, path);
+  }
+  const manifest = JSON.parse(readFileSync(resolve('public', 'manifest.webmanifest'), 'utf8'));
+  for (const icon of manifest.icons) {
+    const response = await fetch(`${base}${icon.src}`);
+    assert.equal(response.status, 200, icon.src);
+    const bytes = Buffer.from(await response.arrayBuffer());
+    const [width, height] = icon.sizes.split('x').map(Number);
+    assert.deepEqual([bytes.readUInt32BE(16), bytes.readUInt32BE(20)], [width, height], icon.src);
+  }
 });
