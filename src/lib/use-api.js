@@ -6,7 +6,7 @@ import { apiData, apiFetch } from './api-client.js';
 // - `data` vaut undefined tant que rien n’est chargé ; `setData` la remplace après une
 //   modification enregistrée, `reload` relit la ressource ;
 // - `key` relit la ressource quand une donnée dont elle dépend change (le dépôt d’un projet…) ;
-// - `every` (ms) la relit périodiquement, sans effacer la dernière valeur en cas d’échec ;
+// - `every` (ms) la relit périodiquement, onglet visible, sans effacer la dernière valeur en cas d’échec ;
 // - `fallback` : message d’erreur si le serveur n’en donne pas ;
 // - `raw` : la route répond sans enveloppe `data` (exceptions historiques, voir docs/api.md).
 export function useApiResource(path, { enabled = true, key = '', every = 0, fallback, raw = false } = {}) {
@@ -23,10 +23,14 @@ export function useApiResource(path, { enabled = true, key = '', every = 0, fall
           if (first && !controller.signal.aborted) setState({ identity, data: undefined, error: cause.message });
         });
     load(true);
-    const timer = every ? setInterval(() => load(false), every) : null;
+    // Relecture périodique seulement onglet visible (le serveur peut se mettre en veille), et dès le retour.
+    const poll = () => document.visibilityState !== 'hidden' && load(false);
+    const timer = every ? setInterval(poll, every) : null;
+    if (every) document.addEventListener('visibilitychange', poll);
     return () => {
       controller.abort();
       clearInterval(timer);
+      document.removeEventListener('visibilitychange', poll);
     };
   }, [identity, path, enabled, every, version, fallback, raw]);
   const current = state.identity === identity ? state : { data: undefined, error: '' };

@@ -7,7 +7,8 @@ export function createGithubSync(
   {
     transport = fetch,
     token = '',
-    intervalMs = 5 * 60000,
+    // Filet de sécurité seulement : un intervalle long laisse le service s’endormir (Railway).
+    intervalMs = 15 * 60000,
     quietMs = 3 * 60000,
     onError = console.error,
     start = true,

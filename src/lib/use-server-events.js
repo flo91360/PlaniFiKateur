@@ -3,13 +3,19 @@ import { useEffect, useRef, useSyncExternalStore } from 'react';
 // Flux unique d’événements du serveur (GET /api/v1/events), partagé par toute la page.
 // Les hooks relisent leurs données quand un événement les concerne ; tant que le flux n’est
 // pas connecté, ils gardent leur actualisation périodique habituelle.
+// Onglet masqué depuis une minute : le flux est fermé, pour que le serveur puisse se mettre en
+// veille (Railway) ; il est rouvert au retour sur l’onglet, et `ready` fait tout relire.
+const HIDDEN_CLOSE_MS = 60000;
 const TYPES = ['ready', 'workspace', 'work', 'subscriptions', 'notifications'];
 const handlers = new Set();
 const watchers = new Set();
 let source = null,
   users = 0,
   connected = false,
-  retry = null;
+  retry = null,
+  hiddenTimer = null;
+
+const hidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden';
 
 const setConnected = value => {
   if (connected === value) return;
@@ -18,7 +24,7 @@ const setConnected = value => {
 };
 
 function open() {
-  if (source || typeof EventSource === 'undefined') return;
+  if (source || typeof EventSource === 'undefined' || hidden()) return;
   source = new EventSource('/api/v1/events');
   for (const type of TYPES)
     source.addEventListener(type, event => {
@@ -45,19 +51,31 @@ function open() {
 
 function close() {
   clearTimeout(retry);
+  clearTimeout(hiddenTimer);
+  hiddenTimer = null;
   source?.close();
   source = null;
   setConnected(false);
+}
+
+function onVisibility() {
+  if (!users) return;
+  clearTimeout(hiddenTimer);
+  hiddenTimer = null;
+  if (!hidden()) open();
+  else if (source) hiddenTimer = setTimeout(close, HIDDEN_CLOSE_MS);
 }
 
 // Ouvre le flux tant qu’au moins un composant le demande ; renvoie l’état de connexion.
 export function useServerEvents(enabled) {
   useEffect(() => {
     if (!enabled) return;
-    users++;
+    if (users++ === 0) document.addEventListener('visibilitychange', onVisibility);
     open();
     return () => {
-      if (--users === 0) close();
+      if (--users > 0) return;
+      document.removeEventListener('visibilitychange', onVisibility);
+      close();
     };
   }, [enabled]);
   return useServerConnected();

@@ -55,7 +55,7 @@ export function releaseVersion(data) {
 
 export function createVersionSync(
   store,
-  { transport = fetch, intervalMs = 15 * 60000, token = '', start = true, onError = console.error } = {},
+  { transport = fetch, intervalMs = 60 * 60000, token = '', start = true, onError = console.error } = {},
 ) {
   let running = false,
     closed = false;

@@ -1,3 +1,5 @@
+import { compressBody } from './compression.js';
+
 // Outils HTTP communs à l’API : erreurs typées, lecture du corps JSON et réponses.
 export const MAX_BODY = 4 * 1024 * 1024;
 
@@ -33,5 +35,5 @@ export async function readJson(req) {
 export function sendJson(res, status, data) {
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.end(JSON.stringify(data));
+  res.end(compressBody(res, JSON.stringify(data)));
 }

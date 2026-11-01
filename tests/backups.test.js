@@ -80,6 +80,19 @@ test('automatic schedule captures changed revisions and skips unchanged data', a
   assert.ok(backups.list().some(file => inspectBackup(backups.file(file.name)).projects.length === 0));
 });
 
+test('a restart without changes reuses the last regular backup instead of copying the database again', t => {
+  const { store, backups, dir } = fixture(t, { intervalMs: 3600000 });
+  assert.equal(backups.list().length, 1);
+  const again = createBackups(store, { directory: join(dir, 'backups'), intervalMs: 3600000 });
+  t.after(() => again.close());
+  assert.equal(again.list().length, 1, 'Réveil sans changement : aucune nouvelle copie.');
+  again.close();
+  store.write([], store.getRevision());
+  const changed = createBackups(store, { directory: join(dir, 'backups'), intervalMs: 3600000 });
+  t.after(() => changed.close());
+  assert.equal(changed.list().length, 2, 'Données modifiées depuis la dernière copie : nouvelle copie.');
+});
+
 test('backup failure is reported and does not stop serving the database', t => {
   const { store, dir } = fixture(t);
   const blocked = join(dir, 'blocked');
