@@ -10,6 +10,7 @@ import { createRetention } from './retention.js';
 import { createGithubSync } from './github-sync.js';
 import { createVersionSync } from './project-versions.js';
 import { createRepositoryContext } from './repository-context.js';
+import { COMPRESSIBLE, ENCODINGS, accepts } from './compression.js';
 
 const mime = {
   '.html': 'text/html; charset=utf-8',
@@ -93,6 +94,18 @@ export function createAppServer({ store, config = {}, dist = resolve('dist') }) 
           ? 'public, max-age=31536000, immutable'
           : 'public, max-age=3600',
     );
+    // Variante précompressée à la compilation (brotli, sinon gzip) quand le navigateur l’accepte.
+    if (COMPRESSIBLE.has(extname(file))) {
+      res.setHeader('Vary', 'Accept-Encoding');
+      const encoding = ENCODINGS.find(
+        ({ name, extension }) => accepts(req.headers['accept-encoding'], name) && existsSync(file + extension),
+      );
+      if (encoding) {
+        file += encoding.extension;
+        res.setHeader('Content-Encoding', encoding.name);
+      }
+    }
+    res.setHeader('Content-Length', statSync(file).size);
     if (req.method === 'HEAD') {
       res.end();
       return;

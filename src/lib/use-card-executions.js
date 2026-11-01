@@ -47,10 +47,14 @@ export function useCardExecutions({ projectId, cardId, offline, onRefresh }) {
   useEffect(() => {
     if (offline) return;
     void load();
-    const timer = setInterval(() => void load(), live ? 30000 : 5000);
+    // Onglet masqué : aucune lecture, pour laisser le serveur se mettre en veille ; relecture au retour.
+    const poll = () => document.visibilityState !== 'hidden' && void load();
+    const timer = setInterval(poll, live ? 30000 : 5000);
+    document.addEventListener('visibilitychange', poll);
     return () => {
       loading.current?.abort();
       clearInterval(timer);
+      document.removeEventListener('visibilitychange', poll);
     };
   }, [offline, load, live]);
   const current = runs ? runs.find(unfinished) || runs[0] || null : null;

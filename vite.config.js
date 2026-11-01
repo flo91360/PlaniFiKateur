@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { extname, join } from 'node:path';
 import { defineConfig } from 'vite';
 import { readBuildInfo } from './server/build-info.js';
 
@@ -9,6 +11,7 @@ import { createRetention } from './server/retention.js';
 import { createGithubSync } from './server/github-sync.js';
 import { createVersionSync } from './server/project-versions.js';
 import { createRepositoryContext } from './server/repository-context.js';
+import { COMPRESSIBLE, precompress } from './server/compression.js';
 
 const buildInfo = readBuildInfo();
 
@@ -19,6 +22,19 @@ export default defineConfig({
       name: 'planifikateur-api',
       generateBundle() {
         this.emitFile({ type: 'asset', fileName: 'build-info.json', source: JSON.stringify(buildInfo) });
+      },
+      // Variantes brotli et gzip à côté de chaque fichier compressible de dist/ : le serveur les
+      // envoie telles quelles, sans compresser à chaque démarrage (voir server/index.js).
+      writeBundle(options) {
+        const walk = directory => {
+          for (const entry of readdirSync(directory, { withFileTypes: true })) {
+            const path = join(directory, entry.name);
+            if (entry.isDirectory()) walk(path);
+            else if (COMPRESSIBLE.has(extname(path)))
+              for (const { extension, data } of precompress(readFileSync(path))) writeFileSync(path + extension, data);
+          }
+        };
+        if (options.dir) walk(options.dir);
       },
       configureServer(server) {
         const config = readConfig();

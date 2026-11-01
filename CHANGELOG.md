@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.82 — 2026-11-01
+<!-- planifikateur:railway-veille-compression -->
+
+- **Réduire la consommation sur Railway** : Compression brotli/gzip des fichiers de l’interface (précompressés à la compilation) et des réponses JSON de l’API, hors flux d’événements. Un onglet masqué depuis une minute ferme son flux et suspend ses lectures périodiques, pour que le service puisse se mettre en veille. Plus de copie complète de la base à chaque démarrage quand rien n’a changé ; vérifications GitHub espacées (PR toutes les 15 minutes, versions toutes les heures).
+
 ## 0.1.81 — 2026-11-01
 <!-- planifikateur:icone-site-fk -->
 

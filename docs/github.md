@@ -1,4 +1,4 @@
-# PR d’agent : tests puis fusion automatique — v0.1.81
+# PR d’agent : tests puis fusion automatique — v0.1.82
 
 Toutes les nouvelles tâches sont livrées par PR GitHub avec fusion automatique,
 sans sélection du mode de livraison. Depuis la v0.1.28, un responsable peut exiger
@@ -139,7 +139,7 @@ webhook `pull_request` fermé avec `merged: true`, la bonne PR et le bon commit,
 signé avec le secret, la fait passer **À tester — PR fusionnée**. Les événements
 répétés sont sans effet ; fermer une PR sans fusion ne termine pas la carte.
 En cas de webhook perdu (redéploiement du site, panne de livraison), le serveur
-rattrape seul la situation depuis la v0.1.32 : toutes les 5 minutes, pour chaque
+rattrape seul la situation depuis la v0.1.32 : toutes les 15 minutes, pour chaque
 PR de l’agent en attente depuis plus de 3 minutes, il relit la PR et les
 exécutions de son workflow auprès de l’API GitHub, avec
 `PLANIFIKATEUR_GITHUB_TOKEN` (nécessaire pour un dépôt privé), et applique les

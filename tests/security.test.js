@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { request } from 'node:http';
+import { brotliDecompressSync, gunzipSync } from 'node:zlib';
+import { precompress } from '../server/compression.js';
 import { createStore } from '../server/store.js';
 import { createAppServer } from '../server/index.js';
 import { createBackups, restoreBackup } from '../server/backups.js';
@@ -337,4 +340,62 @@ test('the site icons and the web manifest are served with their own types', asyn
     const [width, height] = icon.sizes.split('x').map(Number);
     assert.deepEqual([bytes.readUInt32BE(16), bytes.readUInt32BE(20)], [width, height], icon.src);
   }
+});
+
+test('interface files and API responses are compressed, never the event stream', async t => {
+  const dist = mkdtempSync(join(tmpdir(), 'planifikateur-dist-'));
+  mkdirSync(join(dist, 'assets'));
+  const script = `export const texte = ${JSON.stringify('PlaniFiKateur '.repeat(400))};`;
+  writeFileSync(join(dist, 'index.html'), '<!doctype html><title>PlaniFiKateur</title>');
+  writeFileSync(join(dist, 'assets', 'index-abc.js'), script);
+  for (const { extension, data } of precompress(Buffer.from(script)))
+    writeFileSync(join(dist, 'assets', `index-abc.js${extension}`), data);
+  const store = createStore(':memory:');
+  seedAccount(store);
+  const server = createAppServer({ store, dist, config: { readToken: 'compression-read' } });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+    store.close();
+    rmSync(dist, { recursive: true, force: true });
+  });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  // Lecture brute (sans décompression automatique) avec l’encodage demandé.
+  const raw = (path, encoding, headers = {}) =>
+    new Promise((resolve, reject) => {
+      const url = new URL(path, base);
+      const req = request(url, { headers: { 'Accept-Encoding': encoding, ...headers } }, res => {
+        const chunks = [];
+        res.on('data', chunk => {
+          chunks.push(chunk);
+          if (res.headers['content-type']?.startsWith('text/event-stream')) req.destroy();
+        });
+        res.on('close', () => resolve({ headers: res.headers, body: Buffer.concat(chunks) }));
+      });
+      req.on('error', error => (error.code === 'ECONNRESET' ? null : reject(error)));
+      req.end();
+    });
+  const brotli = await raw('/assets/index-abc.js', 'gzip, br');
+  assert.equal(brotli.headers['content-encoding'], 'br');
+  assert.equal(brotli.headers['content-type'], 'text/javascript; charset=utf-8');
+  assert.equal(brotli.headers.vary, 'Accept-Encoding');
+  assert.equal(Number(brotli.headers['content-length']), brotli.body.length);
+  assert.equal(brotliDecompressSync(brotli.body).toString(), script);
+  const gzip = await raw('/assets/index-abc.js', 'gzip, br;q=0');
+  assert.equal(gzip.headers['content-encoding'], 'gzip');
+  assert.equal(gunzipSync(gzip.body).toString(), script);
+  const plain = await raw('/assets/index-abc.js', 'identity');
+  assert.equal(plain.headers['content-encoding'], undefined);
+  assert.equal(plain.body.toString(), script);
+
+  const cookie = (await loginRequest(base)).headers.get('set-cookie').split(';')[0];
+  const workspace = await raw('/api/v1/workspace', 'br', { Cookie: cookie });
+  assert.equal(workspace.headers['content-encoding'], 'br');
+  assert.ok(Array.isArray(JSON.parse(brotliDecompressSync(workspace.body)).projects));
+  const small = await raw('/api/v1/session', 'br');
+  assert.equal(small.headers['content-encoding'], undefined, 'Petite réponse : envoyée telle quelle.');
+  const events = await raw('/api/v1/events', 'gzip, br', { Cookie: cookie });
+  assert.equal(events.headers['content-encoding'], undefined);
+  assert.match(events.body.toString(), /^retry: 5000/);
 });

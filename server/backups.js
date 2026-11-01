@@ -51,6 +51,19 @@ export function inspectBackup(filename) {
   }
 }
 
+// Version (révision et dernière action d’historique) d’une copie, sans la relire entièrement.
+function readVersion(filename) {
+  const db = new DatabaseSync(filename, { readOnly: true });
+  try {
+    const { revision } = db.prepare('SELECT revision FROM workspace WHERE id = 1').get();
+    const hasActivity = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'activity'").get();
+    const activityId = hasActivity ? db.prepare('SELECT COALESCE(MAX(id),0) AS id FROM activity').get().id : 0;
+    return `${revision}:${activityId}`;
+  } finally {
+    db.close();
+  }
+}
+
 export function restoreBackup(store, filename, createSafetyCopy) {
   const snapshot = inspectBackup(filename);
   const revision = store.getRevision();
@@ -124,7 +137,18 @@ export function createBackups(
       /* Keep serving; status reports the failure. */
     }
   };
-  if (start) automatic();
+  // Au démarrage (et donc à chaque réveil du service après une mise en veille), la dernière copie
+  // périodique tient lieu de point de départ : sans changement depuis, aucune copie complète n’est refaite.
+  if (start) {
+    const previous = list().find(file => file.kind === 'regular');
+    if (previous)
+      try {
+        lastRevision = readVersion(join(root, previous.name));
+      } catch {
+        /* Copie illisible : une nouvelle copie est faite ci-dessous. */
+      }
+    automatic();
+  }
   const timer = start ? setInterval(automatic, intervalMs) : null;
   timer?.unref();
   return {
