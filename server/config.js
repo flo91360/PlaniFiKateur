@@ -36,7 +36,7 @@ export function readConfig(env = process.env) {
     throw new Error('PLANIFIKATEUR_TRUST_PROXY invalide (nombre de mandataires, de 0 à 5).');
   config.backupDirectory = resolve(env.PLANIFIKATEUR_BACKUP_DIR || join(dirname(config.database), 'backups'));
   config.backupIntervalMs = Number(env.PLANIFIKATEUR_BACKUP_INTERVAL_HOURS || 6) * 3600000;
-  config.backupKeep = Number(env.PLANIFIKATEUR_BACKUP_KEEP || 28);
+  config.backupKeep = Number(env.PLANIFIKATEUR_BACKUP_KEEP || 5);
   config.activityRetentionDays = Number(env.PLANIFIKATEUR_ACTIVITY_RETENTION_DAYS ?? 365);
   config.executionRetentionDays = Number(env.PLANIFIKATEUR_EXECUTION_RETENTION_DAYS ?? 365);
   for (const [name, value] of [

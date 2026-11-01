@@ -110,6 +110,7 @@ test('backup failure is reported and does not stop serving the database', t => {
 
 test('backup configuration uses the database volume by default and validates limits', () => {
   assert.equal(readConfig({ PLANIFIKATEUR_DB_PATH: '/data/site.sqlite' }).backupDirectory, '/data/backups');
+  assert.equal(readConfig({}).backupKeep, 5, 'Cinq copies de chaque sorte par défaut.');
   assert.throws(() => readConfig({ PLANIFIKATEUR_BACKUP_INTERVAL_HOURS: '0' }), /Intervalle/);
   assert.throws(() => readConfig({ PLANIFIKATEUR_BACKUP_KEEP: '0' }), /Nombre/);
 });

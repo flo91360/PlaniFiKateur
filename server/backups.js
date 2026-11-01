@@ -77,7 +77,7 @@ export function restoreBackup(store, filename, createSafetyCopy) {
 
 export function createBackups(
   store,
-  { directory, intervalMs = 6 * 60 * 60 * 1000, keep = 28, onError = console.error, start = true },
+  { directory, intervalMs = 6 * 60 * 60 * 1000, keep = 5, onError = console.error, start = true },
 ) {
   const root = resolve(directory);
   let error = '',
