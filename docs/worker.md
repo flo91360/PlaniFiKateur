@@ -513,7 +513,24 @@ qu’il ne traite plus.
 La consommation du modèle (tokens, coût, durée) est rapportée pour chaque
 tentative, y compris quand elle s’arrête sans résultat : question posée par
 Claude Code (messages déjà reçus, coût alors inconnu) ou tour Codex en échec
-(écart de consommation relevé dans le journal de session Codex).
+(écart de consommation relevé dans le journal de session Codex). Une conversation
+Claude Code reprise repart du coût total enregistré dans sa transcription : seul
+l’écart avec le dernier total connu est attribué à la nouvelle tentative.
+
+Un plafond borne la consommation IA d’une exécution entre deux interventions
+humaines (réponse à une question, corrections demandées), ou depuis son début :
+`PLANIFIKATEUR_WORKER_MAX_COST_USD` (10 $ estimés, décimales admises) pour Claude
+Code et `PLANIFIKATEUR_WORKER_MAX_TOKENS` (20 millions de tokens d’entrée, cache
+compris, et de sortie) pour Codex, qui ne rapporte pas de coût. 0 désactive le
+plafond. Avant chaque appel au modèle, le worker compare au plafond la consommation
+des tentatives enregistrées sur le site ; Claude Code reçoit en plus le reste du
+plafond (`maxBudgetUsd`) et le SDK arrête l’appel qui le dépasse, à un échange près.
+Un tour Codex ne peut pas être arrêté en cours de route : il reste borné par
+`PLANIFIKATEUR_WORKER_MODEL_TIMEOUT_MS`. Plafond atteint, la carte passe **À
+préciser** avec une question qui indique la consommation et le plafond, sans
+nouvel appel au modèle ; y répondre accorde une nouvelle tranche et reprend la
+même conversation. Une question de la liste Discussion reçoit cette explication
+en réponse.
 
 Si une carte a été supprimée ou déplacée hors de son projet, le worker archive
 localement son ancienne exécution et continue à consulter les tâches disponibles.

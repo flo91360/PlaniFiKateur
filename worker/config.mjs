@@ -50,6 +50,12 @@ export function readWorkerConfig(env = process.env) {
     if (!Number.isSafeInteger(n) || n < min || n > max) throw new Error(`${name} invalide.`);
     return n;
   };
+  // Montant en dollars, décimales admises ; 0 désactive le plafond correspondant.
+  const dollars = (name, fallback, max) => {
+    const n = env[name] === undefined ? fallback : env[name].trim() ? Number(env[name]) : NaN;
+    if (!Number.isFinite(n) || n < 0 || n > max) throw new Error(`${name} invalide.`);
+    return n;
+  };
   const commands = (name, fallback) => {
     let value;
     try {
@@ -104,6 +110,10 @@ export function readWorkerConfig(env = process.env) {
     testsTimeoutMs: number('PLANIFIKATEUR_WORKER_TESTS_TIMEOUT_MS', 30 * 60000, 1000, 2 * 60 * 60000),
     publicationTimeoutMs: number('PLANIFIKATEUR_WORKER_PUBLICATION_TIMEOUT_MS', 10 * 60000, 1000, 2 * 60 * 60000),
     maxAttempts: number('PLANIFIKATEUR_WORKER_MAX_ATTEMPTS', 3, 1, 10),
+    // Plafonds de consommation IA d’une exécution entre deux interventions humaines (worker/budget.mjs) :
+    // coût estimé pour Claude Code, tokens d’entrée et de sortie pour Codex. 0 désactive le plafond.
+    maxCostUsd: dollars('PLANIFIKATEUR_WORKER_MAX_COST_USD', 10, 10000),
+    maxTokens: number('PLANIFIKATEUR_WORKER_MAX_TOKENS', 20000000, 0, 10000000000),
     installCommands: commands('PLANIFIKATEUR_WORKER_INSTALL_COMMANDS', [['npm', 'ci']]),
     testCommands: commands('PLANIFIKATEUR_WORKER_TEST_COMMANDS', [
       ['npm', 'test'],

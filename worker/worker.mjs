@@ -13,6 +13,7 @@ import { projectDiagnostic } from './runtime.mjs';
 import { prepareDelivery } from './delivery.mjs';
 import { protectedChanges, protectedQuestion, restoreProtected } from './protected.mjs';
 import { WorkerTimeoutError, createReservation } from './reservation.mjs';
+import { BudgetExceededError, aiBudget } from './budget.mjs';
 import { createCheckouts } from './checkout.mjs';
 import { createFollowUp } from './follow-up.mjs';
 import { LEGACY_PUBLICATION_QUESTION } from './legacy-publication.mjs';
@@ -278,22 +279,37 @@ export function createWorker(config, dependencies = {}) {
           task.attemptStarted = true;
           await state.put(job);
         }
+        const budget = aiBudget(config, job.ai.engine, reservation.run, reservation.usage);
+        if (budget.question) return { status: 'question', question: budget.question };
         result = await reservation.phase('travail IA', config.modelTimeoutMs, () =>
-          runner.run({
-            // Le profil montré au modèle est celui que le worker exécute réellement.
-            run: { ...reservation.run, leaseToken: undefined, executionProfile: job.executionProfile },
-            job,
-            cwd: checkout.cwd,
-            signal: reservation.signal,
-            feedback,
-            environment: checkout.env,
-            onRuntime,
-            onUsage: usage => reservation.addUsage(usage),
-            onThread: async id => {
-              job.threadId = id;
-              await state.put(job);
-            },
-          }),
+          runner
+            .run({
+              // Le profil montré au modèle est celui que le worker exécute réellement.
+              run: { ...reservation.run, leaseToken: undefined, executionProfile: job.executionProfile },
+              job,
+              cwd: checkout.cwd,
+              signal: reservation.signal,
+              feedback,
+              environment: checkout.env,
+              maxBudgetUsd: budget.remainingUsd,
+              onRuntime,
+              onUsage: usage => reservation.addUsage(usage),
+              onSessionCost: async cost => {
+                job.sessionCost = cost;
+                await state.put(job);
+              },
+              onThread: async id => {
+                job.threadId = id;
+                await state.put(job);
+              },
+            })
+            .catch(error => {
+              if (!(error instanceof BudgetExceededError)) throw error;
+              const { question } = aiBudget(config, job.ai.engine, reservation.run, reservation.usage, {
+                exceeded: true,
+              });
+              return { status: 'question', question };
+            }),
         );
         // Le modèle ne doit rien poser dans .git qui ferait exécuter du code aux commandes Git du
         // worker : le checkout est alors supprimé, et recréé depuis GitHub à la reprise.
@@ -499,24 +515,37 @@ export function createWorker(config, dependencies = {}) {
       task.attemptStarted = true;
       await state.put(job);
       const runner = job.ai.engine === 'claude-code' ? claude : model;
-      const result = await reservation.phase('travail IA', config.modelTimeoutMs, () =>
-        runner.run({
-          run: { ...reservation.run, leaseToken: undefined, executionProfile: job.executionProfile },
-          job,
-          cwd,
-          signal: reservation.signal,
-          feedback: '',
-          environment: env,
-          onRuntime: async runtime => {
-            const safe = { ...validateAi(runtime), effort: job.ai.effort };
-            if (safe.engine !== job.ai.engine) throw new Error('Le moteur de la conversation a changé.');
-            job.aiRuntime = safe;
-            await state.put(job);
-          },
-          onUsage: usage => reservation.addUsage(usage),
-          onThread: async () => {},
-        }),
-      );
+      const budget = aiBudget(config, job.ai.engine, reservation.run, reservation.usage, { discussion: true });
+      const result = budget.question
+        ? { status: 'question', question: budget.question }
+        : await reservation.phase('travail IA', config.modelTimeoutMs, () =>
+            runner
+              .run({
+                run: { ...reservation.run, leaseToken: undefined, executionProfile: job.executionProfile },
+                job,
+                cwd,
+                signal: reservation.signal,
+                feedback: '',
+                environment: env,
+                maxBudgetUsd: budget.remainingUsd,
+                onRuntime: async runtime => {
+                  const safe = { ...validateAi(runtime), effort: job.ai.effort };
+                  if (safe.engine !== job.ai.engine) throw new Error('Le moteur de la conversation a changé.');
+                  job.aiRuntime = safe;
+                  await state.put(job);
+                },
+                onUsage: usage => reservation.addUsage(usage),
+                onThread: async () => {},
+              })
+              .catch(error => {
+                if (!(error instanceof BudgetExceededError)) throw error;
+                const { question } = aiBudget(config, job.ai.engine, reservation.run, reservation.usage, {
+                  discussion: true,
+                  exceeded: true,
+                });
+                return { status: 'question', question };
+              }),
+          );
       answer = result.status === 'question' ? result.question : result.summary;
     }
     await reservation.action('submit', { summary: clean(answer.slice(0, 10000)) });
