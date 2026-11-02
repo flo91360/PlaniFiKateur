@@ -25,6 +25,12 @@ Après les tests, créer la PR, attendre la CI et la fusionner sans redemander
 confirmation. En cas d'avancée de main, intégrer ses changements et préparer
 à nouveau la livraison avant de vérifier les modifications concernées.
 
+**Aucune intervention humaine dans le déploiement** (décision de Florian, v0.1.94) :
+une PR d’agent se fusionne seule dès que la CI est verte. Ne jamais ajouter ni
+reproposer d’approbation manuelle, de validation de dépendances ou d’autre étape
+qui attende une personne avant la fusion ou le déploiement. Renforcer la sécurité
+par des contrôles automatiques (CI, audit, tests) uniquement.
+
 Lorsque `PLANIFIKATEUR_WORKER=1`, l'agent prépare le code et son résumé ; le worker
 appelle le même module, teste, committe et publie la PR. L'agent ne committe pas,
 ne pousse pas, ne fusionne pas et ne délègue pas lui-même. Cela change seulement

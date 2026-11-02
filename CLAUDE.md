@@ -82,6 +82,12 @@ Appliquer les mêmes règles pour toute livraison, directe ou issue d'une carte 
 vérification du déploiement**. Les consignes communes font autorité dans
 [AGENTS.md](AGENTS.md) et le déroulement dans [docs/livraison.md](docs/livraison.md).
 
+**Aucune intervention humaine dans le déploiement** (décision de Florian, v0.1.94) :
+une PR d’agent se fusionne seule dès que la CI est verte. Ne jamais ajouter ni
+reproposer d’approbation manuelle, de validation de dépendances ou d’autre étape
+qui attende une personne avant la fusion ou le déploiement. Renforcer la sécurité
+par des contrôles automatiques (CI, audit, tests) uniquement.
+
 Utiliser le module commun de préparation, jamais une incrémentation improvisée.
 Lors d'une intervention directe, lancer `npm run delivery:prepare` avec un
 identifiant stable de livraison, le titre et le résumé, puis vérifier et publier

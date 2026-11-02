@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.94 — 2026-11-02
+<!-- planifikateur:retrait-approbation-dependances -->
+
+- **Retrait de l’approbation des dépendances** : Une carte qui ajoute ou change une dépendance est de nouveau fusionnée automatiquement dès que la CI est verte, sans approbation. La règle « aucune intervention humaine dans le déploiement » est inscrite dans CLAUDE.md et AGENTS.md.
+
 ## 0.1.93 — 2026-11-02
 <!-- planifikateur:site-sur-le-vps -->
 
