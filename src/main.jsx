@@ -18,6 +18,7 @@ import { useWorkspace, offlineMode, exportWithAlert } from './lib/use-workspace.
 import { useCardFollowers } from './lib/use-card-followers.js';
 import { useWorkStatus } from './lib/use-work-status.js';
 import { useAttention } from './lib/use-attention.js';
+import { useWorkerActivity } from './lib/use-worker-activity.js';
 import { useServerEvents } from './lib/use-server-events.js';
 import { useNotifications } from './lib/use-notifications.js';
 import { useApiResource } from './lib/use-api.js';
@@ -38,6 +39,7 @@ import { ListSettings, ProjectDetailsForm } from './components/EditForms.jsx';
 import Sidebar from './components/Sidebar.jsx';
 import SyncAlerts from './components/SyncAlerts.jsx';
 import WorkerAlert from './components/WorkerAlert.jsx';
+import WorkerPanel from './components/WorkerPanel.jsx';
 import BackupAlert from './components/BackupAlert.jsx';
 import Topbar from './components/Topbar.jsx';
 import { ProjectAccess, projectAccess } from './lib/project-access.js';
@@ -57,6 +59,7 @@ const dialogTitles = {
   account: 'Mon compte',
   activity: 'Activité des projets',
   attention: 'À traiter',
+  worker: 'Worker IA',
   notifications: 'Notifications',
   reload: 'Recharger le tableau',
   card: 'Une nouvelle idée',
@@ -154,6 +157,7 @@ function App() {
   const cardFollowers = useCardFollowers({ projectId: project?.id, enabled: !offlineMode && ready && !needsLogin });
   const [projectAi, setProjectAi] = useProjectAi(project?.id, ready);
   const attention = useAttention({ enabled: !offlineMode && ready && !needsLogin });
+  const workerActivity = useWorkerActivity({ enabled: !offlineMode && ready && !needsLogin });
   const workStatus = useWorkStatus({ projectId: project?.id, enabled: !offlineMode && ready && !needsLogin });
   // Membres qui voient le projet : responsables possibles d’une carte, affichés sur le tableau.
   const membersResource = useApiResource(project ? `projects/${project.id}/members` : '', {
@@ -384,6 +388,8 @@ function App() {
         );
       case 'attention':
         return <AttentionPanel items={attention} onOpenCard={openCard} />;
+      case 'worker':
+        return <WorkerPanel activity={workerActivity} onOpenCard={openCard} />;
       case 'notifications':
         return <NotificationsPanel notifications={notifications} onOpenCard={openCard} />;
       case 'activity':
@@ -487,6 +493,7 @@ function App() {
             user={workspace.user}
             offline={offlineMode}
             attentionCount={attention.length}
+            workerActivity={workerActivity}
             unreadCount={notifications.unread}
             dark={theme.dark}
             onToggleTheme={() => theme.setTheme(theme.dark ? 'clair' : 'sombre')}

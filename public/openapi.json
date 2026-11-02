@@ -6411,6 +6411,57 @@
         }
       }
     },
+    "/api/v1/worker-activity": {
+      "get": {
+        "summary": "Activité du worker IA",
+        "description": "Indicateur de la barre du haut : dernier contact et révision de l’agent actif vu le plus récemment, et exécutions en cours de réalisation, en attente de l’agent ou en tests GitHub dans les projets visibles par le compte, de la plus ancienne à la plus récente.",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Activité du worker.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/WorkerActivity"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session requise.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origine de la requête non autorisée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{projectId}/lists/{listId}": {
       "patch": {
         "summary": "Renommer ou recolorer une liste",
@@ -8495,6 +8546,80 @@
           "since": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "WorkerActivity": {
+        "type": "object",
+        "required": [
+          "worker",
+          "executions"
+        ],
+        "properties": {
+          "worker": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "null si aucun agent actif ne s’est encore manifesté.",
+            "required": [
+              "lastSeenAt",
+              "revision"
+            ],
+            "properties": {
+              "lastSeenAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "revision": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Révision annoncée par le worker à son démarrage."
+              }
+            }
+          },
+          "executions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "projectId",
+                "projectName",
+                "cardId",
+                "cardTitle",
+                "state",
+                "since"
+              ],
+              "properties": {
+                "projectId": {
+                  "type": "string"
+                },
+                "projectName": {
+                  "type": "string"
+                },
+                "cardId": {
+                  "type": "string"
+                },
+                "cardTitle": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "ready",
+                    "running",
+                    "merging"
+                  ],
+                  "description": "ready : en attente de l’agent ; running : en cours de réalisation ; merging : tests GitHub et fusion."
+                },
+                "since": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            }
           }
         }
       },

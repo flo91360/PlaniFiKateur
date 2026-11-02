@@ -596,6 +596,39 @@ test('the attention list shows agent questions and results to validate until a p
   assert.deepEqual((await list()).data, []);
 });
 
+test('the worker activity shows the last contact, the revision and the cards in progress or waiting', async t => {
+  const f = await fixture(t, { legacyManual: true });
+  const activity = async (options = { human: true }) => {
+    const r = await f.request('/worker-activity', options);
+    return { status: r.status, data: (await r.json()).data };
+  };
+  assert.equal((await activity({ token: f.credentials.token })).status, 401);
+  assert.deepEqual((await activity()).data, { worker: null, executions: [] });
+  let run = await f.prepare();
+  let { data } = await activity();
+  assert.deepEqual(
+    data.executions.map(item => [item.cardTitle, item.projectName, item.state]),
+    [[f.card.title, f.project.name, 'ready']],
+  );
+  // Le travail de l’agent met à jour son dernier contact, puis sa révision annoncée.
+  run = await f.claim(run);
+  assert.equal(
+    (await f.request('/agent/status', { method: 'POST', token: f.credentials.token, data: { revision: 'abcdef1' } }))
+      .status,
+    200,
+  );
+  ({ data } = await activity());
+  assert.equal(data.worker.revision, 'abcdef1');
+  assert.ok(Date.now() - Date.parse(data.worker.lastSeenAt) < 60000);
+  assert.deepEqual(
+    data.executions.map(item => item.state),
+    ['running'],
+  );
+  // Une question à une personne sort de l’activité du worker (elle est dans « À traiter »).
+  await f.agentAction(run, 'question', { message: 'Quel menu ?' });
+  assert.deepEqual((await activity()).data.executions, []);
+});
+
 test('a card to test goes back to the agent with a correction comment and leaves the « À tester » list', async t => {
   const f = await fixture(t, { legacyManual: true });
   const board = () => f.store.read().projects.find(p => p.id === f.project.id);

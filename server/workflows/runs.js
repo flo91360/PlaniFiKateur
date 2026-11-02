@@ -349,6 +349,27 @@ export function createRuns(
         ];
       });
     },
+    // Activité du worker, tous projets : cartes en cours de réalisation, en attente de l’agent et en
+    // tests GitHub, les plus anciennes d’abord (ordre de prise en charge de la file).
+    activity() {
+      const runs = rows("state IN ('ready','running','merging')").map(unpack).reverse();
+      const projects = runs.length ? readLight([...new Set(runs.map(run => run.projectId))]) : [];
+      return runs.flatMap(run => {
+        const project = projects.find(p => p.id === run.projectId);
+        const card = project?.cards.find(c => c.id === run.cardId);
+        if (!card || legacyPublicationQuestion(run)) return [];
+        return [
+          {
+            projectId: project.id,
+            projectName: project.name,
+            cardId: card.id,
+            cardTitle: card.title,
+            state: run.state,
+            since: run.updatedAt || run.createdAt,
+          },
+        ];
+      });
+    },
     queue(projectId, agent, { autoPrepare = true } = {}) {
       return transaction(() => {
         checkAgent(agent, projectId);

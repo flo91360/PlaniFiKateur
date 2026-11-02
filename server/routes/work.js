@@ -68,6 +68,27 @@ export function workRoutes({ store, config, auth, guards }) {
       },
     },
     {
+      // Indicateur du worker dans la barre du haut : dernier contact et révision de l’agent actif le
+      // plus récemment vu, et exécutions en cours ou en attente dans les projets visibles.
+      path: '/api/v1/worker-activity',
+      guard: guards.account,
+      methods: {
+        GET(ctx) {
+          const access = store.accessOf(ctx.user);
+          const seen = workflows
+            .agents()
+            .filter(agent => agent.active && agent.status?.lastSeenAt)
+            .sort((a, b) => b.status.lastSeenAt.localeCompare(a.status.lastSeenAt))[0];
+          ctx.send(200, {
+            data: {
+              worker: seen ? { lastSeenAt: seen.status.lastSeenAt, revision: seen.status.revision || null } : null,
+              executions: workflows.activity().filter(item => access[item.projectId]),
+            },
+          });
+        },
+      },
+    },
+    {
       // Badges d’exécution des cartes d’un projet (session d’un compte qui voit le projet).
       path: '/api/v1/projects/:projectId/work-status',
       guard: guards.project,

@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.90 — 2026-11-02
+<!-- planifikateur:indicateur-worker -->
+
+- **Indicateur du worker dans la barre du haut** : La barre du haut montre l’état du worker IA : prêt, au travail ou silencieux, avec le nombre de cartes en cours et en attente. Un clic ouvre son détail : dernier contact, révision en service, et cartes en cours de réalisation, en attente de l’agent dans l’ordre de prise en charge et en tests GitHub, chacune ouvrable directement. Nouvelle route GET /api/v1/worker-activity.
+
 ## 0.1.89 — 2026-11-02
 <!-- planifikateur:controle-dependances -->
 
