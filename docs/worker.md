@@ -154,6 +154,17 @@ lui-même et par ses commandes (Codex, Claude Code), qui en ont besoin.
 `PLANIFIKATEUR_WORKER_ISOLATION=none` désactive l’isolation pour un worker de
 développement sans bubblewrap ; le diagnostic du projet le signale.
 
+Un token GitHub personnel est limité à 5 000 requêtes d’API par heure, partagées
+entre tous les projets du worker. Une PR en attente de fusion est relue dès que son exécution
+change sur le site (résultat des contrôles reçu par webhook, validation, exigence de
+validation modifiée), sinon au plus toutes les `PLANIFIKATEUR_WORKER_GITHUB_POLL_MS`
+(60 s, de 0 à 10 min). Tant que la PR attend une validation humaine pour son commit,
+le worker suit seulement son état et l’avancée de `main`, sans interroger ses
+contrôles GitHub. La configuration d’un projet est contrôlée de nouveau dès qu’elle
+change, sinon toutes les `PLANIFIKATEUR_WORKER_DIAGNOSTIC_MS` (15 min, de 0 à 60 min ;
+2 min au plus tant qu’elle est à compléter) ; le dernier résultat est renvoyé au site
+chaque minute.
+
 Paramètres facultatifs : `PLANIFIKATEUR_CODEX_MODEL`, `PLANIFIKATEUR_WORKER_POLL_MS`
 (10 s), `PLANIFIKATEUR_WORKER_HEARTBEAT_MS` (60 s),
 `PLANIFIKATEUR_WORKER_TIMEOUT_MS` (60 min), `PLANIFIKATEUR_WORKER_MAX_ATTEMPTS` (3).

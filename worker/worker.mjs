@@ -29,6 +29,7 @@ export function createWorker(config, dependencies = {}) {
   const claude = dependencies.claude || createClaudeRunner(config);
   const execute = dependencies.execute || runCommand;
   const log = dependencies.log || console.log;
+  const now = dependencies.now || Date.now;
   const state = dependencies.state || createState(config.stateRoot, { log });
   // Les tests remplacent les presets installés par les leurs ; en production, ceux du worker.
   const profileOf = dependencies.installedProfile || installedProfile;
@@ -38,7 +39,12 @@ export function createWorker(config, dependencies = {}) {
       .reduce((s, secret) => s.replaceAll(secret, '[secret]'), String(text))
       .slice(-12000);
   let projects = new Map();
+  // Diagnostics de configuration (outils, dépôt et workflow GitHub) : refaits aussitôt si la
+  // configuration change, sinon après `diagnosticMs` (2 min au plus pour une configuration à compléter),
+  // pour ménager le quota GitHub. Le dernier résultat est renvoyé au site chaque minute.
   const diagnostics = new Map();
+  const diagnosticExpiry = (report, time) =>
+    time + (report.state === 'ready' ? config.diagnosticMs : Math.min(config.diagnosticMs, 2 * 60000));
   const auto = config.discovery !== 'manual';
   const allowed = run =>
     run.delivery === 'github' &&
@@ -648,6 +654,8 @@ export function createWorker(config, dependencies = {}) {
     knownProjects: () => projects,
     profileOf,
     releaseCheckout,
+    githubPollMs: config.githubPollMs,
+    now,
   });
 
   return {
@@ -663,18 +671,27 @@ export function createWorker(config, dependencies = {}) {
         await mkdir(config.stateRoot, { recursive: true });
         for (const project of projects.values()) {
           const key = JSON.stringify(project),
-            previous = diagnostics.get(project.id);
-          if (previous?.key === key && previous.expires > Date.now()) continue;
+            previous = diagnostics.get(project.id),
+            time = now(),
+            current = previous?.key === key && previous.expires > time;
+          if (current && previous.reported > time) continue;
           await isolated(project.id, signal, async () => {
-            const report = await projectDiagnostic(project, config, github, execute, signal);
-            report.checks.forEach(check => {
-              check.message = clean(check.message);
-            });
-            await site.diagnostic(project.id, report, signal);
-            diagnostics.set(project.id, { key, expires: Date.now() + 60000, report });
-            log(
-              `Projet ${project.name} : ${report.state === 'ready' ? 'configuration contrôlée' : 'configuration à compléter (voir les paramètres du projet)'}.`,
-            );
+            let entry = previous;
+            if (!current) {
+              const report = await projectDiagnostic(project, config, github, execute, signal);
+              report.checks.forEach(check => {
+                check.message = clean(check.message);
+              });
+              // Conservé avant l’envoi : un site momentanément injoignable ne relance pas les contrôles.
+              entry = { key, report, expires: diagnosticExpiry(report, time), reported: 0 };
+              diagnostics.set(project.id, entry);
+              if (previous?.key !== key || previous.report.state !== report.state)
+                log(
+                  `Projet ${project.name} : ${report.state === 'ready' ? 'configuration contrôlée' : 'configuration à compléter (voir les paramètres du projet)'}.`,
+                );
+            }
+            await site.diagnostic(project.id, entry.report, signal);
+            entry.reported = time + 60000;
           });
         }
       }
@@ -697,14 +714,12 @@ export function createWorker(config, dependencies = {}) {
               const key = JSON.stringify(execution),
                 cacheKey = `${projectId}:execution:${key}`;
               let report = diagnostics.get(cacheKey);
-              if (!report || report.expires <= Date.now()) {
-                report = {
-                  report: await projectDiagnostic(execution, config, github, execute, signal),
-                  expires: Date.now() + 60000,
-                };
+              if (!report || report.expires <= now()) {
+                const result = await projectDiagnostic(execution, config, github, execute, signal);
+                report = { report: result, expires: diagnosticExpiry(result, now()) };
                 diagnostics.set(cacheKey, report);
                 if (diagnostics.size > 1000)
-                  for (const [key, value] of diagnostics) if (value.expires <= Date.now()) diagnostics.delete(key);
+                  for (const [key, value] of diagnostics) if (value.expires <= now()) diagnostics.delete(key);
               }
               if (report.report.state !== 'ready') continue;
             }
