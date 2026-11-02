@@ -79,6 +79,11 @@ export function readWorkerConfig(env = process.env) {
   // sont arrêtés avant une commande Git distante (worker/strays.mjs).
   const stopStrays = env.PLANIFIKATEUR_WORKER_STOP_STRAYS || '0';
   if (!['0', '1'].includes(stopStrays)) throw new Error('PLANIFIKATEUR_WORKER_STOP_STRAYS : 0 ou 1.');
+  // Révision Git de l’image, passée au conteneur par le programme de mise à jour du VPS : annoncée au
+  // site et affichée dans le diagnostic des projets.
+  const revision = env.PLANIFIKATEUR_WORKER_REVISION?.trim() || undefined;
+  if (revision !== undefined && !/^[0-9a-f]{7,40}$/.test(revision))
+    throw new Error('PLANIFIKATEUR_WORKER_REVISION : révision Git (7 à 40 caractères hexadécimaux).');
   return {
     origin: origin.origin,
     token: required('PLANIFIKATEUR_AGENT_TOKEN'),
@@ -89,6 +94,7 @@ export function readWorkerConfig(env = process.env) {
     stateRoot,
     isolation,
     stopStrays: stopStrays === '1',
+    revision,
     discovery,
     node22Bin: resolve(env.PLANIFIKATEUR_NODE22_BIN || '/opt/node22/bin'),
     codexHome: resolve(env.CODEX_HOME || `${stateRoot}/codex`),

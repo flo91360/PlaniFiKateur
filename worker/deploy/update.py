@@ -15,6 +15,8 @@ import urllib.request
 
 REQUIRED_JOBS = ("Tests serveur", "Tests navigateur")
 REVISION_LABEL = "io.planifikateur.worker.revision"
+# Revision passed to the worker, which shows it in project diagnostics and announces it to the site.
+REVISION_ENV = "PLANIFIKATEUR_WORKER_REVISION"
 READY = "Worker IA démarré : une tâche à la fois."
 BUSY_PROBE = """const fs=require('node:fs');
 try { const jobs=fs.readdirSync('/data/state').filter(f=>f.endsWith('.json'));
@@ -44,13 +46,63 @@ def command(args, cwd=None, timeout=1800, optional=False):
     return result.returncode, output.strip()
 
 
-def read_token(env_file):
+def read_env(env_file, name):
+    """Value of one variable of the private env file, read without executing a shell."""
     for line in env_file.read_text().splitlines():
         if line.strip() and not line.lstrip().startswith("#"):
             key, separator, value = line.partition("=")
-            if separator and key.strip() == "PLANIFIKATEUR_GITHUB_TOKEN" and value.strip():
+            if separator and key.strip() == name and value.strip():
                 return value.strip()
-    raise UpdateError("PLANIFIKATEUR_GITHUB_TOKEN absent du fichier de configuration.")
+    return None
+
+
+def read_token(env_file):
+    token = read_env(env_file, "PLANIFIKATEUR_GITHUB_TOKEN")
+    if not token:
+        raise UpdateError("PLANIFIKATEUR_GITHUB_TOKEN absent du fichier de configuration.")
+    return token
+
+
+def failure_message(error):
+    """Printable description of a failure: never secret file contents or command output."""
+    if isinstance(error, UpdateError):
+        return str(error)
+    detail = type(error).__name__ + (" : " + error.strerror if isinstance(error, OSError) and error.strerror else "")
+    return f"Mise à jour interrompue ({detail}) : consulter la configuration du service."
+
+
+def site_reporter(env_file, opener=None, log=print):
+    """Send each check's outcome to the site with the worker's agent key; never blocks the update.
+
+    The key only goes to PLANIFIKATEUR_URL over HTTPS (HTTP on the local machine), without
+    following redirects; failures are logged without the address or the key."""
+    def ignore(update):
+        return None
+    try:
+        origin, token = read_env(env_file, "PLANIFIKATEUR_URL"), read_env(env_file, "PLANIFIKATEUR_AGENT_TOKEN")
+        url = urllib.parse.urlsplit(origin or "")
+        local = url.scheme == "http" and url.hostname in ("localhost", "127.0.0.1", "::1")
+        if (not token or not (url.scheme == "https" or local) or url.username or url.password
+                or url.path not in ("", "/") or url.query or url.fragment):
+            return ignore
+    except (OSError, ValueError):
+        return ignore
+    endpoint = url.scheme + "://" + url.netloc + "/api/v1/agent/status"
+    opener = opener or urllib.request.build_opener(NoRedirect())
+
+    def report(update):
+        request = urllib.request.Request(endpoint, data=json.dumps({"update": update}).encode(), method="POST", headers={
+            "Authorization": "Bearer " + token, "Content-Type": "application/json",
+            "User-Agent": "PlaniFiKateur-worker-updater",
+        })
+        try:
+            with opener.open(request, timeout=15) as response:
+                response.read()
+        except urllib.error.HTTPError as error:
+            log(f"État de la mise à jour non transmis au site (HTTP {error.code}).")
+        except Exception:
+            log("État de la mise à jour non transmis au site : site injoignable.")
+    return report
 
 
 def github_client(repository, token):
@@ -116,6 +168,23 @@ class Updater:
         self.next = self.name + "-next"
         self.backup = self.name + "-previous"
         self.state = json.loads(self.state_path.read_text()) if self.state_path.exists() else {}
+        # Outcome of this check, reported to the site: (state, message) and the deployed and expected revisions.
+        self.result, self.revision, self.latest = None, None, None
+
+    def finish(self, state, message):
+        self.result = (state, message)
+        self.log(message)
+
+    def summary(self, state=None, message=None):
+        """Report for the site: state ok, waiting or failed, its message and the known revisions."""
+        if state is None:
+            state, message = self.result or ("ok", "Contrôle terminé.")
+        report = {"state": state, "message": message[:500]}
+        if self.revision:
+            report["revision"] = self.revision
+        if self.latest:
+            report["latest"] = self.latest
+        return report
 
     def save(self):
         temporary = self.state_path.with_suffix(".tmp")
@@ -148,6 +217,20 @@ class Updater:
         return ["--security-opt", "seccomp=" + str(self.root / "worker/seccomp.json"),
                 "--security-opt", "apparmor=" + self.options.apparmor_profile,
                 "--security-opt", "systempaths=unconfined"]
+
+    def outdated(self, revision):
+        """Container created by an older updater: /proc masked, or revision not passed to the worker."""
+        env = self.inspect(self.name, ".Config.Env") or []  # Holds secrets: only tested, never logged.
+        return bool(self.inspect(self.name, ".HostConfig.MaskedPaths")) or REVISION_ENV + "=" + revision not in env
+
+    def refresh(self, revision):
+        """Recreate the worker from its own image with the current options, once no task runs."""
+        if self.state.get("failed_sha") == revision and not self.options.retry:
+            return self.finish("failed", "Cette révision a échoué au déploiement ; nouvelle tentative suspendue.")
+        if self.busy():
+            return self.finish("waiting", "Une tâche est en cours : mise à jour des options du conteneur différée.")
+        self.log("Options du conteneur à mettre à jour : recréation avec la même image.")
+        self.replace(self.inspect(self.name, ".Image"), revision)
 
     def busy(self):
         image = self.inspect(self.name, ".Image")
@@ -224,8 +307,7 @@ class Updater:
     def update(self):
         self.recover()
         if not self.running(self.name):
-            self.log("Worker arrêté : mise à jour différée.")
-            return
+            return self.finish("waiting", "Worker arrêté : mise à jour différée.")
         mounts = self.inspect(self.name, ".Mounts") or []
         if not any(mount.get("Name") == self.options.volume and mount.get("Destination") == "/data" for mount in mounts):
             raise UpdateError("Le conteneur n’utilise pas le volume configuré à /data.")
@@ -235,39 +317,30 @@ class Updater:
         sha = self.cmd("git", "rev-parse", "origin/main")
         if not re.fullmatch(r"[0-9a-f]{40}", sha):
             raise UpdateError("Révision Git invalide.")
+        self.latest = sha
         labels = self.inspect(self.name, ".Config.Labels") or {}
         deployed = labels.get(REVISION_LABEL)
-        if deployed == sha and self.inspect(self.name, ".HostConfig.MaskedPaths"):
-            # Created by an older updater without systempaths=unconfined: same image, new options.
-            if self.state.get("failed_sha") == sha and not self.options.retry:
-                self.log("Cette révision a échoué au déploiement ; nouvelle tentative suspendue.")
-                return
-            if self.busy():
-                self.log("Une tâche est en cours : mise à jour des options de sécurité différée.")
-                return
-            self.log("Options de sécurité du conteneur à mettre à jour : recréation avec la même image.")
-            self.replace(self.inspect(self.name, ".Image"), sha)
-            return
+        self.revision = deployed if deployed and re.fullmatch(r"[0-9a-f]{40}", deployed) else None
+        if deployed == sha and self.outdated(sha):
+            return self.refresh(sha)
         if deployed == sha:
-            self.log("Worker déjà à jour.")
+            self.finish("ok", "Worker déjà à jour.")
             if self.state.get("cleaned_sha") != sha:
                 self.cleanup(sha)
             return
         if self.state.get("failed_sha") == sha and not self.options.retry:
-            self.log("Cette révision a échoué au déploiement ; nouvelle tentative suspendue.")
-            return
+            return self.finish("failed", "Cette révision a échoué au déploiement ; nouvelle tentative suspendue.")
         if not tested(self.request, sha, self.options.repository):
-            self.log("Mise à jour différée : contrôles GitHub non terminés ou non réussis.")
-            return
-        if deployed and re.fullmatch(r"[0-9a-f]{40}", deployed):
+            return self.finish("waiting", "Mise à jour différée : contrôles GitHub non terminés ou non réussis.")
+        if self.revision:
             changed = self.cmd("git", "diff", "--name-only", deployed, sha, "--", "worker", ".dockerignore")
             if not changed:
                 self.cmd("git", "merge", "--ff-only", sha)
-                self.log("Changements hors worker : aucune reconstruction nécessaire.")
-                return
+                if self.outdated(deployed):
+                    return self.refresh(deployed)
+                return self.finish("ok", "Changements hors worker : aucune reconstruction nécessaire.")
         if self.busy():
-            self.log("Une tâche est en cours : mise à jour différée.")
-            return
+            return self.finish("waiting", "Une tâche est en cours : mise à jour différée.")
         self.cmd("git", "merge", "--ff-only", sha)
         image = "planifikateur-worker:" + sha
         # Debian packages need room while unpacking: free old images first, then
@@ -289,8 +362,7 @@ class Updater:
                 pass  # A full disk must not hide the build failure being reported.
             raise
         if self.busy() or not tested(self.request, sha, self.options.repository):
-            self.log("Remplacement différé : tâche démarrée ou contrôles GitHub modifiés.")
-            return
+            return self.finish("waiting", "Remplacement différé : tâche démarrée ou contrôles GitHub modifiés.")
         self.replace(image, sha)
 
     def replace(self, image, sha):
@@ -299,6 +371,7 @@ class Updater:
         self.remove(self.backup)
         self.cmd("docker", "create", "--name", self.next, "--restart", "unless-stopped",
                  "--label", REVISION_LABEL + "=" + sha, *self.security(), "--env-file", str(self.env_file),
+                 "--env", REVISION_ENV + "=" + sha,
                  "--mount", "source=" + self.options.volume + ",target=/data", image)
         self.state["pending"] = sha
         self.save()
@@ -311,7 +384,8 @@ class Updater:
             self.cmd("docker", "rename", self.next, self.name)
             self.state.update(pending=None, failed_sha=None, deployed_sha=sha)
             self.save()
-            self.log("Worker mis à jour : " + sha[:7] + ". Le volume et le conteneur précédent sont conservés.")
+            self.revision = sha
+            self.finish("ok", "Worker mis à jour : " + sha[:7] + ". Le volume et le conteneur précédent sont conservés.")
         except UpdateError:
             self.recover()
             raise
@@ -339,19 +413,24 @@ def main():
         except BlockingIOError:
             print("Une mise à jour est déjà en cours.")
             return
-        request = github_client(options.repository, read_token(Path(options.env_file)))
-        Updater(options, request).update()
+        env_file = Path(options.env_file)
+        report = site_reporter(env_file)
+        updater = None
+        try:
+            updater = Updater(options, github_client(options.repository, read_token(env_file)))
+            updater.update()
+        except Exception as error:
+            message = failure_message(error)
+            report(updater.summary("failed", message) if updater else {"state": "failed", "message": message})
+            raise
+        report(updater.summary())
 
 
 if __name__ == "__main__":
     try:
         main()
-    except UpdateError as error:
-        print(str(error), flush=True)
-        raise SystemExit(1)
     except Exception as error:
         # Never leak secret file contents or command output through a traceback:
         # report only the error type and, for system errors, the system message.
-        detail = type(error).__name__ + (" : " + error.strerror if isinstance(error, OSError) and error.strerror else "")
-        print(f"Mise à jour interrompue ({detail}) : consulter la configuration du service.", flush=True)
+        print(failure_message(error), flush=True)
         raise SystemExit(1)

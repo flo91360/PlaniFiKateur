@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.87 — 2026-11-02
+<!-- planifikateur:surveillance-worker -->
+
+- **Surveillance du worker IA** : Le site sait si le worker IA tourne : chaque requête du worker enregistre son dernier contact, et l’administrateur voit une alerte après 15 minutes de silence. La mise à jour automatique du VPS envoie au site le résultat de chaque passage (à jour, en attente ou en échec) ; un échec qui dure plus de 15 minutes est signalé. La révision du worker apparaît dans le diagnostic des projets et dans le panneau Connexion de l’agent.
+
 ## 0.1.86 — 2026-11-02
 <!-- planifikateur:fenetre-echap-saisie -->
 

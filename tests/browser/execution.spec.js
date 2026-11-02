@@ -71,6 +71,40 @@ test.describe('project task execution', () => {
     await page.getByText('Exécution et connexion du projet', { exact: true }).click();
     await expect(page.getByText('Godot 4.4.1 doit être installé sur le worker.', { exact: false })).toBeVisible();
   });
+  test('the administrator follows the worker and is alerted when it goes silent or cannot update', async ({
+    page,
+    request,
+    appServer,
+  }) => {
+    await login(page, appServer);
+    const credentials = await page.request.post(`${appServer}/api/v1/agents`, {
+      data: { name: 'Worker', projectIds: [seed[0].id] },
+    });
+    const headers = { Authorization: `Bearer ${(await credentials.json()).data.token}` };
+    // Le worker se manifeste et annonce sa révision ; la mise à jour automatique du VPS échoue.
+    expect((await request.get(`${appServer}/api/v1/agent/projects`, { headers })).status()).toBe(200);
+    const status = data => request.post(`${appServer}/api/v1/agent/status`, { headers, data });
+    expect((await status({ revision: 'a'.repeat(40) })).status()).toBe(200);
+    const update = { state: 'failed', message: 'Espace disque insuffisant pour construire l’image.' };
+    expect((await status({ update })).status()).toBe(200);
+    await page.reload();
+    await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
+    await page.getByRole('tab', { name: /^Dépôt/ }).click();
+    await page.getByText('Connexion de l’agent (administrateur)', { exact: true }).click();
+    const follow = page.getByRole('list', { name: 'Suivi du worker', exact: true });
+    await expect(follow).toContainText('Révision aaaaaaa annoncée au démarrage');
+    await expect(follow).toContainText('Mise à jour automatique en échec');
+    await expect(page.locator('.sync-warning')).toHaveCount(0);
+    // Vingt minutes plus tard sans nouvelles du worker : l’administrateur est alerté.
+    await page.clock.setFixedTime(new Date(Date.now() + 20 * 60000));
+    await page.reload();
+    await expect(
+      page.getByRole('status').filter({ hasText: 'Le worker IA ne s’est pas manifesté depuis' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('status').filter({ hasText: 'La mise à jour automatique du worker échoue depuis' }),
+    ).toContainText('Espace disque insuffisant pour construire l’image.');
+  });
   test('engine and model are project settings while effort persists on each card and is locked during a conversation', async ({
     page,
     request,

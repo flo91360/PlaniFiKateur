@@ -107,6 +107,24 @@ sudo journalctl -u planifikateur-worker-update.service -n 20 --no-pager
 sudo docker system df
 ```
 
+## Suivi sur le site
+
+Chaque vérification envoie son résultat au site avec la clé de l’agent
+(`PLANIFIKATEUR_URL` et `PLANIFIKATEUR_AGENT_TOKEN` du fichier privé, en HTTPS,
+sans suivre de redirection) : `ok` (à jour, mis à jour), `waiting` (tâche en cours,
+contrôles GitHub non terminés, worker arrêté) ou `failed`, avec le message du
+journal, la révision déployée et celle de `main`. Un site injoignable ne bloque
+pas la mise à jour ; le résultat suivant le remplace. Le panneau **Connexion de
+l’agent** affiche ce résultat, et l’administrateur reçoit une alerte quand la mise
+à jour échoue depuis plus de 15 minutes. Un échec passager corrigé au passage
+suivant n’alerte pas. Ce rapport ne compte pas comme un signe de vie du worker.
+
+Le conteneur reçoit sa révision dans `PLANIFIKATEUR_WORKER_REVISION` : le worker
+l’annonce au site à son démarrage et l’affiche dans le diagnostic des projets
+(« Version du worker »). Un conteneur créé par une version précédente de ce
+programme, sans cette variable, est recréé avec la même image dès qu’aucune tâche
+ne tourne, comme pour les options de sécurité.
+
 ## En cas d’échec
 
 Une révision qui échoue à la construction, au contrôle du sandbox ou au démarrage

@@ -65,6 +65,7 @@ export function createSiteClient({ origin, token }, transport = fetch) {
   return {
     projects: signal => request('agent/projects', undefined, signal),
     diagnostic: (projectId, data, signal) => request(`agent/projects/${projectId}/diagnostic`, data, signal),
+    status: (data, signal) => request('agent/status', data, signal),
     mergeEligible: async ({ repository, number, sha }, signal) =>
       (await request(`github/merge-eligibility?${new URLSearchParams({ repository, number, sha })}`, undefined, signal))
         .eligible === true,

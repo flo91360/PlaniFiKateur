@@ -36,6 +36,7 @@ export function createSchema(db) {
     CREATE TABLE IF NOT EXISTS github_projects (project_id TEXT PRIMARY KEY, repository TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS github_pr_bindings (repository TEXT NOT NULL, number INTEGER NOT NULL, execution_id TEXT NOT NULL, PRIMARY KEY(repository,number));
     CREATE TABLE IF NOT EXISTS agents (id TEXT PRIMARY KEY, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, projects TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1);
+    CREATE TABLE IF NOT EXISTS agent_status (agent_id TEXT PRIMARY KEY, data TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS executions (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, card_id TEXT NOT NULL, state TEXT NOT NULL, version INTEGER NOT NULL, lease_hash TEXT, lease_expires INTEGER, data TEXT NOT NULL);
     CREATE UNIQUE INDEX IF NOT EXISTS execution_active_card ON executions(card_id) WHERE state NOT IN ('done','cancelled');
     CREATE INDEX IF NOT EXISTS executions_state ON executions(state);

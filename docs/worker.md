@@ -165,6 +165,13 @@ change, sinon toutes les `PLANIFIKATEUR_WORKER_DIAGNOSTIC_MS` (15 min, de 0 à 6
 2 min au plus tant qu’elle est à compléter) ; le dernier résultat est renvoyé au site
 chaque minute.
 
+Chaque requête du worker au site vaut signe de vie : l’administrateur est alerté
+dans l’interface après 15 minutes sans nouvelles. `PLANIFIKATEUR_WORKER_REVISION`
+(révision Git, 7 à 40 caractères hexadécimaux), renseignée par la mise à jour
+automatique du VPS ([worker-updates](worker-updates.md)), est annoncée au site au
+démarrage et affichée dans le diagnostic des projets (« Version du worker ») ; sans
+elle, ce contrôle indique une révision inconnue.
+
 Paramètres facultatifs : `PLANIFIKATEUR_CODEX_MODEL`, `PLANIFIKATEUR_WORKER_POLL_MS`
 (10 s), `PLANIFIKATEUR_WORKER_HEARTBEAT_MS` (60 s),
 `PLANIFIKATEUR_WORKER_TIMEOUT_MS` (60 min), `PLANIFIKATEUR_WORKER_MAX_ATTEMPTS` (3).

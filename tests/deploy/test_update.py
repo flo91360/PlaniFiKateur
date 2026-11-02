@@ -8,6 +8,7 @@ import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
+import urllib.error
 import fcntl
 
 MODULE = Path(__file__).resolve().parents[2] / "worker/deploy/update.py"
@@ -59,9 +60,12 @@ class Commands:
         self.image_rm_fails = False
 
     @staticmethod
-    def container(revision, running=False, masked=None):
-        return {"revision": revision, "running": running, "image": "image-" + revision, "masked": masked,
-                "logs": updater.READY, "mounts": [{"Name": "planifikateur-worker-data", "Destination": "/data"}]}
+    def container(revision, running=False, masked=None, env=None):
+        if env is None:
+            env = ["PLANIFIKATEUR_URL=https://example.com"] + ([updater.REVISION_ENV + "=" + revision] if revision else [])
+        return {"revision": revision, "running": running, "image": "image-" + str(revision), "masked": masked,
+                "env": env, "logs": updater.READY,
+                "mounts": [{"Name": "planifikateur-worker-data", "Destination": "/data"}]}
 
     def __call__(self, args, cwd=None, timeout=1800, optional=False):
         self.calls.append(args)
@@ -79,7 +83,7 @@ class Commands:
             c = self.containers[name]
             values = {".State": {"Running": c["running"]}, ".Image": c["image"],
                       ".Config.Labels": {updater.REVISION_LABEL: c["revision"]}, ".RestartCount": 0,
-                      ".Mounts": c["mounts"], ".HostConfig.MaskedPaths": c["masked"]}
+                      ".Mounts": c["mounts"], ".HostConfig.MaskedPaths": c["masked"], ".Config.Env": c["env"]}
             return 0, json.dumps(values[args[3][7:-2]])
         if self.fail == action and not (action == "run" and "--entrypoint" in args):
             raise updater.UpdateError("Échec simulé : " + action)
@@ -108,8 +112,9 @@ class Commands:
         if action == "create":
             name = args[args.index("--name") + 1]
             revision = args[args.index("--label") + 1].split("=", 1)[1]
+            env = [args[i + 1] for i, arg in enumerate(args) if arg == "--env"]
             self.containers[name] = self.container(
-                revision, masked=[] if "systempaths=unconfined" in args else ["/proc/kcore"])
+                revision, masked=[] if "systempaths=unconfined" in args else ["/proc/kcore"], env=env)
             self.containers[name]["image"] = args[-1] if args[-1].startswith("image-") else "image-" + revision
             return 0, name
         if action == "stop":
@@ -169,6 +174,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn("source=planifikateur-worker-data,target=/data", create)
         self.assertIn(str(self.root / "private.env"), create)
         self.assertNotIn("--privileged", create)
+        self.assertIn(updater.REVISION_ENV + "=" + SHA, create)
         self.assertIsNone(json.loads((self.root / "deployment.json").read_text())["pending"])
 
     def test_confirmed_deployment_removes_unused_worker_images_and_build_cache_only(self):
@@ -329,6 +335,60 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(self.commands.containers["planifikateur-worker"]["masked"], ["/proc/kcore"])
         self.assertFalse(any(args[:2] == ["docker", "create"] for args in self.commands.calls))
 
+    def test_worker_without_its_revision_is_recreated_from_its_own_image(self):
+        # Created by an updater that did not pass the revision: same image and label, revision added.
+        for main_changed in [False, True]:
+            with self.subTest(main_changed=main_changed):
+                self.commands = Commands()
+                if main_changed:
+                    self.commands.changed = ""  # Newer main without worker changes: no rebuild.
+                    revision = OLD
+                else:
+                    revision = SHA
+                    self.commands.containers["planifikateur-worker"] = Commands.container(SHA, running=True)
+                self.commands.containers["planifikateur-worker"]["env"] = ["PLANIFIKATEUR_URL=https://example.com"]
+                self.commands.busy = [True]
+                self.make().update()
+                self.assertFalse(any(args[:2] == ["docker", "create"] for args in self.commands.calls))
+                self.commands.busy = [False]
+                deployment = self.make()
+                deployment.update()
+                c = self.commands.containers["planifikateur-worker"]
+                self.assertEqual((c["revision"], c["image"]), (revision, "image-" + revision))
+                self.assertIn(updater.REVISION_ENV + "=" + revision, c["env"])
+                self.assertTrue(c["running"])
+                self.assertFalse(any(args[:2] == ["docker", "build"] for args in self.commands.calls))
+                self.assertEqual(deployment.summary()["state"], "ok")
+                self.commands.calls.clear()
+                self.make().update()
+                self.assertFalse(any(args[:2] == ["docker", "create"] for args in self.commands.calls))
+                (self.root / "deployment.json").unlink()
+
+    def test_each_check_is_summarized_for_the_site(self):
+        deployment = self.make()
+        deployment.update()
+        self.assertEqual(deployment.summary(), {
+            "state": "ok", "message": "Worker mis à jour : aaaaaaa. Le volume et le conteneur précédent sont conservés.",
+            "revision": SHA, "latest": SHA})
+        deployment = self.make()
+        deployment.update()
+        self.assertEqual(deployment.summary()["message"], "Worker déjà à jour.")
+        self.commands = Commands()
+        self.commands.busy = [True]
+        deployment = self.make()
+        deployment.update()
+        self.assertEqual(deployment.summary(), {"state": "waiting", "message": "Une tâche est en cours : mise à jour différée.",
+                                                "revision": OLD, "latest": SHA})
+        self.checks.run["conclusion"] = None
+        deployment = self.make()
+        deployment.update()
+        self.assertEqual(deployment.summary()["state"], "waiting")
+        (self.root / "deployment.json").write_text(json.dumps({"failed_sha": SHA}))
+        deployment = self.make()
+        deployment.update()
+        self.assertEqual(deployment.summary()["state"], "failed")
+        self.assertEqual(deployment.summary("failed", "x" * 600)["message"], "x" * 500)
+
     def test_retry_is_explicit_for_rejected_revision(self):
         (self.root / "deployment.json").write_text(json.dumps({"failed_sha": SHA}))
         self.options.retry = True
@@ -374,6 +434,70 @@ class SafetyTests(unittest.TestCase):
             env.write_text(f"X=$(touch {target})\nPLANIFIKATEUR_GITHUB_TOKEN=private-token\n")
             self.assertEqual(updater.read_token(env), "private-token")
             self.assertFalse(target.exists())
+
+    def test_site_report_sends_the_agent_key_only_to_the_configured_site(self):
+        class Opener:
+            def __init__(self, error=None):
+                self.requests, self.error = [], error
+
+            def open(self, request, timeout):
+                self.requests.append((request, timeout))
+                if self.error:
+                    raise self.error
+                return contextlib.nullcontext(io.BytesIO(b'{"data":{}}'))
+
+        with tempfile.TemporaryDirectory() as directory:
+            env = Path(directory) / "env"
+            env.write_text("PLANIFIKATEUR_URL=https://site.example.com/\nPLANIFIKATEUR_AGENT_TOKEN=agent-key\n")
+            opener, logs = Opener(), []
+            updater.site_reporter(env, opener, logs.append)({"state": "ok", "message": "Worker déjà à jour."})
+            request, timeout = opener.requests[0]
+            self.assertEqual((request.full_url, request.get_method(), timeout),
+                             ("https://site.example.com/api/v1/agent/status", "POST", 15))
+            self.assertEqual(request.get_header("Authorization"), "Bearer agent-key")
+            self.assertEqual(json.loads(request.data), {"update": {"state": "ok", "message": "Worker déjà à jour."}})
+            # Unreachable or refusing site: the update goes on, logs name neither the site nor the key.
+            for error in [OSError("down"), urllib.error.HTTPError("https://site.example.com", 401, "", {}, None)]:
+                updater.site_reporter(env, Opener(error), logs.append)({"state": "ok", "message": "x"})
+            self.assertEqual(logs, ["État de la mise à jour non transmis au site : site injoignable.",
+                                    "État de la mise à jour non transmis au site (HTTP 401)."])
+            # Plain HTTP outside this machine, credentials in the address or a missing key: nothing is sent.
+            for content in ["PLANIFIKATEUR_URL=http://site.example.com\nPLANIFIKATEUR_AGENT_TOKEN=agent-key\n",
+                            "PLANIFIKATEUR_URL=https://user:pass@site.example.com\nPLANIFIKATEUR_AGENT_TOKEN=agent-key\n",
+                            "PLANIFIKATEUR_URL=https://site.example.com/api\nPLANIFIKATEUR_AGENT_TOKEN=agent-key\n",
+                            "PLANIFIKATEUR_URL=https://site.example.com\n"]:
+                env.write_text(content)
+                opener = Opener()
+                updater.site_reporter(env, opener, logs.append)({"state": "ok", "message": "x"})
+                self.assertEqual(opener.requests, [])
+            env.write_text("PLANIFIKATEUR_URL=http://localhost:3000\nPLANIFIKATEUR_AGENT_TOKEN=agent-key\n")
+            opener = Opener()
+            updater.site_reporter(env, opener, logs.append)({"state": "ok", "message": "x"})
+            self.assertEqual(opener.requests[0][0].full_url, "http://localhost:3000/api/v1/agent/status")
+
+    def test_failed_check_is_reported_to_the_site_without_secrets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            env = Path(directory) / "env"
+            env.write_text("PLANIFIKATEUR_GITHUB_TOKEN=private-token\n")
+            reports = []
+
+            def failing(deployment):
+                deployment.latest = SHA
+                raise updater.UpdateError("Espace disque insuffisant.")
+
+            def crashing(deployment):
+                raise KeyError("private-token")
+
+            argv = ["update.py", "--state-dir", directory, "--env-file", str(env)]
+            with patch("sys.argv", argv), patch.object(updater, "site_reporter", return_value=reports.append):
+                with patch.object(updater.Updater, "update", failing), self.assertRaises(updater.UpdateError):
+                    updater.main()
+                with patch.object(updater.Updater, "update", crashing), self.assertRaises(KeyError):
+                    updater.main()
+            self.assertEqual(reports, [
+                {"state": "failed", "message": "Espace disque insuffisant.", "latest": SHA},
+                {"state": "failed", "message": "Mise à jour interrompue (KeyError) : consulter la configuration du service."},
+            ])
 
     def test_overlapping_invocations_do_not_query_github_or_read_secrets(self):
         with tempfile.TemporaryDirectory() as directory:

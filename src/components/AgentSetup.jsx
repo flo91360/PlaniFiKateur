@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { apiData } from '../lib/api-client.js';
 import { useApiAction, useApiResource } from '../lib/use-api.js';
 import FormStatus from './FormStatus.jsx';
+import { workerDetails } from '../lib/worker-status.js';
 
 export default function AgentSetup({ projectId }) {
   const agents = useApiResource('agents');
@@ -29,6 +30,11 @@ export default function AgentSetup({ projectId }) {
             <strong>{agent.name}</strong> ·{' '}
             {agent.projectIds.includes(projectId) ? 'Autorisé sur ce projet' : 'Projet non autorisé'}
           </p>
+          <ul className="agent-status" aria-label="Suivi du worker">
+            {workerDetails(agent.status).map(line => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
           {!agent.projectIds.includes(projectId) && (
             <button
               className="secondary-button"

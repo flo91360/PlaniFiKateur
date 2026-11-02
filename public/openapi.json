@@ -4615,6 +4615,104 @@
         }
       }
     },
+    "/api/v1/agent/status": {
+      "post": {
+        "summary": "Agent : annoncer la révision du worker ou le résultat de sa mise à jour",
+        "description": "Le worker annonce sa révision à son démarrage ; le programme de mise à jour du VPS rapporte chaque passage. Ce rapport ne compte pas comme signe de vie du worker.",
+        "security": [
+          {
+            "agentAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "minProperties": 1,
+                "properties": {
+                  "revision": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{7,40}$"
+                  },
+                  "update": {
+                    "type": "object",
+                    "required": [
+                      "state",
+                      "message"
+                    ],
+                    "properties": {
+                      "state": {
+                        "type": "string",
+                        "enum": [
+                          "ok",
+                          "waiting",
+                          "failed"
+                        ]
+                      },
+                      "message": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 500
+                      },
+                      "revision": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{40}$"
+                      },
+                      "latest": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{40}$"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "État enregistré.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/AgentStatus"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "État du worker invalide.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Clé d’agent actif requise.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspace": {
       "get": {
         "summary": "Interface : lire le tableau complet",
@@ -7858,6 +7956,16 @@
           },
           "active": {
             "type": "boolean"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -8740,6 +8848,68 @@
           "durationMs": {
             "type": "integer",
             "minimum": 0
+          }
+        }
+      },
+      "AgentStatus": {
+        "type": "object",
+        "description": "Suivi du worker : dernier contact, révision exécutée et dernier passage du programme de mise à jour du VPS.",
+        "properties": {
+          "lastSeenAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Dernière requête du worker avec sa clé (enregistrée au plus une fois par minute)."
+          },
+          "revision": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{7,40}$",
+            "description": "Révision annoncée par le worker à son démarrage."
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "update": {
+            "type": "object",
+            "required": [
+              "state",
+              "message",
+              "date",
+              "since"
+            ],
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "ok",
+                  "waiting",
+                  "failed"
+                ]
+              },
+              "message": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "revision": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{40}$",
+                "description": "Révision du conteneur déployé."
+              },
+              "latest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{40}$",
+                "description": "Dernière révision de main connue du programme de mise à jour."
+              },
+              "date": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "since": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Début de l’état actuel."
+              }
+            }
           }
         }
       }

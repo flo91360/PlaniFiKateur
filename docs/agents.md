@@ -1,4 +1,4 @@
-# Parcours agent par projet — v0.1.86
+# Parcours agent par projet — v0.1.87
 
 Un seul agent actif, sans délégation. Le site pilote les demandes et confirme la fusion GitHub ;
 l’agent s’exécute dans un service externe. Le [worker Codex](worker.md) fournit ce
@@ -98,17 +98,29 @@ utilisent `{ "data": ... }`, les erreurs `{ "error": { "code", "message" } }`.
 
 | Méthode et route | Identité | Usage |
 | --- | --- | --- |
-| `GET /api/v1/agents` | Administrateur | Identités et projets autorisés, sans clés |
+| `GET /api/v1/agents` | Administrateur | Identités et projets autorisés, sans clés, avec `status` : suivi du worker (voir ci-dessous) |
 | `POST /api/v1/agents` | Administrateur | `{name, projectIds}` ; clé retournée une seule fois |
 | `PUT /api/v1/agents/{id}` | Administrateur | `{name, projectIds}` ; modifier les projets autorisés |
 | `DELETE /api/v1/agents/{id}` | Administrateur | Révoquer la clé |
 | `GET /api/v1/agent/projects` | Agent | Projets autorisés, avec dépôt, profil d’exécution, moteur, modèle et `webhookConfigured` |
 | `POST /api/v1/agent/projects/{projet}/diagnostic` | Agent autorisé | Diagnostic du worker pour ce projet (voir [multi-projets](multi-projets.md)) |
+| `POST /api/v1/agent/status` | Agent | `{revision}` annoncée au démarrage du worker, ou `{update: {state, message, revision?, latest?}}` envoyé par la mise à jour automatique du VPS |
 | `GET /api/v1/projects/{projet}/work` | Agent | File des exécutions prêtes ou interrompues |
 | `GET /api/v1/projects/{projet}/cards/{carte}/work` | Membre ou agent autorisé | Historique des exécutions, sans réservation secrète |
 | `POST` sur cette dernière route | Membre | Préparer avec `{}` ; description de la carte, dépôt du projet, fusion automatique |
 | `POST .../work/{execution}/{action}` | Selon l’action ci-dessous | Transition contrôlée |
 | `GET /api/v1/attention` | Membre | Exécutions qui attendent une personne, tous projets confondus : questions de l’agent (`waiting`) et anciens résultats à valider (`review`) |
+
+Suivi du worker (v0.1.87) : chaque requête faite avec la clé de l’agent enregistre
+son dernier contact (`status.lastSeenAt`, au plus une fois par minute), sauf
+`POST /api/v1/agent/status`. Cette route enregistre la révision annoncée par le
+worker (`revision`, 7 à 40 caractères hexadécimaux, et `startedAt`) ou le résultat
+du dernier passage de la mise à jour automatique (`update` : `state` `ok`,
+`waiting` ou `failed`, `message` de 500 caractères au plus, `revision` déployée et
+`latest` attendue en 40 caractères hexadécimaux, `date`, et `since`, début de
+l’état actuel). Une valeur invalide est refusée avec 400 (`invalid_status`).
+L’interface alerte l’administrateur quand le worker est silencieux depuis plus de
+15 minutes, ou quand la mise à jour automatique échoue depuis plus de 15 minutes.
 
 Les actions d’agent :
 
