@@ -147,6 +147,13 @@ export async function projectDiagnostic(project, config, github, execute, signal
       return `Workflow ${workflow.name} disponible pour les PR.`;
     });
   checks.push({
+    name: 'Version du worker',
+    state: config.revision ? 'ok' : 'unknown',
+    message: config.revision
+      ? `Révision ${config.revision.slice(0, 7)} en service.`
+      : 'Révision inconnue : worker lancé sans le programme de mise à jour du VPS, ou conteneur pas encore recréé par lui.',
+  });
+  checks.push({
     name: 'Notification de fusion',
     state: project.webhookConfigured ? 'unknown' : 'blocked',
     message: project.webhookConfigured

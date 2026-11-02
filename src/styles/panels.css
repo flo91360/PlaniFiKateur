@@ -165,6 +165,16 @@
   font-size: 13px;
 }
 
+.agent-status {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  color: var(--muted);
+}
+
 .agent-setup input {
   width: 100%;
   padding: 12px;

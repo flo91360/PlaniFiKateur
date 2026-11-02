@@ -458,6 +458,51 @@ test('project diagnostics query GitHub every 15 minutes but are reported to the 
   assert.equal(f.logs.filter(line => line.includes('configuration contrôlée')).length, 2);
 });
 
+test('the worker announces its revision once, retries later, and shows it in project diagnostics', async t => {
+  const f = await fixture(t, { auto: true });
+  const revision = 'c'.repeat(40);
+  let clock = Date.now(),
+    failures = 1,
+    announcements = 0;
+  const real = createSiteClient(f.config);
+  const site = {
+    ...real,
+    async status(data, signal) {
+      announcements++;
+      if (failures-- > 0) throw new TypeError('fetch failed');
+      return real.status(data, signal);
+    },
+  };
+  const worker = createWorker({ ...f.config, revision }, { ...f.dependencies, site, now: () => clock });
+  const status = () => f.store.workflows.agents()[0].status;
+  // Site momentanément injoignable : le travail continue, nouvel essai dix minutes plus tard.
+  assert.equal((await worker.tick()).status, 'idle');
+  assert.equal(status().revision, undefined);
+  assert.ok(status().lastSeenAt, 'les autres requêtes du worker valent signe de vie');
+  clock += 9 * 60000;
+  await worker.tick();
+  assert.equal(announcements, 1);
+  clock += 60000;
+  await worker.tick();
+  assert.equal(status().revision, revision);
+  assert.ok(status().startedAt);
+  clock += 60 * 60000;
+  await worker.tick();
+  assert.equal(announcements, 2, 'annoncée une seule fois par démarrage');
+  assert.deepEqual(
+    f.store.workflows.workerStatus(f.project.id).checks.find(check => check.name === 'Version du worker'),
+    { name: 'Version du worker', state: 'ok', message: 'Révision ccccccc en service.' },
+  );
+  // Sans révision (worker lancé à la main) : rien n’est annoncé et le diagnostic l’indique.
+  const manual = createWorker(f.config, { ...f.dependencies, site });
+  await manual.tick();
+  assert.equal(announcements, 2);
+  assert.equal(
+    f.store.workflows.workerStatus(f.project.id).checks.find(check => check.name === 'Version du worker').state,
+    'unknown',
+  );
+});
+
 test('only GitHub network commands receive the token and no Git command runs hooks or a file monitor', async t => {
   const f = await fixture(t);
   f.prepare();
@@ -1556,8 +1601,12 @@ test('worker configuration rejects external HTTP, credential URLs, invalid scope
     { PLANIFIKATEUR_WORKER_HEARTBEAT_MS: '300000' },
     { PLANIFIKATEUR_WORKER_GITHUB_POLL_MS: '600001' },
     { PLANIFIKATEUR_WORKER_DIAGNOSTIC_MS: '-1' },
+    { PLANIFIKATEUR_WORKER_REVISION: 'main' },
+    { PLANIFIKATEUR_WORKER_REVISION: 'abc12' },
   ])
     assert.throws(() => readWorkerConfig({ ...env, ...changes }));
+  assert.equal(readWorkerConfig({ ...env, PLANIFIKATEUR_WORKER_REVISION: 'abc1234' }).revision, 'abc1234');
+  assert.equal(readWorkerConfig(env).revision, undefined);
   assert.equal(
     commandEnvironment({
       PATH: '/bin',

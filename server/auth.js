@@ -101,9 +101,11 @@ export function createAuth(store, { ownerToken = '', readToken = '', secureCooki
       return user;
     },
     newSession: (res, user) => res.setHeader('Set-Cookie', cookie(store.createSession(user.id), 43200)),
-    requireAgent(req) {
+    // Toute requête du worker vaut signe de vie, sauf le rapport du programme de mise à jour (touch).
+    requireAgent(req, { touch = true } = {}) {
       const agent = store.workflows.agent(bearer(req));
       if (!agent) throw httpError(401, 'agent_unauthorized', 'Une clé d’agent actif est requise.');
+      if (touch) store.workflows.touchAgent(agent);
       return agent;
     },
     // Consultation : session, clé d’agent ou clé de lecture. Renvoie l’agent éventuel,

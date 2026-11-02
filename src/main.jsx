@@ -37,6 +37,7 @@ import ProjectHeader from './components/ProjectHeader.jsx';
 import { ListSettings, ProjectDetailsForm } from './components/EditForms.jsx';
 import Sidebar from './components/Sidebar.jsx';
 import SyncAlerts from './components/SyncAlerts.jsx';
+import WorkerAlert from './components/WorkerAlert.jsx';
 import Topbar from './components/Topbar.jsx';
 import { ProjectAccess, projectAccess } from './lib/project-access.js';
 
@@ -505,6 +506,7 @@ function App() {
                 onRetrySave={workspace.retrySave}
               />
             )}
+            {!offlineMode && workspace.user?.role === 'admin' && <WorkerAlert />}
             {project ? (
               <>
                 <ProjectHeader

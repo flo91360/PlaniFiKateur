@@ -687,9 +687,25 @@ export function createWorker(config, dependencies = {}) {
     now,
   });
 
+  // Révision exécutée (PLANIFIKATEUR_WORKER_REVISION), annoncée une fois au site ; en cas d’échec,
+  // nouvel essai au plus toutes les 10 minutes sans bloquer le travail.
+  let announced = !config.revision,
+    announceAfter = 0;
+  async function announce(signal) {
+    if (announced || now() < announceAfter) return;
+    try {
+      await site.status({ revision: config.revision }, signal);
+      announced = true;
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      announceAfter = now() + 10 * 60000;
+    }
+  }
+
   return {
     processTask,
     async tick(signal) {
+      await announce(signal);
       if (auto) {
         const discovered = await site.projects(signal);
         projects = new Map(

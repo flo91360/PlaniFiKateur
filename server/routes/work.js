@@ -39,6 +39,16 @@ export function workRoutes({ store, config, auth, guards }) {
       },
     },
     {
+      // Révision du worker ou rapport du programme de mise à jour du VPS (clé de l’agent).
+      path: '/api/v1/agent/status',
+      methods: {
+        async POST(ctx) {
+          const agent = auth.requireAgent(ctx.req, { touch: false });
+          ctx.send(200, { data: workflows.recordAgentStatus(agent, await ctx.body()) });
+        },
+      },
+    },
+    {
       path: '/api/v1/agent/projects/:projectId/diagnostic',
       methods: {
         async POST(ctx) {

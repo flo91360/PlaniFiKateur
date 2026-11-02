@@ -24,7 +24,7 @@ Dans **Paramètres du projet** :
    configuration change, sinon toutes les 15 minutes (2 minutes tant qu’elle est
    à compléter), et renvoie son dernier résultat chaque minute. Un diagnostic
    devient périmé après cinq minutes sans nouvelles du worker ou un changement de
-   configuration.
+   configuration. Le contrôle « Version du worker » indique la révision en service.
 
 Ensuite, créer une carte avec une description et la mettre **Prête à démarrer**.
 Les questions et réponses passent par les commentaires. Le worker effectue les
@@ -153,6 +153,8 @@ dans `PATH`. Le contrôleur continue de tourner avec Node 24.
   avec dépôt, profil, moteur, modèle et indicateur du secret de webhook.
 - Agent actif autorisé sur le projet :
   `POST /api/v1/agent/projects/{id}/diagnostic`.
+- Agent actif : `POST /api/v1/agent/status`, révision du worker et résultat de la
+  mise à jour automatique (voir [le contrat API des agents](agents.md)).
 
 Le `PUT` n’accepte que `preset` et `branch` : tout autre champ, par exemple
 `installCommands`, `testCommands` ou `workflow`, est refusé avec 400
