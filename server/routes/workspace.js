@@ -5,9 +5,13 @@ import { removesContent } from '../store.js';
 
 // Tableau complet de l’interface (lecture conditionnelle, écriture par révision) et sauvegardes.
 export function workspaceRoutes({ store, config, auth, guards }) {
-  const backups = ctx => {
-    guards.admin(ctx);
+  const available = () => {
     if (!config.backups) throw httpError(503, 'backups_unavailable', 'Les sauvegardes ne sont pas configurées.');
+  };
+  // Administrateur ; la clé de la copie hors du site peut aussi lister et télécharger les copies.
+  const backups = ctx => {
+    if (ctx.req.method !== 'GET' || !auth.backupKey(ctx.req)) guards.admin(ctx);
+    available();
   };
   return [
     {
@@ -95,6 +99,22 @@ export function workspaceRoutes({ store, config, auth, guards }) {
             );
           }
           ctx.send(201, { data: backup });
+        },
+      },
+    },
+    {
+      // Copie conservée hors du site, confirmée par le serveur qui l’a récupérée (clé de sauvegarde).
+      path: '/api/v1/backups/offsite',
+      guard: ctx => {
+        if (!auth.backupKey(ctx.req))
+          throw httpError(401, 'backup_key_required', 'La clé de sauvegarde PLANIFIKATEUR_BACKUP_TOKEN est requise.');
+        available();
+      },
+      methods: {
+        async POST(ctx) {
+          const offsite = config.backups.confirmOffsite((await ctx.body())?.name);
+          if (!offsite) throw httpError(400, 'invalid_backup', 'Nom de sauvegarde régulière invalide.');
+          ctx.send(200, { data: offsite });
         },
       },
     },

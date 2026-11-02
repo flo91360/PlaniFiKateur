@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.88 — 2026-11-02
+<!-- planifikateur:sauvegarde-vps-quotidienne -->
+
+- **Copie quotidienne des données sur le VPS** : Le VPS du worker peut conserver chaque jour une copie des données du site hors de Railway : il récupère la dernière sauvegarde avec une clé dédiée (PLANIFIKATEUR_BACKUP_TOKEN), la vérifie, la compresse et garde une copie par jour sur 7 jours, par semaine sur 4 semaines et par mois sur 6 mois. La section Sauvegardes affiche la dernière copie confirmée, et l’administrateur est alerté si aucune copie n’a été confirmée depuis deux jours. Mise en place décrite dans docs/backups.md.
+
 ## 0.1.87 — 2026-11-02
 <!-- planifikateur:surveillance-worker -->
 

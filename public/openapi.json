@@ -5290,10 +5290,13 @@
     },
     "/api/v1/backups": {
       "get": {
-        "summary": "Administrateur : copies disponibles",
+        "summary": "Administrateur ou clé de sauvegarde : copies disponibles",
         "security": [
           {
             "ownerSession": []
+          },
+          {
+            "backupAuth": []
           }
         ],
         "responses": {
@@ -5318,6 +5321,17 @@
                     },
                     "keep": {
                       "type": "integer"
+                    },
+                    "offsite": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/OffsiteBackup"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "Dernière copie confirmée par le serveur qui la conserve hors du site, ou null."
                     }
                   }
                 }
@@ -5415,12 +5429,95 @@
         }
       }
     },
+    "/api/v1/backups/offsite": {
+      "post": {
+        "summary": "Clé de sauvegarde : confirmer une copie conservée hors du site",
+        "description": "Le serveur externe (worker/deploy/backup.py) confirme chaque jour la copie régulière qu’il conserve. L’administrateur est alerté après deux jours sans confirmation.",
+        "security": [
+          {
+            "backupAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Nom d’une copie régulière du site (planifikateur-<date>-<uuid>.sqlite)."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Copie enregistrée comme conservée hors du site.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/OffsiteBackup"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Nom de sauvegarde régulière invalide.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Clé de sauvegarde requise.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Sauvegardes non configurées.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/backups/{filename}": {
       "get": {
-        "summary": "Administrateur : télécharger une copie SQLite",
+        "summary": "Administrateur ou clé de sauvegarde : télécharger une copie SQLite",
         "security": [
           {
             "ownerSession": []
+          },
+          {
+            "backupAuth": []
           }
         ],
         "parameters": [
@@ -7427,6 +7524,11 @@
         "type": "http",
         "scheme": "bearer",
         "description": "Clé d’identité agent créée par un administrateur, distincte de PLANIFIKATEUR_READ_TOKEN, limitée aux projets autorisés."
+      },
+      "backupAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "PLANIFIKATEUR_BACKUP_TOKEN, clé de la copie quotidienne hors du site : lister et télécharger les sauvegardes, confirmer une copie conservée."
       }
     },
     "schemas": {
@@ -8910,6 +9012,29 @@
                 "description": "Début de l’état actuel."
               }
             }
+          }
+        }
+      },
+      "OffsiteBackup": {
+        "type": "object",
+        "required": [
+          "name",
+          "createdAt",
+          "at"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Date de la copie."
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Date de la confirmation par le serveur externe."
           }
         }
       }

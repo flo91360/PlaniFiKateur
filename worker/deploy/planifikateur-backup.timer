@@ -1,0 +1,11 @@
+[Unit]
+Description=Copy the PlaniFiKateur site backup every day
+
+[Timer]
+OnCalendar=*-*-* 04:15:00
+RandomizedDelaySec=30min
+Persistent=true
+Unit=planifikateur-backup.service
+
+[Install]
+WantedBy=timers.target

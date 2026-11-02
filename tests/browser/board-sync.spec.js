@@ -577,6 +577,29 @@ test('owner can create and download a SQLite backup from the interface', async (
   expect(projects.some(p => p.name === 'Projet dans ma sauvegarde')).toBe(true);
 });
 
+test('the administrator sees the last off-site copy and is alerted when it is late', async ({ page, appServer }) => {
+  let confirmed = new Date().toISOString();
+  // Confirmation envoyée par le serveur externe (POST /api/v1/backups/offsite, testé côté serveur).
+  await page.route('**/api/v1/backups', async route => {
+    if (route.request().method() !== 'GET') return route.continue();
+    const response = await route.fetch();
+    const offsite = {
+      name: 'planifikateur-2026-11-01T04-00-00-000Z-0123abcd-0123-4abc-8def-0123456789ab.sqlite',
+      createdAt: '2026-11-01T04:00:00.000Z',
+      at: confirmed,
+    };
+    await route.fulfill({ response, json: { ...(await response.json()), offsite } });
+  });
+  await login(page, appServer);
+  await openAccount(page);
+  await expect(page.getByText(/^Dernière copie hors du site : celle du /)).toBeVisible();
+  const late = page.getByRole('status').filter({ hasText: 'La copie quotidienne des données hors du site' });
+  await expect(late).toHaveCount(0);
+  confirmed = new Date(Date.now() - 3 * 24 * 3600000).toISOString();
+  await page.reload();
+  await expect(late).toContainText('n’a pas été confirmée depuis le');
+});
+
 test('a delayed refresh cannot replace a form opened while the read was in flight', async ({
   page,
   browser,

@@ -1,0 +1,13 @@
+[Unit]
+Description=Copy the PlaniFiKateur site backup to this server
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=admin
+Group=admin
+WorkingDirectory=/home/admin/PlaniFiKateur
+ExecStart=/usr/bin/python3 /home/admin/PlaniFiKateur/worker/deploy/backup.py
+TimeoutStartSec=30min
+UMask=0077

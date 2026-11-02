@@ -34,7 +34,11 @@ export default function BackupsPanel() {
           ? `Copie automatique toutes les ${status.intervalHours} heures si les données changent, et avant une suppression. Jusqu’à ${status.keep} copies conservées de chaque sorte : les copies d’avant suppression ne remplacent pas les copies régulières.`
           : 'Chargement des sauvegardes…'}
       </p>
-      <p>Téléchargez régulièrement une copie pour la conserver en dehors du site.</p>
+      <p>
+        {status?.offsite
+          ? `Dernière copie hors du site : celle du ${new Date(status.offsite.createdAt).toLocaleString('fr-FR')}, confirmée le ${new Date(status.offsite.at).toLocaleString('fr-FR')} par le serveur externe.`
+          : 'Aucune copie hors du site confirmée : téléchargez régulièrement une copie, ou installez la copie quotidienne sur le VPS (docs/backups.md).'}
+      </p>
       <FormStatus error={error || backups.error || status?.error} />
       <button className="secondary-button" disabled={busy} onClick={() => void action()}>
         {busy ? 'Préparation…' : 'Créer et télécharger une sauvegarde SQLite'}

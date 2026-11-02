@@ -50,7 +50,10 @@ export function clientAddress(req, trustProxy = 0) {
   return (trustProxy > 0 && forwarded.at(-trustProxy)) || req.socket?.remoteAddress || '';
 }
 
-export function createAuth(store, { ownerToken = '', readToken = '', secureCookie = false, trustProxy = 0 } = {}) {
+export function createAuth(
+  store,
+  { ownerToken = '', readToken = '', backupToken = '', secureCookie = false, trustProxy = 0 } = {},
+) {
   const cookie = (token, maxAge) =>
     `planifikateur_session=${token}; HttpOnly; SameSite=Strict; Path=/api; Max-Age=${maxAge}${secureCookie ? '; Secure' : ''}`;
   const sameOrigin = req => {
@@ -108,6 +111,8 @@ export function createAuth(store, { ownerToken = '', readToken = '', secureCooki
       if (touch) store.workflows.touchAgent(agent);
       return agent;
     },
+    // Copie hors du site : clé dédiée PLANIFIKATEUR_BACKUP_TOKEN, sans session (lecture des sauvegardes).
+    backupKey: req => !!backupToken && equalSecret(bearer(req), backupToken),
     // Consultation : session, clé d’agent ou clé de lecture. Renvoie l’agent éventuel,
     // dont l’accès est limité à ses projets.
     readAccess(req) {

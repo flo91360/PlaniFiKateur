@@ -1,5 +1,15 @@
 import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync, readdirSync, statSync, renameSync, rmSync, chmodSync, existsSync } from 'node:fs';
+import {
+  mkdirSync,
+  readdirSync,
+  statSync,
+  renameSync,
+  rmSync,
+  chmodSync,
+  existsSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { resolve, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { validateWorkspace } from '../src/lib/workspace.js';
@@ -13,6 +23,9 @@ const KINDS = { regular: '', deletion: '-suppression' };
 // Durée pendant laquelle la dernière copie peut tenir lieu de copie avant suppression.
 const COVERAGE_MS = 24 * 60 * 60 * 1000;
 const kindOf = name => (name.endsWith('-suppression.sqlite') ? 'deletion' : 'regular');
+const createdAt = name => name.slice(14, 38).replace(/T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z/, 'T$1:$2:$3.$4Z');
+// Dernière copie confirmée par le serveur qui la conserve hors du site (worker/deploy/backup.py).
+const OFFSITE = 'hors-site.json';
 // Réglages des projets conservés dans la copie (droits, dépôt, IA, exécution, accès des agents).
 const SETTINGS_TABLES = ['project_policies', 'project_members', 'github_projects', 'project_ai', 'project_execution'];
 function readSettings(db) {
@@ -93,7 +106,7 @@ export function createBackups(
         return {
           name,
           size: file.size,
-          createdAt: name.slice(14, 38).replace(/T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z/, 'T$1:$2:$3.$4Z'),
+          createdAt: createdAt(name),
           kind: kindOf(name),
         };
       })
@@ -151,15 +164,33 @@ export function createBackups(
   }
   const timer = start ? setInterval(automatic, intervalMs) : null;
   timer?.unref();
+  const offsite = () => {
+    try {
+      const { name, at } = JSON.parse(readFileSync(join(root, OFFSITE), 'utf8'));
+      return backupName.test(name) && !Number.isNaN(Date.parse(at)) ? { name, createdAt: createdAt(name), at } : null;
+    } catch {
+      return null;
+    }
+  };
   return {
     create,
+    // Le serveur externe a conservé cette copie régulière (nom de fichier du site) : date enregistrée.
+    confirmOffsite(name) {
+      if (typeof name !== 'string' || !backupName.test(name) || kindOf(name) !== 'regular') return null;
+      const at = new Date().toISOString();
+      mkdirSync(root, { recursive: true, mode: 0o700 });
+      const temporary = join(root, `${OFFSITE}.${randomUUID()}.partial`);
+      writeFileSync(temporary, JSON.stringify({ name, at }), { mode: 0o600 });
+      renameSync(temporary, join(root, OFFSITE));
+      return { name, createdAt: createdAt(name), at };
+    },
     // La dernière copie, de moins d’un jour, contient-elle déjà l’état exact de ces éléments
     // supprimés (rien ne les a modifiés depuis) ? Une nouvelle copie complète est alors inutile.
     covers(removed) {
       return !!latest && Date.now() - latest.at < COVERAGE_MS && !store.touchedSince(latest.activityId, removed);
     },
     list,
-    status: () => ({ files: list(), error, intervalHours: intervalMs / 3600000, keep }),
+    status: () => ({ files: list(), error, intervalHours: intervalMs / 3600000, keep, offsite: offsite() }),
     file(name) {
       return backupName.test(name) && list().some(file => file.name === name) ? join(root, name) : null;
     },

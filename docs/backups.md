@@ -41,11 +41,55 @@ Le volume doit pouvoir contenir la base et ses copies. Vous pouvez réduire le n
 
 Dans le site connecté, l’administrateur ouvre **Mon compte** (barre supérieure) puis la section **Sauvegardes**, sous la gestion des membres. C’est le seul accès aux sauvegardes serveur : la vue d’ensemble, la fenêtre d’information et l’historique des projets ne les proposent pas. « Créer et télécharger une sauvegarde SQLite » capture les données déjà enregistrées sur le serveur. Attendre « Sauvegardé sur le serveur » avant cette opération. Les anciennes copies sont également téléchargeables ; leurs dates sont affichées dans votre fuseau horaire.
 
-La consultation et le téléchargement des sauvegardes exigent la session administrateur. La clé de lecture agent ne donne pas accès aux sauvegardes, qui contiennent tous les projets.
+La consultation et le téléchargement des sauvegardes exigent la session administrateur, ou la clé de la copie quotidienne décrite ci-dessous. La clé de lecture agent ne donne pas accès aux sauvegardes, qui contiennent tous les projets.
 
-**Les copies sur le même volume ne protègent pas contre la perte ou la suppression de ce volume.** Télécharger régulièrement une copie et la conserver dans un emplacement privé distinct. L’envoi automatique vers un stockage externe n’est pas configuré dans cette version. Le fichier contient les projets, cartes, commentaires, comptes, empreintes de mots de passe, invitations, sessions et historique. Il ne contient pas les clés d’environnement configurées dans Railway. Le conserver dans un emplacement privé.
+**Les copies sur le même volume ne protègent pas contre la perte ou la suppression de ce volume.** Installer la copie quotidienne sur le VPS AWS, ou à défaut télécharger régulièrement une copie et la conserver dans un emplacement privé distinct. Le fichier contient les projets, cartes, commentaires, comptes, empreintes de mots de passe, invitations, sessions et historique. Il ne contient pas les clés d’environnement configurées dans Railway. Le conserver dans un emplacement privé.
 
 Les échecs de sauvegarde sont affichés dans cette section et dans les logs. Le serveur continue de servir les données ; la prochaine sauvegarde programmée réessaiera.
+
+## Copie quotidienne sur le VPS AWS
+
+Depuis la v0.1.88, le VPS du worker peut récupérer chaque jour la dernière copie régulière du site (au plus six heures de retard sur la base). Le programme `worker/deploy/backup.py`, lancé vers 4 h 15 (heure du VPS) par le timer systemd `planifikateur-backup` :
+
+1. lit la liste des copies avec une **clé dédiée**, `PLANIFIKATEUR_BACKUP_TOKEN`, qui ne donne accès qu’aux sauvegardes : lister, télécharger, confirmer. Elle ne permet ni de créer une copie ni de lire ou modifier le tableau, et elle est distincte de la clé de l’agent : le conteneur du worker ne la reçoit pas ;
+2. télécharge la plus récente si elle n’est pas déjà conservée, en HTTPS et sans suivre de redirection, après avoir vérifié l’espace disque (deux fois sa taille plus 1 Go, option `--min-free-gb`) ;
+3. vérifie le fichier (taille annoncée, contrôle d’intégrité SQLite, base PlaniFiKateur), puis le compresse dans `/home/admin/planifikateur-backups/<nom>.sqlite.gz`, lisible par `admin` seul. Un fichier incomplet ou endommagé n’est jamais conservé ;
+4. garde la plus récente copie de chacun des **7 derniers jours**, des **4 dernières semaines** et des **6 derniers mois**, et supprime les autres copies de ce répertoire ;
+5. confirme au site la copie conservée. La section Sauvegardes de **Mon compte** affiche cette confirmation, et l’administrateur voit une alerte quand la dernière date de plus de deux jours.
+
+Les copies ne sont pas chiffrées par le programme : elles restent dans un répertoire privé du VPS (droits 700, fichiers 600). Activer le chiffrement du volume EBS dans AWS protège aussi le disque et ses instantanés.
+
+### Mise en place
+
+1. Sur le VPS, créer une clé : `openssl rand -hex 32`.
+2. Dans Railway, ajouter cette clé au service du site sous le nom `PLANIFIKATEUR_BACKUP_TOKEN` (32 caractères au moins, différente des autres clés), puis laisser le service redémarrer.
+3. Sur le VPS, créer le fichier privé `/home/admin/planifikateur-backup.env` :
+
+   ```sh
+   PLANIFIKATEUR_URL=https://votre-site.up.railway.app
+   PLANIFIKATEUR_BACKUP_TOKEN=la-clé-créée-à-l’étape-1
+   ```
+
+4. Relancer l’installateur, qui active le timer quand ce fichier existe et lui donne les droits 600 :
+
+   ```sh
+   cd /home/admin/PlaniFiKateur
+   sudo bash worker/deploy/install.sh
+   ```
+
+5. Lancer une première copie et vérifier son journal :
+
+   ```sh
+   sudo systemctl start planifikateur-backup.service
+   sudo journalctl -u planifikateur-backup.service -n 20 --no-pager
+   ls -l /home/admin/planifikateur-backups
+   ```
+
+Le programme est mis à jour avec le dépôt par la mise à jour automatique du worker ; seule une modification des fichiers `.service` et `.timer` demande de relancer l’installateur.
+
+### Restaurer depuis le VPS
+
+Décompresser la copie choisie (`gunzip -k nom.sqlite.gz`), la transférer de façon privée vers le serveur à restaurer, puis suivre [la restauration](#restaurer-une-sauvegarde).
 
 ## Sauvegarde depuis le serveur
 
@@ -81,6 +125,6 @@ Les navigateurs sans saisie en cours reçoivent les projets restaurés par l’a
 - Vérifier que la section Sauvegardes liste des copies après un redéploiement du service.
 - Tester une restauration sur une **base de test distincte** avant d’en avoir besoin en production.
 
-Les tests automatisés vérifient déjà les copies depuis WAL, leur rétention, la restauration, les fichiers invalides et l’accès réservé à l’administrateur. Ils ne prouvent pas la configuration effective du volume Railway ; cette vérification doit être faite sur le service hébergé.
+Les tests automatisés vérifient déjà les copies depuis WAL, leur rétention, la restauration, les fichiers invalides, l’accès réservé à l’administrateur et à la clé de sauvegarde, et la copie quotidienne du VPS (`tests/deploy/test_backup.py`). Ils ne prouvent pas la configuration effective du volume Railway ; cette vérification doit être faite sur le service hébergé.
 
 Les sauvegardes comprennent également les identités d’agents et les exécutions. La restauration du contenu conserve leur historique actuel, mais annule les exécutions actives et leurs réservations pour éviter une validation sur une demande restaurée. Voir [le guide agent](agents.md).
