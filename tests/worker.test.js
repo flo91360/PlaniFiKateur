@@ -566,6 +566,22 @@ test('a card cannot change the worker or the merge controls: they are restored a
   assert.ok(!delivered.some(path => path.startsWith('.github/') || path.startsWith('worker/')));
 });
 
+test('a card that adds a dependency publishes its PR but the merge waits for a manager approval', async t => {
+  const f = await fixture(t, {
+    model: async input => {
+      await writeFile(join(input.cwd, 'greet.mjs'), "export const greet = () => 'bonjour';\n");
+      await writeFile(join(input.cwd, 'requirements.txt'), 'requests==2.32.0\n');
+      return { status: 'result', summary: 'Salutation française', question: '' };
+    },
+  });
+  f.prepare();
+  const outcome = await f.worker.tick();
+  assert.equal(outcome.status, 'merging', f.logs.join('\n'));
+  const run = f.current();
+  assert.deepEqual(run.submissions.at(-1).reviewRequired, ['Manifeste de dépendances modifié : requirements.txt']);
+  assert.equal(f.store.workflows.list(f.project.id, f.card.id)[0].approvalRequired, true);
+});
+
 test('a request that needs protected files becomes a question on the card, without a PR', async t => {
   const f = await fixture(t, {
     model: async input => {

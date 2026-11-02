@@ -781,15 +781,15 @@ test.describe('project task execution', () => {
         checks: 'Tests lancés.',
         links: [],
         pullRequest: { url: 'https://github.com/flo91360/PlaniFiKateur/pull/11', headSha: 'c'.repeat(40) },
-        reviewRequired: ['.github/workflows/ci.yml', 'package.json (scripts)'],
+        reviewRequired: ['.github/workflows/ci.yml', 'Dépendance ajoutée : left-pad ^1.3.0 (package.json)'],
       },
     });
     expect(submitted.status()).toBe(200);
     await page.getByRole('heading', { name: card.title, exact: true }).click();
     const panel = page.getByRole('region', { name: 'Exécution IA', exact: true });
     await expect(panel).toContainText('elle attend l’approbation d’un responsable avant la fusion');
-    await expect(panel.getByRole('list', { name: 'Contrôles modifiés', exact: true })).toHaveText(
-      '.github/workflows/ci.ymlpackage.json (scripts)',
+    await expect(panel.getByRole('list', { name: 'Changements à vérifier', exact: true })).toHaveText(
+      '.github/workflows/ci.ymlDépendance ajoutée : left-pad ^1.3.0 (package.json)',
     );
     await panel.getByRole('button', { name: 'Approuver la fusion', exact: true }).click();
     await expect(panel).toContainText('PR approuvée par Alice : fusion après les tests GitHub.');
