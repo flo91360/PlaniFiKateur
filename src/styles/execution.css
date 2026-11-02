@@ -409,3 +409,46 @@
   margin: 0;
   padding-left: 18px;
 }
+
+/* Indicateur du worker IA (barre du haut) */
+.worker-indicator {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: none;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.worker-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #78a186;
+}
+.worker-indicator.busy .worker-dot {
+  background: #5b8bd0;
+}
+.worker-indicator.silent {
+  color: var(--warning-text);
+}
+.worker-indicator.silent .worker-dot {
+  background: #ca8251;
+}
+.worker-count {
+  font-weight: 600;
+}
+.worker-panel h3 {
+  margin: 14px 0 6px;
+  font-size: 13px;
+}
+@media (max-width: 700px) {
+  .worker-label {
+    display: none;
+  }
+}

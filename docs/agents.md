@@ -1,4 +1,4 @@
-# Parcours agent par projet — v0.1.89
+# Parcours agent par projet — v0.1.90
 
 Un seul agent actif, sans délégation. Le site pilote les demandes et confirme la fusion GitHub ;
 l’agent s’exécute dans un service externe. Le [worker Codex](worker.md) fournit ce
@@ -110,6 +110,7 @@ utilisent `{ "data": ... }`, les erreurs `{ "error": { "code", "message" } }`.
 | `POST` sur cette dernière route | Membre | Préparer avec `{}` ; description de la carte, dépôt du projet, fusion automatique |
 | `POST .../work/{execution}/{action}` | Selon l’action ci-dessous | Transition contrôlée |
 | `GET /api/v1/attention` | Membre | Exécutions qui attendent une personne, tous projets confondus : questions de l’agent (`waiting`) et anciens résultats à valider (`review`) |
+| `GET /api/v1/worker-activity` | Membre | Indicateur du worker de la barre du haut : dernier contact et révision de l’agent actif, et exécutions en attente de l’agent (`ready`), en cours (`running`) ou en tests GitHub (`merging`) des projets visibles |
 
 Suivi du worker (v0.1.87) : chaque requête faite avec la clé de l’agent enregistre
 son dernier contact (`status.lastSeenAt`, au plus une fois par minute), sauf

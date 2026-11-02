@@ -1,6 +1,7 @@
 import React from 'react';
-import { Bell, ChevronRight, CircleHelp, FolderKanban, History, Inbox, Menu, Moon, Sun } from 'lucide-react';
+import { Bell, Bot, ChevronRight, CircleHelp, FolderKanban, History, Inbox, Menu, Moon, Sun } from 'lucide-react';
 import { avatarLabel } from './Avatar.jsx';
+import { workerSummary } from '../lib/worker-status.js';
 
 function saveLabel(saveStatus, offline) {
   if (saveStatus === 'saving') return 'Enregistrement…';
@@ -15,6 +16,7 @@ export default function Topbar({
   offline,
   attentionCount = 0,
   unreadCount = 0,
+  workerActivity = null,
   dark = false,
   onToggleTheme,
   onOpenSidebar,
@@ -36,6 +38,9 @@ export default function Topbar({
           <span className={saveStatus === 'error' || saveStatus === 'conflict' ? 'error-dot' : 'online-dot'} />
           {saveLabel(saveStatus, offline)}
         </span>
+        {!offline && workerActivity && (
+          <WorkerIndicator activity={workerActivity} onOpen={() => onOpenModal('worker')} />
+        )}
         {!offline && (
           <button
             className={`icon-button attention-button ${attentionCount ? 'pending' : ''}`}
@@ -83,5 +88,24 @@ export default function Topbar({
         </button>
       </div>
     </header>
+  );
+}
+
+// Worker IA : point coloré et état court ; le détail (cartes en cours et en attente) s’ouvre au clic.
+function WorkerIndicator({ activity, onOpen }) {
+  const summary = workerSummary(activity);
+  const text = summary.detail ? `${summary.label} : ${summary.detail}` : summary.label;
+  return (
+    <button
+      className={`worker-indicator ${summary.tone}`}
+      aria-label={`Worker IA, ${text}`}
+      title={text}
+      onClick={onOpen}
+    >
+      <Bot size={17} />
+      <span className="worker-dot" />
+      <span className="worker-label">{summary.label}</span>
+      {summary.running + summary.queued > 0 && <span className="worker-count">{summary.running + summary.queued}</span>}
+    </button>
   );
 }

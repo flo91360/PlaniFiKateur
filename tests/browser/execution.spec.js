@@ -1,4 +1,4 @@
-import { createHmac, expect, seed, readFileSync, test, login, newProject } from './support.js';
+import { createHmac, expect, seed, readFileSync, test, login, newProject, isSystemCard } from './support.js';
 
 test.describe('project task execution', () => {
   test.use({ githubEnabled: true });
@@ -88,6 +88,13 @@ test.describe('project task execution', () => {
     const update = { state: 'failed', message: 'Espace disque insuffisant pour construire l’image.' };
     expect((await status({ update })).status()).toBe(200);
     await page.reload();
+    // Barre du haut : worker prêt, avec sa révision dans le détail.
+    await page.getByRole('button', { name: 'Worker IA, Worker prêt', exact: true }).click();
+    const panel = page.getByRole('dialog', { name: 'Worker IA' });
+    await expect(panel).toContainText('Worker prêt. Dernier contact :');
+    await expect(panel).toContainText('révision aaaaaaa');
+    await expect(panel).toContainText('Aucune carte en cours ni en attente dans vos projets.');
+    await panel.getByRole('button', { name: 'Fermer', exact: true }).click();
     await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
     await page.getByRole('tab', { name: /^Dépôt/ }).click();
     await page.getByText('Connexion de l’agent (administrateur)', { exact: true }).click();
@@ -104,6 +111,56 @@ test.describe('project task execution', () => {
     await expect(
       page.getByRole('status').filter({ hasText: 'La mise à jour automatique du worker échoue depuis' }),
     ).toContainText('Espace disque insuffisant pour construire l’image.');
+    await expect(page.getByRole('button', { name: 'Worker IA, Worker silencieux', exact: true })).toBeVisible();
+  });
+  test('the top bar shows the cards the worker is doing and those waiting for it @mobile', async ({
+    page,
+    appServer,
+  }) => {
+    const project = seed[0];
+    const [first, second] = project.cards.filter(card => !isSystemCard(project.id, card.id));
+    const since = new Date().toISOString();
+    await page.route('**/api/v1/worker-activity', route =>
+      route.fulfill({
+        json: {
+          data: {
+            worker: { lastSeenAt: since, revision: 'b'.repeat(40) },
+            executions: [
+              {
+                projectId: project.id,
+                projectName: project.name,
+                cardId: first.id,
+                cardTitle: first.title,
+                state: 'running',
+                since,
+              },
+              {
+                projectId: project.id,
+                projectName: project.name,
+                cardId: second.id,
+                cardTitle: second.title,
+                state: 'ready',
+                since,
+              },
+            ],
+          },
+        },
+      }),
+    );
+    await login(page, appServer);
+    const indicator = page.getByRole('button', {
+      name: 'Worker IA, Agent au travail : 1 en cours, 1 en attente',
+      exact: true,
+    });
+    await expect(indicator).toContainText('2');
+    await indicator.click();
+    const panel = page.getByRole('dialog', { name: 'Worker IA' });
+    await expect(panel.getByRole('region', { name: 'En cours de réalisation' })).toContainText(first.title);
+    await expect(
+      panel.getByRole('region', { name: 'En attente de l’agent, dans l’ordre de prise en charge' }),
+    ).toContainText(second.title);
+    await panel.getByRole('button', { name: new RegExp(second.title) }).click();
+    await expect(page.getByRole('dialog', { name: 'Détail de la carte' })).toBeVisible();
   });
   test('engine and model are project settings while effort persists on each card and is locked during a conversation', async ({
     page,

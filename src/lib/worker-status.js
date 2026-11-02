@@ -40,3 +40,29 @@ export function workerDetails(status) {
     );
   return lines;
 }
+
+// Indicateur de la barre du haut (GET /api/v1/worker-activity) : état court et nombre de cartes.
+export function workerSummary(activity, now = Date.now()) {
+  const executions = activity?.executions || [];
+  const count = state => executions.filter(item => item.state === state).length;
+  const running = count('running'),
+    queued = count('ready'),
+    merging = count('merging');
+  const seen = Date.parse(activity?.worker?.lastSeenAt);
+  const silent = !(now - seen <= WORKER_ALERT_MS);
+  const parts = [
+    running && `${running} en cours`,
+    queued && `${queued} en attente`,
+    merging && `${merging} en tests GitHub`,
+  ].filter(Boolean);
+  const label = silent
+    ? 'Worker silencieux'
+    : running
+      ? 'Agent au travail'
+      : queued
+        ? 'Cartes en attente'
+        : 'Worker prêt';
+  return { tone: silent ? 'silent' : running ? 'busy' : 'idle', label, detail: parts.join(', '), running, queued };
+}
+
+export const workerWhen = when;

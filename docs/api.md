@@ -215,6 +215,8 @@ La consultation reste disponible avec la clé de lecture. Les transitions de tra
 
 Avec une session personnelle, `GET /api/v1/attention` alimente la boîte « À traiter » : les exécutions de tous les projets qui attendent une personne (`projectId`, `projectName`, `cardId`, `cardTitle`, `executionId`, `state` parmi `waiting` et `review`, `message` limité à 500 caractères, `since`), de la plus récente à la plus ancienne. Une clé d’agent ou de lecture reçoit 401.
 
+Depuis la v0.1.90, `GET /api/v1/worker-activity` (session personnelle) alimente l’indicateur du worker dans la barre du haut : `worker` donne le dernier contact (`lastSeenAt`) et la révision annoncée (`revision`, ou `null`) de l’agent actif vu le plus récemment, ou vaut `null` si aucun ne s’est manifesté ; `executions` liste, de la plus ancienne à la plus récente, les cartes des projets visibles en attente de l’agent (`ready`, dans l’ordre de prise en charge), en cours de réalisation (`running`) ou en tests GitHub (`merging`), avec `projectId`, `projectName`, `cardId`, `cardTitle`, `state` et `since`. Une clé d’agent ou de lecture reçoit 401.
+
 `GET /api/v1/projects/{projectId}/work-status` (session d’un compte qui voit le projet) alimente les badges du tableau : pour chaque carte ayant une exécution en cours, `{ state, awaitingApproval, checks }`, où `awaitingApproval` signale une PR qui attend l’approbation d’un responsable et `checks` le dernier résultat des tests GitHub. L’interface la relit à chaque événement `work` du projet.
 
 Chaque projet et chaque carte ouverte ont leur adresse dans l’interface : `#/projets/{projectId}` et `#/projets/{projectId}/cartes/{cardId}`. Elle se garde au rechargement, se partage, et le retour arrière ferme la carte.
