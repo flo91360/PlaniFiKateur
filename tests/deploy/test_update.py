@@ -82,7 +82,7 @@ class Commands:
             if name not in self.containers: return 1, ""
             c = self.containers[name]
             values = {".State": {"Running": c["running"]}, ".Image": c["image"],
-                      ".Config.Labels": {updater.REVISION_LABEL: c["revision"]}, ".RestartCount": 0,
+                      ".Config.Labels": {updater.REVISION_LABEL: c["revision"], **c.get("labels", {})}, ".RestartCount": 0,
                       ".Mounts": c["mounts"], ".HostConfig.MaskedPaths": c["masked"], ".Config.Env": c["env"]}
             return 0, json.dumps(values[args[3][7:-2]])
         if self.fail == action and not (action == "run" and "--entrypoint" in args):
@@ -116,6 +116,8 @@ class Commands:
             self.containers[name] = self.container(
                 revision, masked=[] if "systempaths=unconfined" in args else ["/proc/kcore"], env=env)
             self.containers[name]["image"] = args[-1] if args[-1].startswith("image-") else "image-" + revision
+            self.containers[name]["labels"] = dict(args[i + 1].split("=", 1) for i, arg in enumerate(args)
+                                                   if arg == "--label" and not args[i + 1].startswith(updater.REVISION_LABEL))
             return 0, name
         if action == "stop":
             self.containers[args[-1]]["running"] = False
@@ -394,6 +396,32 @@ class DeploymentTests(unittest.TestCase):
         self.options.retry = True
         self.make().update()
         self.assertEqual(self.commands.containers["planifikateur-worker"]["revision"], SHA)
+
+    def test_an_edited_env_file_recreates_the_worker_even_stopped_without_storing_its_values(self):
+        env = self.root / "private.env"
+        env.write_text("PLANIFIKATEUR_URL=https://ancien.example\nPLANIFIKATEUR_AGENT_TOKEN=secret-agent\n")
+        self.commands.busy = [False] * 10
+        self.make().update()
+        c = self.commands.containers["planifikateur-worker"]
+        self.assertEqual(c["revision"], SHA)
+        fingerprint = c["labels"][updater.ENV_LABEL]
+        self.assertNotIn("secret", fingerprint)
+        self.assertFalse(any("secret-agent" in " ".join(args) for args in self.commands.calls))
+        self.make().update()
+        self.assertIn("Worker déjà à jour.", self.logs)
+        # The site moved: the worker is stopped, its file edited, then the updater recreates it.
+        c["running"] = False
+        env.write_text("PLANIFIKATEUR_URL=https://nouveau.example\nPLANIFIKATEUR_AGENT_TOKEN=secret-agent\n")
+        self.make().update()
+        c = self.commands.containers["planifikateur-worker"]
+        self.assertTrue(c["running"])
+        self.assertEqual(c["revision"], SHA)
+        self.assertNotEqual(c["labels"][updater.ENV_LABEL], fingerprint)
+        # Stopped without any edit: left stopped.
+        c["running"] = False
+        self.make().update()
+        self.assertFalse(self.commands.containers["planifikateur-worker"]["running"])
+        self.assertIn("Worker arrêté : mise à jour différée.", self.logs)
 
 
 class SafetyTests(unittest.TestCase):

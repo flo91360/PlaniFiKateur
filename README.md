@@ -131,7 +131,7 @@ Conserver également des copies hors du volume Railway.
 npm run export:preview
 ```
 
-`dist/PlaniFiKateur-apercu-v0.1.92.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
+`dist/PlaniFiKateur-apercu-v0.1.93.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 
@@ -213,7 +213,7 @@ par la carte Version de la liste Infos : un nouveau projet n’a besoin que de s
 dépôt GitHub. L’archivage des `.exe` dans Google Drive a été retiré en 0.1.78 ; les
 dossiers déjà copiés restent dans le Drive tant qu’on ne les supprime pas à la main.
 
-Héberger le serveur sur une origine HTTPS avec un volume de données persistant. Le parcours d’un seul agent est disponible : préparation, réservation exclusive, questions, résultats et validation humaine. Connecter un service agent externe avec sa clé dédiée ; voir [le guide agent](docs/agents.md). Les droits des membres sont réglés par projet ([droits par projet](docs/accounts.md#droits-par-projet--v0127)) ; les notifications sont affichées dans le site ([notifications](docs/accounts.md#notifications--v0128)) ; l’envoi par e-mail et la délégation restent à ajouter.
+Héberger le serveur sur une origine HTTPS avec un volume de données persistant. Depuis la v0.1.93, le site peut aussi tourner sur le VPS du worker, derrière Caddy et mis à jour automatiquement : voir [le guide VPS](docs/vps.md). Le parcours d’un seul agent est disponible : préparation, réservation exclusive, questions, résultats et validation humaine. Connecter un service agent externe avec sa clé dédiée ; voir [le guide agent](docs/agents.md). Les droits des membres sont réglés par projet ([droits par projet](docs/accounts.md#droits-par-projet--v0127)) ; les notifications sont affichées dans le site ([notifications](docs/accounts.md#notifications--v0128)) ; l’envoi par e-mail et la délégation restent à ajouter.
 
 Les comptes peuvent suivre ou ne plus suivre une carte depuis son détail, même sans en être auteurs. Les abonnements persistants alimentent les destinataires des futures notifications ; aucun envoi de notification n’est encore actif. Voir [la documentation des comptes](docs/accounts.md#suivre-une-carte).
 

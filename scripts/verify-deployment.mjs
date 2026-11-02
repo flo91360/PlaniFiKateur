@@ -2,7 +2,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export async function verifyDeployment(
-  { url, sha, version, timeoutMs = 10 * 60000 },
+  { url, sha, version, timeoutMs = 25 * 60000 },
   { transport = fetch, wait = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now } = {},
 ) {
   const origin = new URL(url);
@@ -36,7 +36,7 @@ export async function verifyDeployment(
     await wait(Math.min(10000, deadline - now()));
   } while (now() < deadline);
   throw new Error(
-    `Déploiement non confirmé : le site ne sert pas encore la version ${version} et le commit attendu. Le tag est conservé ; vérifiez Railway ou relancez uniquement ce contrôle.`,
+    `Déploiement non confirmé : le site ne sert pas encore la version ${version} et le commit attendu. Le tag est conservé ; vérifiez l’hébergement (VPS : journal de planifikateur-site-update) ou relancez uniquement ce contrôle.`,
   );
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

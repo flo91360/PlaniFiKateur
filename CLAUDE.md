@@ -4,7 +4,7 @@ Tableau de projets façon Trello dont les cartes servent de demandes à un agent
 Une carte passée **Prête à démarrer** est prise par le worker, qui code, teste,
 ouvre une PR, attend la CI puis fusionne ; le webhook GitHub termine la carte.
 Documentation fonctionnelle : `README.md` et `docs/` (API, agents, worker, GitHub,
-comptes, sauvegardes, multi-projets).
+comptes, sauvegardes, multi-projets, hébergement VPS).
 
 ## Structure
 
@@ -29,6 +29,7 @@ comptes, sauvegardes, multi-projets).
   `execution-profile.mjs` (dépôts, version, consignes, environnement) ;
   `worker.mjs` enchaîne les étapes d’une tâche, `checkout.mjs` prépare le dépôt
   et `follow-up.mjs` suit les PR jusqu’à la fusion.
+- `deploy/` : site sur le VPS (image Docker, Caddy, mise à jour `site.py`) ; voir `docs/vps.md`.
 - `scripts/` : client agent de référence, sauvegarde/restauration, export HTML.
 - `public/openapi.json` : spécification de l’API, servie à `/openapi.json`.
 - `tests/*.test.js` : tests `node:test` (serveur et worker) ;

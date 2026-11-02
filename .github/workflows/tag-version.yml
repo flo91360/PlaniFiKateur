@@ -35,10 +35,10 @@ jobs:
         id: version
         run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
   deploy:
-    name: Vérifier le déploiement Railway
+    name: Vérifier le déploiement du site
     needs: publish
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:

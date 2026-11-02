@@ -14,6 +14,10 @@ test('the dependency workflow audits both lockfiles and builds the worker image 
     /"docker", "build", "-f", "worker\/Dockerfile", "-t", image, "\."/,
   );
   assert.match(workflow, /run: docker build -f worker\/Dockerfile -t planifikateur-worker:ci \.\n/);
+  // Image du site : même Dockerfile et même argument de commit que deploy/site.py.
+  assert.match(readFileSync('deploy/site.py', 'utf8'), /"-f", "deploy\/site\.Dockerfile", "--build-arg",/);
+  assert.match(workflow, /docker build -f deploy\/site\.Dockerfile --build-arg PLANIFIKATEUR_COMMIT_SHA=/);
+  assert.match(workflow, /- deploy\/\*\*\n/);
   // Hors des contrôles requis : ses jobs ne portent pas le nom de ceux de ci.yml.
   assert.doesNotMatch(workflow, /name: Tests (serveur|navigateur)/);
 });

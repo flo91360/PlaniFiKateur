@@ -1,5 +1,5 @@
 name: Dépendances
-# Alertes de sécurité des dépendances et construction de l’image du worker. Hors des contrôles
+# Alertes de sécurité des dépendances et construction des images du worker et du site. Hors des contrôles
 # requis pour la fusion (ci.yml) : une alerte publiée après coup ne bloque pas les cartes, mais
 # l’échec est visible dans Actions et signalé par e-mail au propriétaire du dépôt.
 on:
@@ -11,6 +11,7 @@ on:
     paths:
       - package-lock.json
       - worker/**
+      - deploy/**
       - .dockerignore
       - .github/workflows/dependencies.yml
   push:
@@ -18,6 +19,7 @@ on:
     paths:
       - package-lock.json
       - worker/**
+      - deploy/**
       - .dockerignore
       - .github/workflows/dependencies.yml
 permissions:
@@ -58,3 +60,28 @@ jobs:
         run: docker build -f worker/Dockerfile -t planifikateur-worker:ci .
       - name: Vérifier le code du worker dans l’image
         run: docker run --rm --entrypoint node planifikateur-worker:ci --check /opt/worker/index.mjs
+  site:
+    name: Image du site
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      # Même contexte que deploy/site.py : le contenu exact du commit, sans .git.
+      - name: Construire l’image
+        run: |
+          mkdir -p "$RUNNER_TEMP/site"
+          git archive --format=tar HEAD | tar -x -C "$RUNNER_TEMP/site"
+          docker build -f deploy/site.Dockerfile --build-arg PLANIFIKATEUR_COMMIT_SHA="$(git rev-parse HEAD)" -t planifikateur-site:ci "$RUNNER_TEMP/site"
+      - name: Démarrer le site et lire la version servie
+        run: |
+          docker run -d --name site -e PLANIFIKATEUR_OWNER_TOKEN=ci-owner-key -e PLANIFIKATEUR_READ_TOKEN=ci-read-key planifikateur-site:ci
+          for attempt in $(seq 1 30); do
+            commit=$(docker exec site node -e "fetch('http://127.0.0.1:3000/build-info.json').then(r=>r.json()).then(b=>console.log(b.commit),()=>{})" || true)
+            if [ "$commit" = "$(git rev-parse HEAD)" ]; then echo "Site démarré : $commit"; exit 0; fi
+            sleep 2
+          done
+          docker logs site
+          exit 1

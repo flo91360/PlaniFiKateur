@@ -14,6 +14,13 @@ Jusqu’à la v0.1.24, tout le tableau était un seul document JSON. À partir d
 
 Cette copie n’est pas comptée dans les sauvegardes tournantes et n’est jamais supprimée automatiquement. Pour revenir à une version antérieure à la v0.1.25, restaurer cette copie (voir ci-dessous) **avant** de redémarrer l’ancienne version : une ancienne version ne lit pas les tables. Les sauvegardes des deux formats se restaurent avec la version actuelle.
 
+## Site sur le VPS (v0.1.93)
+
+Hébergé sur le VPS ([VPS](vps.md)), le site garde ses copies dans `/data/backups` du volume
+`planifikateur-site-data`, et la copie quotidienne les range dans `/home/admin/planifikateur-backups` :
+tout est alors sur le même disque. Activer les instantanés EBS quotidiens ou copier ce dossier
+ailleurs pour se protéger d’une perte du VPS.
+
 ## Railway
 
 Avec `PLANIFIKATEUR_DB_PATH=/data/planifikateur.sqlite` et le volume monté à `/data`, les copies vont automatiquement dans **`/data/backups`**, sur le même volume. Aucun service supplémentaire ni clé supplémentaire n’est nécessaire.
