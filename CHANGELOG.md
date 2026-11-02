@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.91 — 2026-11-02
+<!-- planifikateur:approbation-dependances -->
+
+- **Approbation exigée quand les dépendances changent** : Une carte qui ajoute ou modifie une dépendance (manifeste npm, paquets du lockfile, ou manifeste d’un autre écosystème comme requirements.txt, Cargo.toml ou go.mod) publie toujours sa PR, mais sa fusion attend qu’un responsable approuve son commit. La carte liste les changements à vérifier. Une dépendance retirée et la version du projet dans le lockfile ne demandent rien.
+
 ## 0.1.90 — 2026-11-02
 <!-- planifikateur:indicateur-worker -->
 

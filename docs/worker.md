@@ -147,8 +147,16 @@ modifié est rétabli tel qu’il est sur la branche cible (seuls les scripts de
 `package.json`, pas sa version ni ses dépendances), puis l’agent refait la demande
 sans lui. S’il y revient à chaque tour, la carte passe « À préciser » avec une
 question qui l’explique, sans PR : cette partie relève d’une intervention directe de
-l’administrateur. Le worker revérifie la branche juste avant le push. Personne n’a
-de PR à approuver. Limite connue : la clé du moteur IA reste lisible par le moteur
+l’administrateur. Le worker revérifie la branche juste avant le push.
+
+Les dépendances, elles, restent modifiables, mais leur changement n’est plus fusionné
+seul : un paquet piégé s’exécuterait dans la CI puis sur le serveur. Juste avant le
+push, le worker liste les dépendances ajoutées ou changées depuis la branche cible
+(`worker/dependencies.mjs` : manifestes npm, paquets du lockfile npm, autres
+manifestes et lockfiles). S’il y en a, la PR est publiée et testée, mais sa fusion
+attend qu’un responsable approuve son commit depuis la carte, qui affiche la liste
+sous « Changements à vérifier ». Une dépendance retirée et la seule version du projet
+dans le lockfile ne demandent rien. Limite connue : la clé du moteur IA reste lisible par le moteur
 lui-même et par ses commandes (Codex, Claude Code), qui en ont besoin.
 
 `PLANIFIKATEUR_WORKER_ISOLATION=none` désactive l’isolation pour un worker de
