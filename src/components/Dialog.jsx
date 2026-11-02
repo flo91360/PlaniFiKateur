@@ -1,13 +1,15 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 
 const UnsavedContext = createContext(null);
 
 // Un formulaire signale sa saisie non enregistrée : fermer la fenêtre (Échap, clic à côté, croix)
-// demande alors confirmation au lieu de perdre la saisie.
+// demande alors confirmation au lieu de perdre la saisie. Le signalement a lieu dès l’affichage de
+// la saisie (effet de mise en page) et la fenêtre le lit au moment de fermer : un Échap tapé juste
+// après la frappe ne passe pas avant lui.
 export function useUnsavedChanges(dirty) {
   const report = useContext(UnsavedContext);
-  useEffect(() => {
+  useLayoutEffect(() => {
     report?.(dirty);
     return () => report?.(false);
   }, [dirty, report]);
@@ -16,10 +18,12 @@ export function useUnsavedChanges(dirty) {
 // Fenêtre modale accessible : focus piégé, Échap pour fermer, défilement de la page bloqué.
 export default function Dialog({ title, children, onClose, wide = false }) {
   const ref = useRef(null);
-  const [dirty, setDirty] = useState(false),
-    [confirming, setConfirming] = useState(false);
-  const report = useCallback(value => setDirty(value), []);
-  const requestClose = () => (dirty ? setConfirming(true) : onClose());
+  const dirty = useRef(false);
+  const [confirming, setConfirming] = useState(false);
+  const report = useCallback(value => {
+    dirty.current = value;
+  }, []);
+  const requestClose = () => (dirty.current ? setConfirming(true) : onClose());
   const closeRef = useRef(requestClose);
   closeRef.current = confirming ? () => setConfirming(false) : requestClose;
   const keepRef = useRef(null);

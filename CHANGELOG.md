@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.86 — 2026-11-02
+<!-- planifikateur:fenetre-echap-saisie -->
+
+- **Saisie protégée même avec Échap immédiat** : Un Échap tapé juste après la frappe dans une fenêtre (nouvelle carte, liste, modification) demande toujours confirmation avant de perdre la saisie. La fenêtre apprenait la saisie un rendu trop tard et pouvait se fermer sans prévenir ; ce décalage faisait aussi échouer un test navigateur de temps en temps.
+
 ## 0.1.85 — 2026-11-02
 <!-- planifikateur:plafond-depense-ia -->
 

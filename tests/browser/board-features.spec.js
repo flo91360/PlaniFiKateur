@@ -18,6 +18,17 @@ test.describe('reliable and accessible interface', () => {
     await form.getByRole('button', { name: 'Fermer', exact: true }).click();
     await form.getByRole('button', { name: 'Abandonner la saisie', exact: true }).click();
     await expect(form).toHaveCount(0);
+    // Échap juste après la frappe, avant tout rendu planifié par React : la saisie est déjà connue
+    // de la fenêtre, qui demande confirmation au lieu de se fermer.
+    await page.getByRole('button', { name: 'Ajouter une carte dans Bugs', exact: true }).click();
+    await page.getByLabel('Titre de la carte', { exact: true }).evaluate(input => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'Idée rapide');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    await expect(form.getByRole('alert')).toContainText('Votre saisie n’est pas enregistrée');
+    await form.getByRole('button', { name: 'Abandonner la saisie', exact: true }).click();
+    await expect(form).toHaveCount(0);
   });
 
   test('an unreadable execution history is reported with a retry instead of locking the card', async ({
