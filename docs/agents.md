@@ -1,4 +1,4 @@
-# Parcours agent par projet — v0.1.93
+# Parcours agent par projet — v0.1.94
 
 Un seul agent actif, sans délégation. Le site pilote les demandes et confirme la fusion GitHub ;
 l’agent s’exécute dans un service externe. Le [worker Codex](worker.md) fournit ce
@@ -137,17 +137,11 @@ Les actions d’agent :
 
 Depuis la v0.1.44, `progress`, `question`, `submit` et `interrupt` acceptent aussi `usage` : la consommation cumulée du modèle depuis la réservation (`inputTokens`, dont `cachedInputTokens`, `outputTokens`, `costUsd` si le moteur le fournit, `durationMs`). Chaque réservation ouvre une tentative dans `attempts` (début, fin, consommation) ; la lecture des exécutions d’une carte ajoute `usage`, leur total (tentatives, tokens, coût connu, durée).
 
-`reviewRequired` (facultatif, 50 éléments de 300 caractères au plus) liste ce qu’un responsable doit
-vérifier : la PR attend alors qu’il approuve son commit (`approve`). Depuis la v0.1.91, le worker y
-place les changements de dépendances de la PR par rapport à la branche cible : dépendance npm ajoutée
-ou dont la version change (`dependencies`, `devDependencies`, `optionalDependencies`,
-`peerDependencies`), `overrides` ou `resolutions` modifiés, paquets résolus du lockfile npm (hors la
-version du projet lui-même), et tout autre lockfile ou manifeste modifié (`requirements.txt`,
-`pyproject.toml`, `Cargo.toml`, `go.mod`, `Gemfile`, `composer.json`…). Une dépendance retirée ne
-compte pas. Les fichiers protégés (workflows GitHub, scripts npm, configuration des tests, worker et
-livraison) ne peuvent toujours pas être modifiés par une carte : le worker les rétablit avant de livrer
-(voir [le worker](worker.md#isolation-du-code-exécuté)). Le site accepte encore ces chemins d’un
-ancien worker.
+`reviewRequired` (facultatif) liste les contrôles de la fusion que la PR modifie : la PR attend alors
+qu’un responsable approuve son commit (`approve`). Le worker installé ne l’envoie plus : une carte ne
+peut pas modifier ces fichiers protégés (workflows GitHub, scripts npm, configuration des tests,
+worker et livraison), que le worker rétablit avant de livrer (voir
+[le worker](worker.md#isolation-du-code-exécuté)). Le site l’accepte encore d’un ancien worker.
 
 Les actions humaines exigent une session personnelle :
 

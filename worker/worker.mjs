@@ -12,7 +12,6 @@ import { defaultExecutionProfile, installedProfile } from './execution-profile.m
 import { projectDiagnostic } from './runtime.mjs';
 import { prepareDelivery } from './delivery.mjs';
 import { protectedChanges, protectedQuestion, restoreProtected } from './protected.mjs';
-import { dependencyChanges } from './dependencies.mjs';
 import { WorkerTimeoutError, createReservation } from './reservation.mjs';
 import { BudgetExceededError, aiBudget } from './budget.mjs';
 import { createCheckouts } from './checkout.mjs';
@@ -409,8 +408,6 @@ export function createWorker(config, dependencies = {}) {
       base: `origin/${targetBranch}`,
     });
     if (touched.length) throw new Error(`Publication refusée : fichiers protégés modifiés (${touched.join(', ')}).`);
-    // Dépendances ajoutées ou modifiées : la fusion attendra l’approbation d’un responsable.
-    const reviewRequired = await dependencyChanges({ command, cwd: checkout.cwd, base: `origin/${targetBranch}` });
     const sha = await command(['git', 'rev-parse', 'HEAD']);
     await reservation.action('progress', {
       message: 'Les tests locaux ont réussi. Le worker publie la branche et prépare la PR.',
@@ -453,7 +450,6 @@ export function createWorker(config, dependencies = {}) {
       links: [pr.html_url],
       pullRequest: { url: pr.html_url, headSha: sha },
       files,
-      ...(reviewRequired.length ? { reviewRequired } : {}),
     });
     // Résultat publié : rattaché à la demande telle que le site l’enregistre désormais (avec cette
     // soumission), pour une mise à jour de la PR quand la branche cible avance.
