@@ -91,6 +91,12 @@ export function readWorkerConfig(env = process.env) {
     claudeOauthToken: env.CLAUDE_CODE_OAUTH_TOKEN || undefined,
     claudeHome: resolve(env.CLAUDE_CONFIG_DIR || `${stateRoot}/claude`),
     pollMs: number('PLANIFIKATEUR_WORKER_POLL_MS', 10000, 1000, 60000),
+    // Quota de l’API GitHub (5 000 requêtes par heure et par token) : une PR en attente de fusion est
+    // relue à chaque changement de son exécution sur le site, sinon au plus à cet intervalle.
+    githubPollMs: number('PLANIFIKATEUR_WORKER_GITHUB_POLL_MS', 60000, 0, 10 * 60000),
+    // Contrôle complet de la configuration d’un projet prêt (outils, dépôt, workflow GitHub) ; un
+    // projet à compléter est revérifié au moins toutes les 2 min, une configuration modifiée aussitôt.
+    diagnosticMs: number('PLANIFIKATEUR_WORKER_DIAGNOSTIC_MS', 15 * 60000, 0, 60 * 60000),
     heartbeatMs: number('PLANIFIKATEUR_WORKER_HEARTBEAT_MS', 60000, 1000, 120000),
     taskTimeoutMs: number('PLANIFIKATEUR_WORKER_TIMEOUT_MS', 60 * 60000, 1000, 2 * 60 * 60000),
     setupTimeoutMs: number('PLANIFIKATEUR_WORKER_SETUP_TIMEOUT_MS', 15 * 60000, 1000, 2 * 60 * 60000),

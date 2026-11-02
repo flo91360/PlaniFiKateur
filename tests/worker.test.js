@@ -95,6 +95,8 @@ async function fixture(t, options = {}) {
     PLANIFIKATEUR_WORKER_PROJECTS: project.id,
     PLANIFIKATEUR_WORKER_REPOSITORIES: repository,
     PLANIFIKATEUR_WORKER_STATE_DIR: join(root, 'worker'),
+    // Les tests enchaînent les tours : la PR est relue à chacun (voir le test de l’espacement).
+    PLANIFIKATEUR_WORKER_GITHUB_POLL_MS: '0',
     OPENAI_API_KEY: 'model-test-key',
     PLANIFIKATEUR_WORKER_INSTALL_COMMANDS: JSON.stringify([['node', '--version']]),
     PLANIFIKATEUR_WORKER_TEST_COMMANDS: JSON.stringify([
@@ -333,6 +335,126 @@ test('worker merges only after GitHub CI and site eligibility, without Actions s
   await f.worker.tick();
   assert.equal(f.current().state, 'done');
   assert.equal(f.merges, 1);
+});
+
+test('worker spaces GitHub checks of a waiting PR and resumes them as soon as its execution changes on the site', async t => {
+  const f = await fixture(t);
+  let clock = Date.now(),
+    pulls = 0;
+  const github = {
+    ...f.github,
+    async pull(...args) {
+      pulls++;
+      return f.github.pull(...args);
+    },
+  };
+  const worker = createWorker({ ...f.config, githubPollMs: 60000 }, { ...f.dependencies, github, now: () => clock });
+  f.prepare();
+  assert.equal((await worker.tick()).status, 'merging');
+  await worker.tick();
+  assert.equal(pulls, 1);
+  f.setTestsReady(true);
+  clock += 30000;
+  await worker.tick();
+  assert.equal(pulls, 1, 'rien n’a changé sur le site : la PR n’est pas relue avant l’intervalle');
+  assert.equal(f.merges, 0);
+  // Résultat des contrôles reçu par webhook : l’exécution change sur le site, la PR est relue aussitôt.
+  const { workflow } = f.store.workflows.executionProfile(f.project.id);
+  assert.equal(
+    f.store.workflows.githubChecks({
+      action: 'completed',
+      repository: { full_name: repository },
+      workflow_run: {
+        id: 1,
+        run_attempt: 1,
+        event: 'pull_request',
+        status: 'completed',
+        conclusion: 'success',
+        name: workflow.name,
+        path: `.github/workflows/${workflow.file}`,
+        head_sha: f.pr.head.sha,
+        head_repository: { full_name: repository },
+        html_url: `https://github.com/${repository}/actions/runs/1`,
+      },
+    }).updated,
+    true,
+  );
+  await worker.tick();
+  assert.equal(pulls, 2);
+  assert.equal(f.merges, 1);
+  await worker.tick();
+  assert.equal(pulls, 2);
+  clock += 60000;
+  await worker.tick();
+  assert.equal(pulls, 3, 'relue une fois l’intervalle écoulé');
+  assert.ok(f.logs.some(line => line.includes('PR fusionnée, confirmation du site attendue')));
+});
+
+test('a PR awaiting approval keeps following main but skips its merge checks until a manager approves it', async t => {
+  const f = await fixture(t);
+  f.store.configureMergeApproval(f.project.id, { required: true }, f.user);
+  let mergeChecks = 0,
+    mainChecks = 0;
+  const github = {
+    ...f.github,
+    async behindMain(...args) {
+      mainChecks++;
+      return f.github.behindMain(...args);
+    },
+    mergeWhenReady(...args) {
+      mergeChecks++;
+      return f.github.mergeWhenReady(...args);
+    },
+  };
+  const worker = createWorker(f.config, { ...f.dependencies, github });
+  f.prepare();
+  assert.equal((await worker.tick()).status, 'merging');
+  f.setTestsReady(true);
+  await worker.tick();
+  await worker.tick();
+  assert.equal(mainChecks, 2);
+  assert.equal(mergeChecks, 0);
+  assert.equal(f.merges, 0);
+  assert.equal(f.logs.filter(line => line.includes('en attente de la validation de la PR sur le site')).length, 1);
+  const run = f.current();
+  f.store.workflows.human(f.project.id, f.card.id, run.id, 'approve', { version: run.version }, f.user);
+  await worker.tick();
+  assert.equal(mergeChecks, 1);
+  assert.equal(f.merges, 1);
+});
+
+test('project diagnostics query GitHub every 15 minutes but are reported to the site every minute', async t => {
+  const f = await fixture(t, { auto: true });
+  let clock = Date.now(),
+    checks = 0;
+  const github = {
+    ...f.github,
+    request(path, ...rest) {
+      if (path === `/repos/${repository}`) checks++;
+      return f.github.request(path, ...rest);
+    },
+  };
+  const worker = createWorker(f.config, { ...f.dependencies, github, now: () => clock });
+  const reported = () => f.store.workflows.workerStatus(f.project.id).date;
+  assert.equal((await worker.tick()).status, 'idle');
+  assert.equal(checks, 1);
+  assert.equal(f.store.workflows.workerStatus(f.project.id).state, 'ready');
+  const first = reported();
+  await delay(5);
+  await worker.tick();
+  assert.equal(reported(), first, 'pas de nouvel envoi avant une minute');
+  clock += 60000;
+  await worker.tick();
+  assert.equal(checks, 1, 'le dernier diagnostic est renvoyé sans interroger GitHub');
+  assert.notEqual(reported(), first);
+  clock += 15 * 60000;
+  await worker.tick();
+  assert.equal(checks, 2);
+  // Une configuration modifiée sur le site est contrôlée aussitôt.
+  f.store.workflows.configureAi(f.project.id, { engine: 'codex', model: 'gpt-6.1-sol' }, f.user);
+  await worker.tick();
+  assert.equal(checks, 3);
+  assert.equal(f.logs.filter(line => line.includes('configuration contrôlée')).length, 2);
 });
 
 test('only GitHub network commands receive the token and no Git command runs hooks or a file monitor', async t => {
@@ -1431,6 +1553,8 @@ test('worker configuration rejects external HTTP, credential URLs, invalid scope
     { PLANIFIKATEUR_WORKER_REPOSITORIES: 'https://evil.example' },
     { PLANIFIKATEUR_WORKER_TEST_COMMANDS: '["npm test"]' },
     { PLANIFIKATEUR_WORKER_HEARTBEAT_MS: '300000' },
+    { PLANIFIKATEUR_WORKER_GITHUB_POLL_MS: '600001' },
+    { PLANIFIKATEUR_WORKER_DIAGNOSTIC_MS: '-1' },
   ])
     assert.throws(() => readWorkerConfig({ ...env, ...changes }));
   assert.equal(
@@ -1600,6 +1724,8 @@ test('phase deadline configuration keeps explicit legacy values and validates ev
   assert.equal(config.testsTimeoutMs, 30 * 60000);
   assert.equal(config.setupTimeoutMs, 15 * 60000);
   assert.equal(config.publicationTimeoutMs, 10 * 60000);
+  assert.equal(config.githubPollMs, 60000);
+  assert.equal(config.diagnosticMs, 15 * 60000);
   assert.equal(readWorkerConfig({ ...env, PLANIFIKATEUR_WORKER_TIMEOUT_MS: '1200000' }).taskTimeoutMs, 1200000);
   for (const phase of ['SETUP', 'MODEL', 'TESTS', 'PUBLICATION']) {
     assert.throws(() => readWorkerConfig({ ...env, [`PLANIFIKATEUR_WORKER_${phase}_TIMEOUT_MS`]: '0' }), /invalide/);

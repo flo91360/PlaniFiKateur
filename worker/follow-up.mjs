@@ -16,6 +16,8 @@ export function createFollowUp({
   knownProjects,
   profileOf,
   releaseCheckout,
+  githubPollMs = 0,
+  now = Date.now,
 }) {
   // Message de suivi journalisé une seule fois tant que la situation ne change pas.
   async function note(job, reason, message) {
@@ -25,9 +27,22 @@ export function createFollowUp({
     log(message);
   }
 
+  // Quota GitHub : la PR d’une exécution n’est relue qu’après `githubPollMs`, sauf si l’exécution a
+  // changé sur le site entre-temps (contrôles reçus par webhook, validation, exigence de validation…).
+  const githubChecks = new Map();
+  function githubDue(job, run) {
+    const previous = githubChecks.get(job.id),
+      time = now(),
+      key = JSON.stringify([run.version, run.approvalRequired]);
+    if (previous?.key === key && time < previous.next) return false;
+    githubChecks.set(job.id, { key, next: time + githubPollMs });
+    return true;
+  }
+
   // Suivi d’une tâche connue : état sur le site, PR et fusion. Renvoie la tâche à reprendre, ou null.
   async function reconcileJob(job, signal) {
     if (['done', 'cancelled'].includes(job.phase)) {
+      githubChecks.delete(job.id);
       await releaseCheckout(job);
       return null;
     }
@@ -58,7 +73,7 @@ export function createFollowUp({
       log(`Exécution ${job.id} archivée localement : exécution absente de la carte.`);
       return null;
     }
-    if (allowed(run) && legacyPublicationQuestion(run)) {
+    if (allowed(run) && legacyPublicationQuestion(run) && githubDue(job, run)) {
       const pr = await github.pull(run.repository, run.submissions.at(-1).pullRequest.number, signal);
       if (
         pr.state === 'open' &&
@@ -89,7 +104,7 @@ export function createFollowUp({
     if (run.state !== 'merging' || !allowed(run)) return null;
     const submission = run.submissions.at(-1)?.pullRequest;
     const profile = profileOf(job.executionProfile || run.executionProfile || defaultExecutionProfile());
-    if (!submission) return null;
+    if (!submission || !githubDue(job, run)) return null;
     const pr = await github.pull(run.repository, submission.number, signal);
     if (pr.state !== 'open') {
       if (!pr.merged)
@@ -111,6 +126,16 @@ export function createFollowUp({
     }
     if (await github.behindMain(run.repository, pr.head.sha, signal, profile.branch)) return run;
     if (!pr.labels.some(l => l.name === 'planifikateur-agent')) await github.label(run.repository, pr.number, signal);
+    // Validation humaine attendue pour ce commit : aucune fusion n’est possible, inutile d’interroger
+    // les contrôles GitHub. Le site garde la décision finale au moment de fusionner (merge-eligibility).
+    if (run.approvalRequired === true && run.approval?.headSha !== submission.headSha) {
+      await note(
+        job,
+        'approval_required',
+        `Exécution ${run.id} : fusion en attente de la validation de la PR sur le site.`,
+      );
+      return null;
+    }
     let merged;
     try {
       merged = await github.mergeWhenReady(

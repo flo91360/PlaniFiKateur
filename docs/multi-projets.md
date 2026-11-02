@@ -20,8 +20,11 @@ Dans **Paramètres du projet** :
    authentification IA, l’accès au dépôt et à la branche, et le workflow des PR.
    Une authentification configurée ne garantit pas encore l’accès au modèle :
    cet accès est vérifié lors de l’exécution. La réception du webhook est
-   confirmée à la première livraison. Un diagnostic devient périmé après cinq
-   minutes ou un changement de configuration.
+   confirmée à la première livraison. Le worker refait ces contrôles dès que la
+   configuration change, sinon toutes les 15 minutes (2 minutes tant qu’elle est
+   à compléter), et renvoie son dernier résultat chaque minute. Un diagnostic
+   devient périmé après cinq minutes sans nouvelles du worker ou un changement de
+   configuration.
 
 Ensuite, créer une carte avec une description et la mettre **Prête à démarrer**.
 Les questions et réponses passent par les commentaires. Le worker effectue les

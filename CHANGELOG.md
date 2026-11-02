@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.84 — 2026-11-02
+<!-- planifikateur:quota-github-worker -->
+
+- **Quota GitHub du worker préservé** : Le worker interroge beaucoup moins GitHub : une PR en attente de fusion est relue au plus une fois par minute, aussitôt si le site signale un changement (résultat des tests, validation), et ses contrôles ne sont plus consultés tant qu’une validation manque. La configuration des projets est recontrôlée toutes les 15 minutes au lieu de chaque minute. Une PR en attente ne peut plus épuiser le quota de 5 000 requêtes par heure et bloquer les autres projets.
+
 ## 0.1.83 — 2026-11-01
 <!-- planifikateur:sauvegardes-cinq-max -->
 
