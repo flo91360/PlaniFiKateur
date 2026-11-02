@@ -1,0 +1,60 @@
+name: Dépendances
+# Alertes de sécurité des dépendances et construction de l’image du worker. Hors des contrôles
+# requis pour la fusion (ci.yml) : une alerte publiée après coup ne bloque pas les cartes, mais
+# l’échec est visible dans Actions et signalé par e-mail au propriétaire du dépôt.
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - package-lock.json
+      - worker/**
+      - .dockerignore
+      - .github/workflows/dependencies.yml
+  push:
+    branches: [main]
+    paths:
+      - package-lock.json
+      - worker/**
+      - .dockerignore
+      - .github/workflows/dependencies.yml
+permissions:
+  contents: read
+concurrency:
+  group: dependencies-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  audit:
+    name: Audit des dépendances
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      # Vulnérabilités élevées ou critiques connues dans les lockfiles du site et du worker.
+      - name: Site
+        run: npm audit --audit-level=high
+      - name: Worker
+        run: npm audit --prefix worker --audit-level=high
+  image:
+    name: Image du worker
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      # Même commande que la mise à jour automatique du VPS (worker/deploy/update.py) : un Dockerfile
+      # cassé est vu ici plutôt qu’au déploiement.
+      - name: Construire l’image
+        run: docker build -f worker/Dockerfile -t planifikateur-worker:ci .
+      - name: Vérifier le code du worker dans l’image
+        run: docker run --rm --entrypoint node planifikateur-worker:ci --check /opt/worker/index.mjs
