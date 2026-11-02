@@ -6462,6 +6462,251 @@
         }
       }
     },
+    "/api/v1/push": {
+      "get": {
+        "summary": "Clé publique des notifications Web Push",
+        "description": "Clé publique VAPID du serveur (point P-256 non compressé, base64url), à passer à pushManager.subscribe. Créée au premier appel ; la clé privée ne quitte pas le serveur.",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Clé publique.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "publicKey"
+                      ],
+                      "properties": {
+                        "publicKey": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session requise.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origine de la requête non autorisée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/push/subscription": {
+      "put": {
+        "summary": "Abonner cet appareil aux notifications",
+        "description": "Enregistre l’abonnement Web Push du navigateur pour le compte connecté (dix appareils au plus, les plus anciens sont oubliés). Les étapes de l’agent qui attendent une personne y sont envoyées : question, résultat à valider, PR à approuver, tests en échec, carte à tester, exécution interrompue.",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "endpoint",
+                  "keys"
+                ],
+                "properties": {
+                  "endpoint": {
+                    "type": "string",
+                    "format": "uri",
+                    "maxLength": 1000,
+                    "description": "Adresse fournie par le navigateur (PushSubscription.endpoint). Seuls les services de notification des navigateurs sont acceptés : fcm.googleapis.com, updates.push.services.mozilla.com, web.push.apple.com, *.notify.windows.com."
+                  },
+                  "keys": {
+                    "type": "object",
+                    "required": [
+                      "p256dh",
+                      "auth"
+                    ],
+                    "properties": {
+                      "p256dh": {
+                        "type": "string",
+                        "description": "Clé publique P-256 du navigateur, base64url (65 octets)."
+                      },
+                      "auth": {
+                        "type": "string",
+                        "description": "Secret d’authentification, base64url (16 octets)."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Abonnement enregistré.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "subscribed": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Abonnement invalide (invalid_subscription).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session requise.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origine de la requête non autorisée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Désabonner cet appareil",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "endpoint"
+                ],
+                "properties": {
+                  "endpoint": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Abonnement retiré.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "subscribed": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "endpoint manquant (invalid_subscription).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session requise.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origine de la requête non autorisée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{projectId}/lists/{listId}": {
       "patch": {
         "summary": "Renommer ou recolorer une liste",

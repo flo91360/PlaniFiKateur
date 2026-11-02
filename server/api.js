@@ -9,6 +9,8 @@ import { contentRoutes } from './routes/content.js';
 import { eventRoutes } from './routes/events.js';
 import { githubRoutes } from './routes/github.js';
 import { projectRoutes } from './routes/projects.js';
+import { pushRoutes } from './routes/push.js';
+import { createPushSender } from './push.js';
 import { workRoutes } from './routes/work.js';
 import { workspaceRoutes } from './routes/workspace.js';
 
@@ -30,6 +32,7 @@ export function apiRoutes(store, config = {}, auth = createAuth(store, config), 
   return [
     ...githubRoutes(app),
     ...accountRoutes(app),
+    ...pushRoutes(app),
     ...projectRoutes(app),
     ...workRoutes(app),
     ...cardRoutes(app),
@@ -47,6 +50,8 @@ export function createApi(store, config = {}) {
   const streams = new Set();
   const router = createRouter(apiRoutes(store, config, auth, streams));
   const fallback = consultationFallback(auth);
+  // Étapes de l’agent envoyées aux appareils abonnés (Web Push).
+  const push = config.push === false ? null : createPushSender(store, { fetch: config.pushFetch, log: logError });
   const api = async (req, res, next) => {
     if (!req.url.startsWith('/api/') && req.url !== '/api') {
       next?.();
@@ -80,7 +85,9 @@ export function createApi(store, config = {}) {
     }
     return true;
   };
+  api.push = push;
   api.close = () => {
+    push?.close();
     for (const stream of [...streams]) stream.close();
   };
   return api;

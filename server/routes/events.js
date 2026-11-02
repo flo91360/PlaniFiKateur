@@ -47,6 +47,8 @@ export function eventRoutes({ store, config, auth, guards, streams }) {
           send('ready', { revision: store.getRevision() });
           // Les événements d’un projet ne parviennent qu’aux comptes qui le voient.
           const unsubscribe = store.subscribe(({ type, userIds, ...data }) => {
+            // Envoi Web Push : traité par le serveur, jamais relayé au navigateur.
+            if (type === 'push') return;
             if (data.projectId && !store.projectRole(ctx.user, data.projectId)) return;
             // Changement limité à certains projets : seuls ceux que le compte voit lui sont cités.
             if (data.projectIds) {

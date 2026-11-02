@@ -181,6 +181,7 @@ export function createCore(db, { audit, findCard, readProjects, writeProjects, r
       cardTitle: context?.card.title,
       executionId: run.id,
       state: run.state,
+      ...(action === 'submit' && run.state === 'merging' ? { approvalRequired: approvalNeeded(run) } : {}),
       recipientIds: context ? recipients(context.card, actor, [run.requestedBy.id]) : [],
     });
     return run;
