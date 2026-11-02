@@ -21,6 +21,7 @@ import { useAttention } from './lib/use-attention.js';
 import { useWorkerActivity } from './lib/use-worker-activity.js';
 import { useServerEvents } from './lib/use-server-events.js';
 import { useNotifications } from './lib/use-notifications.js';
+import { syncSubscription } from './lib/push.js';
 import { useApiResource } from './lib/use-api.js';
 import ConnectionScreen from './components/AccountScreen.jsx';
 import AccountsPanel from './components/AccountsPanel.jsx';
@@ -166,6 +167,10 @@ function App() {
   const projectMembers = (membersResource.data?.members || []).filter(member => member.role);
   useServerEvents(!offlineMode && ready && !needsLogin);
   const notifications = useNotifications(!offlineMode && ready && !needsLogin);
+  // Abonnement Web Push de cet appareil renvoyé au serveur à chaque ouverture (voir lib/push.js).
+  useEffect(() => {
+    if (!offlineMode && ready && !needsLogin) syncSubscription().catch(() => {});
+  }, [ready, needsLogin]);
   useEffect(() => applyAccent(workspace.accent), [workspace.accent]);
 
   // L’adresse suit le projet et la carte affichés ; ouvrir une carte ajoute une entrée d’historique,

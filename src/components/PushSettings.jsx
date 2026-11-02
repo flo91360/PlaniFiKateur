@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { currentSubscription, disablePush, enablePush, pushSupport } from '../lib/push.js';
+import { currentSubscription, disablePush, enablePush, pushSupport, syncSubscription, testPush } from '../lib/push.js';
 import { useApiAction } from '../lib/use-api.js';
 import FormStatus from './FormStatus.jsx';
 
@@ -18,8 +18,10 @@ export default function PushSettings() {
   const { busy, error, message, run } = useApiAction();
   useEffect(() => {
     let active = true;
-    currentSubscription()
+    syncSubscription()
       .then(subscription => active && setSubscribed(!!subscription))
+      // Serveur injoignable : l’état local de l’abonnement reste affiché.
+      .catch(() => currentSubscription().then(subscription => active && setSubscribed(!!subscription)))
       .catch(() => active && setSubscribed(false));
     return () => {
       active = false;
@@ -30,24 +32,35 @@ export default function PushSettings() {
       <h3>Notifications sur cet appareil</h3>
       <p>
         Recevez sur cet appareil, même site fermé, les étapes de l’agent qui vous attendent sur vos cartes : question,
-        résultat ou PR à valider, tests en échec, carte à tester, exécution interrompue.
+        résultat ou PR à valider, tests en échec, carte à tester, exécution interrompue. Les commentaires et changements
+        de statut restent dans la cloche du site.
       </p>
       {support !== 'ready' ? (
         <p role="note">{MESSAGES[support]}</p>
       ) : subscribed ? (
-        <button
-          type="button"
-          className="secondary-button"
-          disabled={busy}
-          onClick={() =>
-            void run(async () => {
-              await disablePush();
-              setSubscribed(false);
-            }, 'Notifications désactivées sur cet appareil.')
-          }
-        >
-          Désactiver les notifications
-        </button>
+        <div className="form-actions">
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={busy}
+            onClick={() => void run(testPush, text => text)}
+          >
+            Envoyer une notification de test
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={busy}
+            onClick={() =>
+              void run(async () => {
+                await disablePush();
+                setSubscribed(false);
+              }, 'Notifications désactivées sur cet appareil.')
+            }
+          >
+            Désactiver les notifications
+          </button>
+        </div>
       ) : (
         <button
           type="button"

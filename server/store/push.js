@@ -73,6 +73,12 @@ export function createPushStore({ db }) {
       return db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ? AND user_id = ?').run(endpoint, user.id)
         .changes;
     },
+    // Abonnement de cet appareil pour le compte (notification de test), ou null.
+    pushSubscription(user, endpoint) {
+      return (
+        db.prepare('SELECT * FROM push_subscriptions WHERE endpoint = ? AND user_id = ?').get(endpoint, user.id) || null
+      );
+    },
     hasPushSubscription(user, endpoint) {
       return !!db.prepare('SELECT 1 FROM push_subscriptions WHERE endpoint = ? AND user_id = ?').get(endpoint, user.id);
     },

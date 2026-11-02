@@ -81,38 +81,84 @@ export function encryptPush(payload, { p256dh, auth }, { salt = randomBytes(16),
   return Buffer.concat([header, sender, body, cipher.getAuthTag()]);
 }
 
-// Envoi des étapes de l’agent aux appareils des destinataires. Un abonnement refusé par son
-// service (404, 410) est oublié ; une autre erreur est journalisée sans l’adresse de l’abonnement.
+// Raison donnée par le service de notification quand il refuse un envoi (Apple : { "reason": "BadJwtToken" },
+// Google et Mozilla : texte ou JSON), limitée à un mot-clé lisible sans données de l’abonnement.
+async function refusalReason(response) {
+  try {
+    const text = String((await response.text?.()) || '').slice(0, 2000);
+    let reason = text;
+    try {
+      const json = JSON.parse(text);
+      reason = json.reason || json.error?.status || json.error?.message || json.message || json.errno || '';
+    } catch {
+      /* Réponse en texte brut. */
+    }
+    return (
+      String(reason)
+        .replace(/https?:\/\/\S+/g, '')
+        .replace(/[^\p{L}\p{N} ._:-]/gu, '')
+        .trim()
+        .slice(0, 120) || ''
+    );
+  } catch {
+    return '';
+  }
+}
+
+// Envoi d’un message à un abonnement. Renvoie { ok, status, reason, service } sans jamais lever
+// d’erreur ; un abonnement refusé par son service (404, 410) est oublié.
+export async function deliverPush(store, subscription, message, { fetch = globalThis.fetch, ttl = 86400 } = {}) {
+  const service = new URL(subscription.endpoint).origin;
+  try {
+    const response = await fetch(subscription.endpoint, {
+      method: 'POST',
+      redirect: 'error',
+      signal: AbortSignal.timeout(10000),
+      headers: {
+        Authorization: vapidAuthorization(store.pushKey(), service, vapidSubject(subscription.origin)),
+        'Content-Encoding': 'aes128gcm',
+        'Content-Type': 'application/octet-stream',
+        TTL: String(ttl),
+        Urgency: 'high',
+      },
+      body: encryptPush(JSON.stringify(message), subscription),
+    });
+    if (response.ok) return { ok: true, status: response.status, reason: '', service };
+    if ([404, 410].includes(response.status)) store.forgetPushSubscription(subscription.endpoint);
+    return { ok: false, status: response.status, reason: await refusalReason(response), service };
+  } catch (error) {
+    return { ok: false, status: 0, reason: error.name, service };
+  }
+}
+
+// Sujet VAPID : Apple refuse un jeton dont le sujet n’est ni une adresse https publique ni un
+// mailto (403 BadJwtToken). L’adresse du site est gardée quand elle convient.
+export function vapidSubject(origin) {
+  try {
+    const url = new URL(origin);
+    if (url.protocol === 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) return url.origin;
+  } catch {
+    /* Adresse absente ou invalide. */
+  }
+  return 'mailto:notifications@planifikateur.invalid';
+}
+
+// Envoi des étapes de l’agent aux appareils des destinataires. Une erreur est journalisée avec
+// la raison du service, sans l’adresse de l’abonnement.
 export function createPushSender(store, { fetch = globalThis.fetch, log = console.error } = {}) {
   const send = async event => {
     const message = pushMessage(event);
     if (!message) return;
     const subscriptions = store.pushSubscriptions(event.userIds || []);
-    if (!subscriptions.length) return;
-    const jwk = store.pushKey();
-    const payload = JSON.stringify(message);
     await Promise.all(
       subscriptions.map(async subscription => {
-        const audience = new URL(subscription.endpoint).origin;
-        try {
-          const response = await fetch(subscription.endpoint, {
-            method: 'POST',
-            redirect: 'error',
-            signal: AbortSignal.timeout(10000),
-            headers: {
-              Authorization: vapidAuthorization(jwk, audience, subscription.origin),
-              'Content-Encoding': 'aes128gcm',
-              'Content-Type': 'application/octet-stream',
-              TTL: '86400',
-              Urgency: 'high',
-            },
-            body: encryptPush(payload, subscription),
-          });
-          if ([404, 410].includes(response.status)) store.forgetPushSubscription(subscription.endpoint);
-          else if (!response.ok) log(`PlaniFiKateur : notification refusée par ${audience} (HTTP ${response.status}).`);
-        } catch (error) {
-          log(`PlaniFiKateur : notification non envoyée à ${audience} (${error.name}).`);
-        }
+        const result = await deliverPush(store, subscription, message, { fetch });
+        if (result.ok || [404, 410].includes(result.status)) return;
+        log(
+          result.status
+            ? `PlaniFiKateur : notification refusée par ${result.service} (HTTP ${result.status}${result.reason ? `, ${result.reason}` : ''}).`
+            : `PlaniFiKateur : notification non envoyée à ${result.service} (${result.reason}).`,
+        );
       }),
     );
   };

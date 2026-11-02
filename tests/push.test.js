@@ -3,7 +3,14 @@ import assert from 'node:assert/strict';
 import { createDecipheriv, createECDH, createPublicKey, hkdfSync, randomBytes, verify } from 'node:crypto';
 import { createStore } from '../server/store.js';
 import { createAppServer } from '../server/index.js';
-import { createPushSender, encryptPush, pushMessage, vapidAuthorization, vapidPublicKey } from '../server/push.js';
+import {
+  createPushSender,
+  encryptPush,
+  pushMessage,
+  vapidAuthorization,
+  vapidPublicKey,
+  vapidSubject,
+} from '../server/push.js';
 import { loginRequest, seedAccount } from './helpers/accounts.mjs';
 
 // Navigateur abonné : clés de réception, et déchiffrement d’un message selon la RFC 8291.
@@ -154,7 +161,8 @@ test('a subscribed account receives the agent question on its devices; expired s
     Buffer.from(sent[0].headers.Authorization.split(' ')[1].slice(2).split('.')[1], 'base64url'),
   );
   assert.equal(claims.aud, 'https://fcm.googleapis.com');
-  assert.equal(claims.sub, base);
+  // Site local en http : Apple refuserait ce sujet, un mailto le remplace.
+  assert.equal(claims.sub, 'mailto:notifications@planifikateur.invalid');
   assert.deepEqual(device.decrypt(sent[0].body), {
     title: 'Question de l’agent',
     body: `${card.title} · ${project.name}\nL’agent attend votre réponse dans la discussion de la carte.`,
@@ -185,4 +193,105 @@ test('a subscribed account receives the agent question on its devices; expired s
   assert.ok(!store.hasPushSubscription(user, endpoint));
   assert.deepEqual(logs, []);
   assert.equal((await api('DELETE', '/push/subscription', { endpoint })).status, 200);
+});
+
+test('the VAPID subject is always accepted by Apple: public https origin, otherwise mailto', () => {
+  assert.equal(vapidSubject('https://planifikateur.example'), 'https://planifikateur.example');
+  for (const origin of [
+    'http://planifikateur.example',
+    'https://localhost:3000',
+    'http://127.0.0.1:3000',
+    '',
+    undefined,
+  ])
+    assert.equal(vapidSubject(origin), 'mailto:notifications@planifikateur.invalid', String(origin));
+});
+
+test('a test notification reports delivery to this device or the reason of the push service refusal', async t => {
+  const store = createStore(':memory:');
+  const user = seedAccount(store);
+  const sent = [];
+  let reply = { status: 201, ok: true };
+  const pushFetch = async (url, options) => {
+    sent.push({ url, ...options });
+    return reply;
+  };
+  const logs = [];
+  const sender = createPushSender(store, { fetch: pushFetch, log: line => logs.push(line) });
+  const server = createAppServer({ store, config: { push: false, pushFetch } });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => {
+    sender.close();
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+    store.close();
+  });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const cookie = (await loginRequest(base)).headers.get('set-cookie').split(';')[0];
+  const api = async (method, path, data) => {
+    const response = await fetch(base + '/api/v1' + path, {
+      method,
+      headers: { Cookie: cookie, Origin: base, 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return { status: response.status, body: await response.json() };
+  };
+  const device = browser();
+  const endpoint = 'https://web.push.apple.com/QGuQyavXutnMH1';
+  // Appareil inconnu du serveur : il doit réactiver les notifications.
+  assert.equal((await api('POST', '/push/test', { endpoint })).body.error.code, 'subscription_not_found');
+  assert.equal((await api('POST', '/push/test', {})).status, 400);
+  assert.equal((await api('PUT', '/push/subscription', { endpoint, keys: device.keys })).status, 200);
+  let result = await api('POST', '/push/test', { endpoint });
+  assert.deepEqual(result.body.data, {
+    delivered: true,
+    status: 201,
+    reason: '',
+    service: 'https://web.push.apple.com',
+    subscribed: true,
+  });
+  assert.equal(sent.at(-1).url, endpoint);
+  assert.equal(sent.at(-1).headers.TTL, '600');
+  assert.equal(device.decrypt(sent.at(-1).body).title, 'Notification de test');
+  // Refus d’Apple : sa raison est rapportée, sans l’adresse de l’abonnement.
+  reply = { status: 403, ok: false, text: async () => JSON.stringify({ reason: 'BadJwtToken' }) };
+  result = await api('POST', '/push/test', { endpoint });
+  assert.deepEqual(result.body.data, {
+    delivered: false,
+    status: 403,
+    reason: 'BadJwtToken',
+    service: 'https://web.push.apple.com',
+    subscribed: true,
+  });
+  // La même raison apparaît dans le journal lors d’un envoi de l’agent.
+  const project = store.read().projects[0],
+    card = project.cards[0];
+  const { agent } = store.workflows.configureAgent({ name: 'Agent', projectIds: [project.id] }, user);
+  store.workflows.configureGithub(project.id, 'flo91360/PlaniFiKateur', user);
+  const prepared = store.workflows.prepare(project.id, card.id, {}, user);
+  const run = store.workflows.agentAction(
+    project.id,
+    card.id,
+    prepared.id,
+    'claim',
+    { version: prepared.version },
+    agent,
+  );
+  store.workflows.agentAction(
+    project.id,
+    card.id,
+    run.id,
+    'question',
+    { version: run.version, leaseToken: run.leaseToken, message: 'Quel menu ?' },
+    agent,
+  );
+  await sender.settled();
+  assert.deepEqual(logs, [
+    'PlaniFiKateur : notification refusée par https://web.push.apple.com (HTTP 403, BadJwtToken).',
+  ]);
+  // Abonnement expiré : oublié, l’appareil apparaît désabonné.
+  reply = { status: 410, ok: false, text: async () => '' };
+  result = await api('POST', '/push/test', { endpoint });
+  assert.equal(result.body.data.subscribed, false);
+  assert.ok(!store.hasPushSubscription(user, endpoint));
 });
