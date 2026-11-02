@@ -4,6 +4,7 @@ import { confineTool } from './confine.mjs';
 import { commandEnvironment } from './commands.mjs';
 import { discussionPrompt, resultSchema, taskPrompt, prepareAttachments } from './codex.mjs';
 import { parseModelResult } from './model-result.mjs';
+import { BudgetExceededError } from './budget.mjs';
 
 // Consommation d’un appel au modèle (message de l’assistant ou résultat final) au format du site.
 const tokens = usage => ({
@@ -15,7 +16,19 @@ const tokens = usage => ({
 
 export function createClaudeRunner(config, dependencies = {}) {
   return {
-    async run({ run, job, cwd, signal, onThread, onRuntime, onUsage, feedback, environment }) {
+    async run({
+      run,
+      job,
+      cwd,
+      signal,
+      onThread,
+      onRuntime,
+      onUsage,
+      onSessionCost,
+      feedback,
+      environment,
+      maxBudgetUsd,
+    }) {
       if (!config.claudeApiKey && !config.claudeOauthToken)
         return {
           status: 'question',
@@ -60,6 +73,8 @@ export function createClaudeRunner(config, dependencies = {}) {
         ...(ai.model ? { model: ai.model } : {}),
         ...(ai.effort ? { effort: ai.effort } : {}),
         ...(job.threadId ? { resume: job.threadId } : {}),
+        // Reste du plafond de dépense de l’exécution : le SDK arrête l’appel au-delà (error_max_budget_usd).
+        ...(maxBudgetUsd > 0 ? { maxBudgetUsd } : {}),
         outputFormat: { type: 'json_schema', schema: resultSchema },
         sandbox: {
           enabled: true,
@@ -106,6 +121,9 @@ export function createClaudeRunner(config, dependencies = {}) {
       const messages = new Map(),
         started = Date.now();
       let reported = false;
+      // Une conversation reprise repart du coût total enregistré dans sa transcription : seul l’écart
+      // avec le dernier total connu de cette conversation revient à cet appel.
+      const known = job.threadId && job.sessionCost?.thread === job.threadId ? job.sessionCost.usd : 0;
       try {
         const prompt = discussion ? discussionPrompt(run) : taskPrompt(run, feedback, attachments);
         for await (const event of query({ prompt, options })) {
@@ -117,9 +135,17 @@ export function createClaudeRunner(config, dependencies = {}) {
           }
           if (event.type === 'result' && event.usage) {
             reported = true;
-            onUsage?.({ ...tokens(event.usage), costUsd: event.total_cost_usd, durationMs: event.duration_ms });
+            const total = Number.isFinite(event.total_cost_usd) ? event.total_cost_usd : undefined;
+            // Un résultat d’échec au démarrage peut porter des totaux à zéro : il ne remplace pas le dernier connu.
+            if (total > 0 && event.session_id) await onSessionCost?.({ thread: event.session_id, usd: total });
+            onUsage?.({
+              ...tokens(event.usage),
+              costUsd: total === undefined ? undefined : total >= known ? total - known : total,
+              durationMs: event.duration_ms,
+            });
           }
           if (event.type === 'result') {
+            if (event.subtype === 'error_max_budget_usd') throw new BudgetExceededError();
             if (event.subtype !== 'success' || event.is_error)
               throw new Error(
                 'L’exécution Claude Code a échoué. Vérifiez son modèle, son effort, son authentification et son sandbox.',

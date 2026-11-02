@@ -22,6 +22,7 @@ import {
 } from '../worker/clients.mjs';
 import { mergeAgentPullRequest, requiredJobs } from '../scripts/merge-agent-pr.mjs';
 import { installedProfile } from '../worker/execution-profile.mjs';
+import { BudgetExceededError } from '../worker/budget.mjs';
 
 const repository = 'worker/example',
   webhookSecret = 'worker-test-webhook';
@@ -1949,4 +1950,77 @@ test('a Discussion question is answered in its card from a read-only copy, witho
       ['discussion', 'done'],
     ],
   );
+});
+
+test('worker asks on the card instead of calling the model again once the execution reaches its token cap', async t => {
+  const f = await fixture(t, {
+    model: async (input, count) => {
+      if (count === 1) {
+        input.onUsage({ inputTokens: 25000000, cachedInputTokens: 20000000, outputTokens: 1000 });
+        throw new Error('Codex interrompu');
+      }
+      await writeFile(join(input.cwd, 'greet.mjs'), "export const greet = () => 'bonjour';\n");
+      return { status: 'result', summary: 'Traduction prête.', question: '' };
+    },
+  });
+  const run = f.prepare();
+  assert.equal((await f.worker.tick()).status, 'interrupted');
+  const job = await f.state.get(run.id);
+  delete job.retryAfter;
+  await f.state.put(job);
+  assert.equal((await f.worker.tick()).status, 'waiting', f.logs.join('\n'));
+  assert.equal(f.modelCalls.length, 1, 'plafond atteint : pas de nouvel appel au modèle');
+  const waiting = f.current();
+  assert.match(
+    waiting.exchanges.at(-1).question,
+    /^Plafond de consommation IA atteint pour cette exécution : 25 millions de tokens depuis le début de l’exécution, pour un plafond de 20 millions/,
+  );
+  // La réponse sur la carte accorde une nouvelle tranche.
+  f.store.workflows.human(
+    f.project.id,
+    f.card.id,
+    waiting.id,
+    'answer',
+    { version: waiting.version, message: 'Continue.' },
+    f.user,
+  );
+  assert.equal((await f.worker.tick()).status, 'merging', f.logs.join('\n'));
+  assert.equal(f.modelCalls.length, 2);
+});
+
+test('a Claude Code call stopped at the spend cap becomes a question on the card with its cost', async t => {
+  const f = await fixture(t);
+  f.store.workflows.configureAi(f.project.id, { engine: 'claude-code', model: 'sonnet' }, f.user);
+  const budgets = [];
+  const claude = {
+    async run(input) {
+      budgets.push(input.maxBudgetUsd);
+      await input.onThread('claude-thread');
+      if (budgets.length === 1) {
+        input.onUsage({ inputTokens: 1000, outputTokens: 100, costUsd: 10.25 });
+        throw new BudgetExceededError();
+      }
+      await writeFile(join(input.cwd, 'greet.mjs'), "export const greet = () => 'bonjour';\n");
+      return { status: 'result', summary: 'Traduction prête.', question: '', files: [] };
+    },
+  };
+  const worker = createWorker(f.config, { ...f.dependencies, claude });
+  f.prepare();
+  assert.equal((await worker.tick()).status, 'waiting', f.logs.join('\n'));
+  const waiting = f.current();
+  assert.match(
+    waiting.exchanges.at(-1).question,
+    /^Plafond de dépense IA atteint pour cette exécution : 10,25 \$ estimés depuis le début de l’exécution, pour un plafond de 10,00 \$/,
+  );
+  assert.equal(waiting.usage.costUsd, 10.25);
+  f.store.workflows.human(
+    f.project.id,
+    f.card.id,
+    waiting.id,
+    'answer',
+    { version: waiting.version, message: 'Continue.' },
+    f.user,
+  );
+  assert.equal((await worker.tick()).status, 'merging', f.logs.join('\n'));
+  assert.deepEqual(budgets, [10, 10]);
 });

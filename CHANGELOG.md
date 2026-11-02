@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.85 — 2026-11-02
+<!-- planifikateur:plafond-depense-ia -->
+
+- **Plafond de dépense IA par exécution** : Une exécution ne peut plus consommer sans limite : au-delà de 10 $ estimés avec Claude Code, ou de 20 millions de tokens avec Codex, depuis le début de l’exécution ou la dernière réponse, l’agent s’arrête et demande l’accord sur la carte, qui passe À préciser. Répondre accorde une nouvelle tranche et reprend la même conversation. Les plafonds se règlent sur le worker (PLANIFIKATEUR_WORKER_MAX_COST_USD, PLANIFIKATEUR_WORKER_MAX_TOKENS). Le coût d’une conversation Claude Code reprise n’est plus compté deux fois.
+
 ## 0.1.84 — 2026-11-02
 <!-- planifikateur:quota-github-worker -->
 
