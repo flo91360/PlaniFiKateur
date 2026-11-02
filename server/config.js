@@ -7,6 +7,8 @@ export function readConfig(env = process.env) {
     database: resolve(env.PLANIFIKATEUR_DB_PATH || '.data/planifikateur.sqlite'),
     ownerToken: env.PLANIFIKATEUR_OWNER_TOKEN || '',
     readToken: env.PLANIFIKATEUR_READ_TOKEN || '',
+    // Copie quotidienne hors du site (worker/deploy/backup.py) : lecture des sauvegardes et confirmation.
+    backupToken: env.PLANIFIKATEUR_BACKUP_TOKEN || '',
     githubWebhookSecret: env.PLANIFIKATEUR_GITHUB_WEBHOOK_SECRET || '',
     claudeOauthToken: env.CLAUDE_CODE_OAUTH_TOKEN || '',
     refineModel: env.PLANIFIKATEUR_REFINE_MODEL || '',
@@ -24,6 +26,11 @@ export function readConfig(env = process.env) {
   }
   if (config.ownerToken && config.ownerToken === config.readToken)
     throw new Error('Les clés propriétaire et lecture doivent être différentes.');
+  if (
+    config.backupToken &&
+    (config.backupToken.length < 32 || [config.ownerToken, config.readToken].includes(config.backupToken))
+  )
+    throw new Error('PLANIFIKATEUR_BACKUP_TOKEN : clé d’au moins 32 caractères, différente des autres clés.');
   if (config.refineModel && !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,159}$/.test(config.refineModel))
     throw new Error('PLANIFIKATEUR_REFINE_MODEL : identifiant de modèle invalide.');
   if (!Number.isInteger(config.port) || config.port < 0 || config.port > 65535) throw new Error('PORT invalide.');

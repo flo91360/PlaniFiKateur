@@ -22,7 +22,8 @@ sudo bash worker/deploy/install.sh
 ```
 
 L’installateur ajoute les deux unités systemd et active le timer, y compris après
-un redémarrage du VPS. Python 3 est installé s’il manque. Le service s’exécute
+un redémarrage du VPS. Si `/home/admin/planifikateur-backup.env` existe, il active
+aussi la copie quotidienne des données du site (voir [backups](backups.md#copie-quotidienne-sur-le-vps-aws)). Python 3 est installé s’il manque. Le service s’exécute
 sous `admin`, avec le groupe Docker ; les clés restent dans le fichier privé et
 ne sont jamais copiées dans le dépôt ou les unités systemd.
 

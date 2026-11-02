@@ -36,7 +36,7 @@ Un tableau de projets inspiré de Trello, conçu pour préparer des demandes con
 - Mise à jour en direct par un flux d’événements (tableau, exécutions IA, suivis), avec une vérification toutes les 5 secondes en secours ; poursuivie quand une carte est ouverte, sans toucher au champ en cours de saisie.
 - Rétention configurable de l’historique et des exécutions terminées (365 jours par défaut).
 - Fusion des modifications concurrentes par le serveur et messages de sauvegarde fiables.
-- Sauvegardes SQLite automatiques, copies avant suppression, téléchargement administrateur et restauration avec copie de sécurité.
+- Sauvegardes SQLite automatiques, copies avant suppression, téléchargement administrateur, copie quotidienne hors du site sur le VPS (7 jours, 4 semaines, 6 mois) et restauration avec copie de sécurité.
 - Import/export JSON pour transférer des projets locaux sans remplacer les projets existants.
 
 Les données initiales sont des exemples. Une carte n’est confiée à l’agent IA
@@ -130,7 +130,7 @@ Conserver également des copies hors du volume Railway.
 npm run export:preview
 ```
 
-`dist/PlaniFiKateur-apercu-v0.1.87.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
+`dist/PlaniFiKateur-apercu-v0.1.88.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 

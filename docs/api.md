@@ -166,6 +166,8 @@ Les routes suivantes nécessitent une **session administrateur**, vérifient l�
 | `POST /api/v1/backups` | Créer une copie, réponse 201 avec `data.name` |
 | `GET /api/v1/backups/{filename}` | Télécharger une copie SQLite existante |
 
+Depuis la v0.1.88, la clé `PLANIFIKATEUR_BACKUP_TOKEN` (en-tête `Authorization: Bearer`) permet aussi au serveur de la copie quotidienne hors du site de lister et télécharger les copies (`GET` uniquement), puis de confirmer celle qu’il conserve avec `POST /api/v1/backups/offsite` `{ "name": "planifikateur-….sqlite" }` (réponse `{ "data": { name, createdAt, at } }`, 401 `backup_key_required` sans cette clé, 400 `invalid_backup` pour un nom qui n’est pas celui d’une copie régulière). `GET /api/v1/backups` indique la dernière confirmation dans `offsite` (`null` sinon). Voir [backups.md](backups.md#copie-quotidienne-sur-le-vps-aws).
+
 Les sauvegardes ne sont jamais servies comme fichiers publics. Une suppression de projet, liste ou carte est précédée d’une sauvegarde, sauf si la dernière copie de moins de 24 heures contient déjà ces éléments inchangés (voir [backups.md](backups.md)) ; si elle échoue, l’écriture renvoie 503 (`backup_failed`) et laisse les données intactes. La restauration est une commande d’administration décrite dans [backups.md](backups.md), sans route publique de restauration.
 
 Les cartes incluent `createdBy`, `createdAt`, `updatedBy`, `updatedAt` et les commentaires `authorId`. Les identités sont attribuées par le serveur et restent nulles pour les créateurs inconnus d’avant la migration. Les routes de comptes et d’historique sont décrites dans [accounts.md](accounts.md). Aucun mot de passe, e-mail de compte ou secret de session n’est retourné par les routes de cartes.

@@ -115,6 +115,64 @@ test('backup configuration uses the database volume by default and validates lim
   assert.throws(() => readConfig({ PLANIFIKATEUR_BACKUP_KEEP: '0' }), /Nombre/);
 });
 
+test('the off-site backup key only lists, downloads and confirms copies', async t => {
+  const { store, backups, dir } = fixture(t);
+  const backupToken = 'b'.repeat(64);
+  const server = createAppServer({
+    store,
+    config: { backups, ownerToken: 'owner-test', readToken: 'reader-test', backupToken },
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+  });
+  const base = `http://127.0.0.1:${server.address().port}/api/v1`;
+  const key = { Authorization: `Bearer ${backupToken}` };
+  const confirm = (name, headers = key) =>
+    fetch(`${base}/backups/offsite`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+  const listed = await (await fetch(`${base}/backups`, { headers: key })).json();
+  assert.equal(listed.offsite, null);
+  const [file] = listed.files;
+  const downloaded = await fetch(`${base}/backups/${file.name}`, { headers: key });
+  assert.equal(downloaded.status, 200);
+  assert.equal(Buffer.from(await downloaded.arrayBuffer()).length, file.size);
+  // Lecture seule : ni nouvelle copie, ni comptes, ni données du tableau avec cette clé.
+  assert.equal((await fetch(`${base}/backups`, { method: 'POST', headers: key })).status, 401);
+  assert.equal((await fetch(`${base}/workspace`, { headers: key })).status, 401);
+  assert.equal((await fetch(`${base}/users`, { headers: key })).status, 401);
+  for (const headers of [{}, { Authorization: 'Bearer reader-test' }, { Authorization: `Bearer ${'c'.repeat(64)}` }])
+    assert.equal((await confirm(file.name, headers)).status, 401);
+  for (const name of ['../active.sqlite', file.name.replace('.sqlite', '-suppression.sqlite'), 42])
+    assert.equal((await confirm(name)).status, 400);
+  const confirmed = await confirm(file.name);
+  assert.equal(confirmed.status, 200);
+  const { data } = await confirmed.json();
+  assert.equal(data.name, file.name);
+  assert.equal(data.createdAt, file.createdAt);
+  assert.ok(Math.abs(Date.now() - Date.parse(data.at)) < 5000);
+  // Le statut, aussi relu après un redémarrage, montre la dernière copie confirmée hors du site.
+  assert.deepEqual(backups.status().offsite, data);
+  assert.deepEqual(createBackups(store, { directory: join(dir, 'backups'), start: false }).status().offsite, data);
+  assert.ok(backups.list().every(item => item.name !== 'hors-site.json'));
+});
+
+test('the off-site backup key must be long and distinct from the other keys', () => {
+  const env = { PLANIFIKATEUR_OWNER_TOKEN: 'owner-test', PLANIFIKATEUR_READ_TOKEN: 'reader-test' };
+  assert.equal(readConfig({ ...env, PLANIFIKATEUR_BACKUP_TOKEN: 'b'.repeat(32) }).backupToken, 'b'.repeat(32));
+  assert.equal(readConfig(env).backupToken, '');
+  assert.throws(() => readConfig({ ...env, PLANIFIKATEUR_BACKUP_TOKEN: 'court' }), /PLANIFIKATEUR_BACKUP_TOKEN/);
+  const same = 'o'.repeat(40);
+  assert.throws(
+    () => readConfig({ ...env, PLANIFIKATEUR_OWNER_TOKEN: same, PLANIFIKATEUR_BACKUP_TOKEN: same }),
+    /différente/,
+  );
+});
+
 test('backup API is owner-only, downloads SQLite, and captures content before deletion', async t => {
   const { store, backups } = fixture(t);
   const server = createAppServer({ store, config: { backups, ownerToken: 'owner-test', readToken: 'reader-test' } });
