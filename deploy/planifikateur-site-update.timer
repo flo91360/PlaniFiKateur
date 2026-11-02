@@ -1,0 +1,11 @@
+[Unit]
+Description=Check PlaniFiKateur site updates every two minutes
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=2min
+RandomizedDelaySec=15s
+Unit=planifikateur-site-update.service
+
+[Install]
+WantedBy=timers.target

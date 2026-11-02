@@ -2,6 +2,7 @@
 """Update the EC2 worker from tested main commits; never execute task code here."""
 import argparse
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -15,6 +16,9 @@ import urllib.request
 
 REQUIRED_JOBS = ("Tests serveur", "Tests navigateur")
 REVISION_LABEL = "io.planifikateur.worker.revision"
+# Fingerprint of the private env file the container was created with: an edited file (new site
+# address, new key) recreates the worker. Only a truncated hash, never the values themselves.
+ENV_LABEL = "io.planifikateur.worker.env"
 # Revision passed to the worker, which shows it in project diagnostics and announces it to the site.
 REVISION_ENV = "PLANIFIKATEUR_WORKER_REVISION"
 READY = "Worker IA démarré : une tâche à la fois."
@@ -218,10 +222,22 @@ class Updater:
                 "--security-opt", "apparmor=" + self.options.apparmor_profile,
                 "--security-opt", "systempaths=unconfined"]
 
+    def env_fingerprint(self):
+        try:
+            return hashlib.sha256(self.env_file.read_bytes()).hexdigest()[:16]
+        except OSError:
+            return None
+
+    def env_changed(self):
+        fingerprint = self.env_fingerprint()
+        return bool(fingerprint) and (self.inspect(self.name, ".Config.Labels") or {}).get(ENV_LABEL) != fingerprint
+
     def outdated(self, revision):
-        """Container created by an older updater: /proc masked, or revision not passed to the worker."""
+        """Container created by an older updater (/proc masked, revision not passed to the worker)
+        or from an env file edited since."""
         env = self.inspect(self.name, ".Config.Env") or []  # Holds secrets: only tested, never logged.
-        return bool(self.inspect(self.name, ".HostConfig.MaskedPaths")) or REVISION_ENV + "=" + revision not in env
+        return (bool(self.inspect(self.name, ".HostConfig.MaskedPaths")) or REVISION_ENV + "=" + revision not in env
+                or self.env_changed())
 
     def refresh(self, revision):
         """Recreate the worker from its own image with the current options, once no task runs."""
@@ -307,6 +323,12 @@ class Updater:
     def update(self):
         self.recover()
         if not self.running(self.name):
+            deployed = (self.inspect(self.name, ".Config.Labels") or {}).get(REVISION_LABEL)
+            # Editing the env file of a stopped worker (move of the site) asks for it to start again.
+            if deployed and re.fullmatch(r"[0-9a-f]{40}", deployed) and self.env_changed():
+                self.revision = deployed
+                self.log("Fichier de configuration modifié : le worker arrêté est recréé avec ses nouvelles variables.")
+                return self.refresh(deployed)
             return self.finish("waiting", "Worker arrêté : mise à jour différée.")
         mounts = self.inspect(self.name, ".Mounts") or []
         if not any(mount.get("Name") == self.options.volume and mount.get("Destination") == "/data" for mount in mounts):
@@ -370,7 +392,9 @@ class Updater:
             raise UpdateError("Conteneur de remplacement déjà présent : intervention nécessaire.")
         self.remove(self.backup)
         self.cmd("docker", "create", "--name", self.next, "--restart", "unless-stopped",
-                 "--label", REVISION_LABEL + "=" + sha, *self.security(), "--env-file", str(self.env_file),
+                 "--label", REVISION_LABEL + "=" + sha,
+                 *(["--label", ENV_LABEL + "=" + fingerprint] if (fingerprint := self.env_fingerprint()) else []),
+                 *self.security(), "--env-file", str(self.env_file),
                  "--env", REVISION_ENV + "=" + sha,
                  "--mount", "source=" + self.options.volume + ",target=/data", image)
         self.state["pending"] = sha

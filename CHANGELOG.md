@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.93 — 2026-11-02
+<!-- planifikateur:site-sur-le-vps -->
+
+- **Site hébergé sur le VPS** : Le site peut tourner sur le VPS du worker, sans Railway : image Docker construite depuis le commit testé, HTTPS automatique par Caddy, mise à jour toutes les deux minutes avec retour à la version précédente si le nouveau site ne sert pas le bon commit, reprise des données depuis la dernière copie quotidienne. Le worker est recréé quand son fichier de variables change. Guide de bascule dans docs/vps.md.
+
 ## 0.1.92 — 2026-11-02
 <!-- planifikateur:notifications-web-push -->
 

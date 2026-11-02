@@ -70,6 +70,12 @@ qui permettra de reconnaître les futures mises à jour.
    réactivé. Une interruption du programme au milieu du remplacement est
    également récupérée à la prochaine vérification.
 
+Depuis la v0.1.93, le conteneur porte une empreinte (hachage tronqué) du fichier de variables
+avec lequel il a été créé. Après une modification de ce fichier, le worker est recréé avec la
+même image dès qu’aucune tâche ne tourne, **même s’il était arrêté** : c’est ainsi qu’il suit le
+site lors de son déménagement sur le VPS ([VPS](vps.md)). Le site lui-même a son propre service
+de mise à jour, `planifikateur-site-update`, qui partage le verrou de celui-ci.
+
 Le volume contenant les tâches et la connexion Codex n’est jamais supprimé. Un
 retour arrière de conteneur ne restaure pas une ancienne copie des données du
 volume : les nouvelles versions doivent rester compatibles avec l’état persistant.
