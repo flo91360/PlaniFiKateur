@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.95 — 2026-11-02
+<!-- planifikateur:2d085541-fe3f-4314-b198-1662881813cc -->
+
+- **Notifications Iphone** : Je ne peux pas dire avec certitude pourquoi rien n'arrive sur ton iPhone : le serveur ne garde aucune trace de la réponse d'Apple, donc la cause n'est pas visible d'ici. J'ai repéré quatre causes possibles et ajouté de quoi la voir. Les tests serveur passent ; le test navigateur n'a pas pu tourner ici (Chromium ne démarre pas dans cet environnement) et sera lancé par le worker. **Causes possibles :** 1. **Le site n'est pas ouvert depuis l'icône de l'écran d'accueil.** Sur iPhone, les notifications ne marchent que dans ce cas, avec iOS 16.4 ou plus récent. Les activer dans les Réglages de l'iPhone ne suffit pas : il faut toucher « Activer les notifications » dans Mon compte, depuis l'icône. 2. **Seules certaines étapes de l'agent sont envoyées** sur le téléphone : question, résultat ou PR à valider, tests en échec, carte à tester, exécution interrompue. Rien n'est envoyé pour une action que tu as faite toi-même. Les commentaires et changements de statut restent seulement dans la cloche du site. 3. **Le serveur a pu oublier ton iPhone alors que l'appli affichait encore « abonné ».** Ça arrive si Apple a refusé un envoi une fois, si la base a été restaurée, ou avec le passage récent au VPS. Avant cette correction, rien ne réenregistrait l'appareil. 4. **Apple peut avoir refusé les envois sans que tu le voies.** Le journal du serveur indiquait seulement le code d'erreur, sans la raison donnée par Apple. **Ce que j'ai changé :** - **Bouton « Envoyer une notification de test »** dans Mon compte → Notifications sur cet appareil. Il envoie une vraie notification et affiche soit « envoyée », soit la raison du refus d'Apple en clair (par exemple : « Le service de notification d'Apple a refusé l'identification du serveur (HTTP 403, BadJwtToken) : désactivez puis réactivez les notifications »). - **Réenregistrement automatique** : à chaque ouverture du site, l'iPhone renvoie son abonnement au serveur. S'il avait été fait avec une ancienne clé du serveur, il est retiré et le bou
+
 ## 0.1.94 — 2026-11-02
 <!-- planifikateur:retrait-approbation-dependances -->
 

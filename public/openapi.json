@@ -6707,6 +6707,123 @@
         }
       }
     },
+    "/api/v1/push/test": {
+      "post": {
+        "summary": "Envoyer une notification de test à cet appareil",
+        "description": "Envoie une notification de test à l’abonnement de cet appareil (endpoint enregistré par le compte connecté) et rapporte la réponse du service de notification : délivrée, ou refusée avec son statut HTTP et sa raison (Apple : BadJwtToken, ExpiredSubscription…). Un abonnement refusé en 404 ou 410 est oublié (subscribed: false).",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "endpoint"
+                ],
+                "properties": {
+                  "endpoint": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Résultat de l’envoi.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "delivered",
+                        "status",
+                        "reason",
+                        "service",
+                        "subscribed"
+                      ],
+                      "properties": {
+                        "delivered": {
+                          "type": "boolean"
+                        },
+                        "status": {
+                          "type": "integer",
+                          "description": "Statut HTTP du service de notification, 0 s’il est injoignable."
+                        },
+                        "reason": {
+                          "type": "string",
+                          "description": "Raison du refus donnée par le service, vide si délivrée."
+                        },
+                        "service": {
+                          "type": "string",
+                          "description": "Origine du service de notification."
+                        },
+                        "subscribed": {
+                          "type": "boolean",
+                          "description": "L’abonnement est toujours connu du serveur."
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "endpoint manquant (invalid_subscription).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session requise.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origine de la requête non autorisée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Cet appareil n’est pas abonné sur le serveur (subscription_not_found).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{projectId}/lists/{listId}": {
       "patch": {
         "summary": "Renommer ou recolorer une liste",

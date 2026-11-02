@@ -450,6 +450,34 @@ test('a member turns on notifications on this device and the site keeps its subs
   expect(
     await page.evaluate(async () => (await navigator.serviceWorker.getRegistration('/'))?.active?.scriptURL),
   ).toMatch(/\/sw\.js$/);
+  // Notification de test : la raison d’un refus d’Apple est expliquée.
+  await page.route('**/api/v1/push/test', route =>
+    route.fulfill({
+      json: {
+        data: {
+          delivered: false,
+          status: 403,
+          reason: 'BadJwtToken',
+          service: 'https://web.push.apple.com',
+          subscribed: true,
+        },
+      },
+    }),
+  );
+  await page.getByRole('button', { name: 'Envoyer une notification de test', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText(
+    'Le service de notification d’Apple a refusé l’identification du serveur (HTTP 403, BadJwtToken)',
+  );
+  await page.unroute('**/api/v1/push/test');
+  await page.route('**/api/v1/push/test', route =>
+    route.fulfill({
+      json: {
+        data: { delivered: true, status: 201, reason: '', service: 'https://fcm.googleapis.com', subscribed: true },
+      },
+    }),
+  );
+  await page.getByRole('button', { name: 'Envoyer une notification de test', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Notification de test envoyée.');
   const removed = page.waitForRequest(
     request => request.url().endsWith('/api/v1/push/subscription') && request.method() === 'DELETE',
   );

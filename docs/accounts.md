@@ -114,6 +114,17 @@ Depuis la v0.1.92, **Mon compte → Notifications sur cet appareil** abonne le n
 
 Sur iPhone et iPad, le site doit d’abord être ajouté à l’écran d’accueil (Safari → Partager → Sur l’écran d’accueil), puis ouvert depuis cette icône. Le serveur chiffre chaque message pour l’appareil (RFC 8291) et s’identifie par une clé VAPID créée au premier besoin et gardée dans la base ; seuls les services de notification des navigateurs (Google, Mozilla, Apple, Microsoft) sont acceptés comme destinataires. Un abonnement retiré par le navigateur est oublié au premier refus du service ; un compte garde au plus dix appareils.
 
+#### Rien n’arrive sur l’iPhone ?
+
+Le bouton **Envoyer une notification de test** (une fois les notifications activées) vérifie toute la chaîne et affiche la réponse du service de notification d’Apple. Points à vérifier :
+
+1. **iOS 16.4 ou plus récent**, et le site **ouvert depuis l’icône de l’écran d’accueil** : dans Safari, Chrome ou un autre navigateur de l’iPhone, les notifications Web Push n’existent pas. Activer les notifications dans Réglages ne suffit pas : il faut toucher **Activer les notifications** dans **Mon compte**, depuis l’icône, et accepter la demande d’iOS.
+2. **Réglages → Notifications → PlaniFiKateur** : notifications autorisées, et aucun mode Concentration qui les masque.
+3. **Les étapes envoyées** : seules les étapes de l’agent qui vous attendent (question, résultat ou PR à valider, tests en échec, carte à tester, exécution interrompue) arrivent sur l’appareil, et jamais pour une action que vous avez faite vous-même. Les commentaires et changements de statut restent dans la cloche du site.
+4. **Message de refus** du test : « ne reconnaît plus cet appareil » ou « a refusé l’identification du serveur » se corrigent en désactivant puis réactivant les notifications.
+
+L’appareil renvoie son abonnement au serveur à chaque ouverture du site : un abonnement oublié par le serveur (refus passé, base restaurée, changement d’hébergement) est retrouvé, et un abonnement fait avec une ancienne clé serveur est retiré pour que l’appareil apparaisse désabonné. Le sujet de l’identification VAPID est toujours une adresse https publique ou un `mailto:`, seuls acceptés par Apple, et la raison d’un refus est écrite dans le journal du serveur.
+
 ## Sauvegardes
 
 Les changements de comptes sont aussi pris en compte par les sauvegardes automatiques, même sans modification des projets. Les fichiers SQLite contiennent désormais les comptes, empreintes de mots de passe, invitations, sessions et le journal. Ils sont réservés à l’administrateur et doivent être conservés dans un emplacement privé.

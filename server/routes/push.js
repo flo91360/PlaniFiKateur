@@ -1,5 +1,5 @@
 import { httpError } from '../http.js';
-import { vapidPublicKey } from '../push.js';
+import { deliverPush, vapidPublicKey } from '../push.js';
 
 // Notifications Web Push d’un compte : clé publique du serveur, abonnement de l’appareil.
 export function pushRoutes({ store, config, guards }) {
@@ -31,6 +31,45 @@ export function pushRoutes({ store, config, guards }) {
           if (typeof endpoint !== 'string') throw httpError(400, 'invalid_subscription', 'endpoint attendu.');
           store.removePushSubscription(ctx.user, endpoint);
           ctx.send(200, { data: { subscribed: false } });
+        },
+      },
+    },
+    {
+      // Notification de test vers cet appareil : vérifie toute la chaîne (abonnement connu du
+      // serveur, clé VAPID acceptée, service joignable) et rapporte la raison d’un refus.
+      path: '/api/v1/push/test',
+      guard: guards.account,
+      methods: {
+        async POST(ctx) {
+          const endpoint = (await ctx.body())?.endpoint;
+          if (typeof endpoint !== 'string') throw httpError(400, 'invalid_subscription', 'endpoint attendu.');
+          const subscription = store.pushSubscription(ctx.user, endpoint);
+          if (!subscription)
+            throw httpError(
+              404,
+              'subscription_not_found',
+              'Cet appareil n’est pas abonné sur le serveur : réactivez les notifications.',
+            );
+          const result = await deliverPush(
+            store,
+            subscription,
+            {
+              title: 'Notification de test',
+              body: 'PlaniFiKateur peut vous prévenir sur cet appareil.',
+              url: '/',
+              tag: 'planifikateur-test',
+            },
+            { fetch: config.pushFetch, ttl: 600 },
+          );
+          ctx.send(200, {
+            data: {
+              delivered: result.ok,
+              status: result.status,
+              reason: result.reason,
+              service: result.service,
+              subscribed: !!store.pushSubscription(ctx.user, endpoint),
+            },
+          });
         },
       },
     },
