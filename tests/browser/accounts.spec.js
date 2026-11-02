@@ -409,3 +409,51 @@ test('adds another member to card followers and preserves their ability to unsub
     await bobContext.close();
   }
 });
+
+test('a member turns on notifications on this device and the site keeps its subscription @mobile', async ({
+  page,
+  context,
+  appServer,
+}) => {
+  // Le navigateur de test n’a pas de service de notification : l’abonnement est simulé, le reste
+  // (permission, service worker, clé du serveur, enregistrement) est réel.
+  await context.grantPermissions(['notifications'], { origin: appServer });
+  await page.addInitScript(() => {
+    let current = null;
+    PushManager.prototype.getSubscription = async () => current;
+    PushManager.prototype.subscribe = async options => {
+      window.__pushKey = new Uint8Array(options.applicationServerKey).length;
+      current = {
+        endpoint: 'https://fcm.googleapis.com/fcm/send/test-device',
+        options,
+        toJSON: () => ({
+          endpoint: 'https://fcm.googleapis.com/fcm/send/test-device',
+          keys: { p256dh: 'B' + 'A'.repeat(86), auth: 'A'.repeat(22) },
+        }),
+        unsubscribe: async () => {
+          current = null;
+          return true;
+        },
+      };
+      return current;
+    };
+  });
+  await login(page, appServer);
+  await page.getByRole('button', { name: 'Mon compte', exact: true }).click();
+  const saved = page.waitForRequest(
+    request => request.url().endsWith('/api/v1/push/subscription') && request.method() === 'PUT',
+  );
+  await page.getByRole('button', { name: 'Activer les notifications', exact: true }).click();
+  expect((await saved).postDataJSON().endpoint).toBe('https://fcm.googleapis.com/fcm/send/test-device');
+  await expect(page.getByRole('status')).toHaveText('Notifications activées sur cet appareil.');
+  expect(await page.evaluate(() => window.__pushKey)).toBe(65);
+  expect(
+    await page.evaluate(async () => (await navigator.serviceWorker.getRegistration('/'))?.active?.scriptURL),
+  ).toMatch(/\/sw\.js$/);
+  const removed = page.waitForRequest(
+    request => request.url().endsWith('/api/v1/push/subscription') && request.method() === 'DELETE',
+  );
+  await page.getByRole('button', { name: 'Désactiver les notifications', exact: true }).click();
+  await removed;
+  await expect(page.getByRole('status')).toHaveText('Notifications désactivées sur cet appareil.');
+});

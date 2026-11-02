@@ -108,6 +108,12 @@ Le bouton **Notifications** (cloche) de la barre supérieure affiche, avec un ba
 
 Les notifications arrivent en direct par le flux d’événements (événement `notifications`, envoyé seulement à leurs destinataires), et se consultent par `GET /api/v1/notifications` (`meta.unread`, `meta.lastReadId`) puis `POST /api/v1/notifications/read` avec `{ upTo }`. Elles proviennent de l’historique et suivent donc sa rétention ; depuis la v0.1.34, un index par compte (table `notifications`, rempli depuis l’historique à la mise à jour) évite de parcourir tout l’historique à chaque lecture. Il n’y a pas encore d’envoi par e-mail ni de préférences par type d’action.
 
+### Sur l’appareil (Web Push) — v0.1.92
+
+Depuis la v0.1.92, **Mon compte → Notifications sur cet appareil** abonne le navigateur aux notifications système, même site fermé. Sont envoyées les étapes de l’agent qui attendent quelqu’un : question de l’agent, résultat à valider, PR à approuver (dépendances ou fichiers protégés modifiés), tests GitHub en échec, exécution interrompue, et carte passée « À tester » après la fusion. Un clic sur la notification ouvre la carte. Les destinataires sont ceux des notifications du site.
+
+Sur iPhone et iPad, le site doit d’abord être ajouté à l’écran d’accueil (Safari → Partager → Sur l’écran d’accueil), puis ouvert depuis cette icône. Le serveur chiffre chaque message pour l’appareil (RFC 8291) et s’identifie par une clé VAPID créée au premier besoin et gardée dans la base ; seuls les services de notification des navigateurs (Google, Mozilla, Apple, Microsoft) sont acceptés comme destinataires. Un abonnement retiré par le navigateur est oublié au premier refus du service ; un compte garde au plus dix appareils.
+
 ## Sauvegardes
 
 Les changements de comptes sont aussi pris en compte par les sauvegardes automatiques, même sans modification des projets. Les fichiers SQLite contiennent désormais les comptes, empreintes de mots de passe, invitations, sessions et le journal. Ils sont réservés à l’administrateur et doivent être conservés dans un emplacement privé.

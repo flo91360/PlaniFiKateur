@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.92 — 2026-11-02
+<!-- planifikateur:notifications-web-push -->
+
+- **Notifications sur l’appareil (Web Push)** : Mon compte → Notifications sur cet appareil abonne le navigateur (ou le site installé sur iPhone) aux notifications système : question de l’agent, résultat à valider, PR à approuver, tests en échec, exécution interrompue et carte à tester. Envoi chiffré (RFC 8291) et identifié par VAPID (RFC 8292) avec les seuls modules de Node, vers les services de notification connus uniquement.
+
 ## 0.1.91 — 2026-11-02
 <!-- planifikateur:approbation-dependances -->
 

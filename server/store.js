@@ -14,6 +14,8 @@ import { createHistoryStore } from './store/history.js';
 import { createReleaseStore } from './store/releases.js';
 import { fail } from './http.js';
 import { notificationRecipients } from './recipients.js';
+import { createPushStore } from './store/push.js';
+import { PUSHED } from './push.js';
 import { migrateWorkspace, readWorkspace, writeWorkspace } from './workspace-tables.js';
 import { applyChanges, ChangeError } from '../src/lib/workspace-changes.js';
 import { allows, createAccess, MEMBER_ROLES, requirements, ROLES } from './access.js';
@@ -330,6 +332,22 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
     if (notified)
       for (const userId of new Set(payload.recipientIds))
         db.prepare('INSERT OR IGNORE INTO notifications VALUES (?, ?)').run(userId, inserted.lastInsertRowid);
+    // Étapes de l’agent qui attendent une personne : aussi envoyées aux appareils abonnés (Web Push),
+    // une fois l’écriture validée.
+    if (notified && PUSHED.includes(action))
+      emit({
+        type: 'push',
+        userIds: [...new Set(payload.recipientIds)],
+        activityId: Number(inserted.lastInsertRowid),
+        action,
+        actorName: actor?.name || 'Administration',
+        ...Object.fromEntries(
+          ['projectId', 'cardId', 'projectName', 'cardTitle', 'state', 'approvalRequired'].map(key => [
+            key,
+            payload[key],
+          ]),
+        ),
+      });
     return inserted;
   };
   // Rétention : l’historique ancien part avec ses notifications.
@@ -696,8 +714,10 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
   const releases = createReleaseStore({ db, transaction, workflows, synchronizeInfos });
   const accounts = createAccountStore({ db, transaction, audit, access, userById });
   const history = createHistoryStore({ db, emit });
+  const push = createPushStore({ db });
   return {
     workflows,
+    ...push,
     // Abonnement aux événements validés ; renvoie la fonction de désabonnement.
     subscribe(listener) {
       listeners.add(listener);

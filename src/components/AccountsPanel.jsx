@@ -4,6 +4,7 @@ import { ACCENTS, DEFAULT_ACCENT } from '../lib/accents.js';
 import { THEMES } from '../lib/theme.js';
 import { useApiAction, useApiResource } from '../lib/use-api.js';
 import BackupsPanel from './BackupsPanel.jsx';
+import PushSettings from './PushSettings.jsx';
 import FormStatus from './FormStatus.jsx';
 
 const request = (path, options) => apiData(path, { fallback: 'Action impossible.', ...options });
@@ -143,6 +144,7 @@ export default function AccountsPanel({
           ))}
         </div>
       </div>
+      <PushSettings />
       {user.role === 'admin' && (
         <>
           <h2>Membres de l’espace</h2>
