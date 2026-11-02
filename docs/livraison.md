@@ -86,6 +86,16 @@ Railway » échoue explicitement si la version ne devient pas accessible. Elle
 peut être relancée sans recréer le tag ni rappeler le modèle IA. L'URL est la
 variable Actions `PLANIFIKATEUR_URL`, avec l'URL actuelle du site par défaut.
 
+Le workflow « Dépendances » (`dependencies.yml`) complète ces contrôles sans être
+requis pour la fusion. Chaque lundi, et à chaque PR ou push qui touche un lockfile,
+`worker/` ou `.dockerignore`, il lance `npm audit --audit-level=high` sur le site et
+le worker, puis construit l'image du worker avec la même commande que la mise à
+jour du VPS. Un Dockerfile cassé ou une vulnérabilité élevée apparaît ainsi dans
+Actions, avec l'e-mail d'échec de GitHub, avant le déploiement. Corriger une alerte
+avec `npm audit fix` (sans `--force`), puis livrer une version comme toute
+modification. Les PR Dependabot ne sont pas activées : elles ne porteraient ni
+version ni changelog et échoueraient au contrôle de livraison.
+
 Une carte terminée confirme actuellement la fusion par webhook ; le résultat
 complet de publication et déploiement est celui du workflow de livraison GitHub.
 Les profils des autres dépôts conservent leurs compilations et leur hébergement

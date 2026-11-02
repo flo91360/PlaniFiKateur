@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.89 — 2026-11-02
+<!-- planifikateur:controle-dependances -->
+
+- **Contrôle des dépendances et de l’image du worker** : Un nouveau workflow « Dépendances » signale chaque semaine, et à chaque modification d’un lockfile ou du worker, les vulnérabilités élevées des dépendances du site et du worker (npm audit), et construit l’image Docker du worker comme la mise à jour du VPS, pour voir un Dockerfile cassé avant le déploiement. Les dépendances body-parser, qs et fast-uri sont mises à jour pour corriger les alertes en cours.
+
 ## 0.1.88 — 2026-11-02
 <!-- planifikateur:sauvegarde-vps-quotidienne -->
 
