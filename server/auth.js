@@ -76,6 +76,7 @@ export function createAuth(
     requireSameOrigin(req);
     return user;
   };
+  const licenseLimit = createLimiter(30, 'too_many_attempts', 'Trop de tentatives. Réessayez dans une minute.');
   const loginLimit = createLimiter(20, 'too_many_attempts', 'Trop de tentatives. Réessayez dans une minute.');
   // Tentatives sur un compte, comptées par adresse : un tiers ne peut pas bloquer la connexion
   // de son titulaire depuis une autre adresse.
@@ -140,6 +141,8 @@ export function createAuth(
       'too_many_refusals',
       'Trop de modifications refusées en une minute. Rechargez le tableau puis réessayez.',
     ),
+    // Activation des licences, publique : limite par adresse contre l’essai de clés au hasard.
+    licenseLimit: req => licenseLimit(clientAddress(req, trustProxy)),
     // Chaque reformulation consomme le quota de l’abonnement Claude : limite par compte.
     refineLimit: createLimiter(
       10,

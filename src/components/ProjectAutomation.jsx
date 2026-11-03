@@ -6,6 +6,7 @@ import AiSettings from './AiSettings.jsx';
 import ExecutionSettings from './ExecutionSettings.jsx';
 import ProjectMembers, { roleLabels } from './ProjectMembers.jsx';
 import MergeApproval from './MergeApproval.jsx';
+import Licenses from './Licenses.jsx';
 import { useProjectAccess } from '../lib/project-access.js';
 
 const engineLabels = { codex: 'Codex', 'claude-code': 'Claude Code' };
@@ -40,6 +41,7 @@ export default function ProjectAutomation({ project, user, onAiConfigured, onAcc
       state: ai ? `${engineLabels[ai.engine] || ai.engine} · ${ai.model || 'modèle par défaut'}` : '',
     },
     { key: 'repository', label: 'Dépôt', state: configuration?.repository || 'non configuré' },
+    ...(canManage ? [{ key: 'licenses', label: 'Licences', state: 'accès au logiciel' }] : []),
   ];
   const keydown = event => {
     const step = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
@@ -119,6 +121,7 @@ export default function ProjectAutomation({ project, user, onAiConfigured, onAcc
               )}
             </>,
           )}
+          {canManage && panel('licenses', <Licenses projectId={project.id} repository={configuration.repository} />)}
         </>
       )}
     </div>

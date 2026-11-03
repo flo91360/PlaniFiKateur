@@ -10,7 +10,7 @@ import { eventRoutes } from './routes/events.js';
 import { githubRoutes } from './routes/github.js';
 import { projectRoutes } from './routes/projects.js';
 import { pushRoutes } from './routes/push.js';
-import { releaseRoutes } from './routes/releases.js';
+import { licenseRoutes, releaseRoutes } from './routes/releases.js';
 import { createPushSender } from './push.js';
 import { workRoutes } from './routes/work.js';
 import { workspaceRoutes } from './routes/workspace.js';
@@ -35,6 +35,7 @@ export function apiRoutes(store, config = {}, auth = createAuth(store, config), 
     ...accountRoutes(app),
     ...pushRoutes(app),
     ...releaseRoutes(app),
+    ...licenseRoutes(app),
     ...projectRoutes(app),
     ...workRoutes(app),
     ...cardRoutes(app),

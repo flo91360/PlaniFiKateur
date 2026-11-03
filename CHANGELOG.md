@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.101 — 2026-11-03
+<!-- planifikateur:licences-logiciel -->
+
+- **Licences du logiciel d’un projet** : Les responsables d’un projet créent, désactivent ou prolongent dans Paramètres → Licences une clé par personne autorisée à lancer l’exécutable du dépôt. Le logiciel l’échange contre un jeton signé Ed25519, vérifié hors ligne et renouvelé en silence ; une licence désactivée ou expirée cesse de fonctionner au plus tard 30 jours après.
+
 ## 0.1.100 — 2026-11-03
 <!-- planifikateur:telechargement-exe-reserve -->
 

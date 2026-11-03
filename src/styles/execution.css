@@ -283,6 +283,41 @@
 .project-members select {
   min-width: 190px;
 }
+/* Licences du logiciel d’un projet */
+.license-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 12px;
+  margin: 12px 0;
+}
+.license-form input[type='number'] {
+  width: 70px;
+}
+.license-created code {
+  font-size: 14px;
+  user-select: all;
+}
+.licenses {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 0;
+  list-style: none;
+}
+.licenses li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  font-size: 12px;
+}
+.license-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
 .read-only-badge {
   display: inline-flex;
   align-items: center;
