@@ -3,13 +3,13 @@ import { createCipheriv, createECDH, createPrivateKey, hkdfSync, randomBytes, si
 // Notifications Web Push (RFC 8030) : chiffrement aes128gcm du message (RFC 8291) et
 // identification du serveur par VAPID (RFC 8292), avec les seuls modules intégrés de Node.
 
-// La cloche du site garde toutes les notifications ; les appareils abonnés ne reçoivent que celles
-// qui annoncent un résultat ou attendent une personne (voir `pushWanted`). Chaque message porte le
-// nombre de non lues, affiché en pastille sur l’icône de l’application même fermée. Les navigateurs
-// (iOS en particulier) exigent qu’un message reçu affiche une notification : une mise à jour
-// silencieuse de la pastille n’est pas possible, elle suit donc le prochain envoi ou l’ouverture.
+// Toutes les notifications du site (cloche) sont aussi envoyées aux appareils abonnés : chacune
+// porte le nombre de non lues, affiché en pastille sur l’icône de l’application même fermée. Les
+// navigateurs (iOS en particulier) exigent qu’un message reçu affiche une notification : pour que la
+// pastille reste exacte sans ouvrir l’application, seul ce qui mérite une alerte devient notification.
 
-// Étapes intermédiaires d’une exécution, gardées dans la cloche mais pas envoyées au téléphone :
+// Notification ou étape intermédiaire d’une exécution ? Les étapes intermédiaires restent dans
+// l’historique et le bandeau « Exécution IA » de la carte, sans notification (cloche ni téléphone) :
 // le résultat final (carte « À tester », résultat à valider, échec, interruption) suivra.
 // - work.submit vers « merging » sans approbation : la PR attend les tests puis fusionne seule ;
 // - work.checks hors « waiting » : contrôles réussis, ou correction relancée automatiquement ;
@@ -212,7 +212,6 @@ function unreadCount(store, userId) {
 // la raison du service, sans l’adresse de l’abonnement.
 export function createPushSender(store, { fetch = globalThis.fetch, log = console.error } = {}) {
   const send = async event => {
-    if (!pushWanted(event)) return;
     const message = pushMessage(event);
     if (!message) return;
     const subscriptions = store.pushSubscriptions(event.userIds || []);
