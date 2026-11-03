@@ -114,6 +114,8 @@ Depuis la v0.1.92, **Mon compte → Notifications sur cet appareil** abonne le n
 
 Sur iPhone et iPad, le site doit d’abord être ajouté à l’écran d’accueil (Safari → Partager → Sur l’écran d’accueil), puis ouvert depuis cette icône. Le serveur chiffre chaque message pour l’appareil (RFC 8291) et s’identifie par une clé VAPID créée au premier besoin et gardée dans la base ; seuls les services de notification des navigateurs (Google, Mozilla, Apple, Microsoft) sont acceptés comme destinataires. Un abonnement retiré par le navigateur est oublié au premier refus du service ; un compte garde au plus dix appareils.
 
+**Pastille sur l’icône de l’application.** Le site installé sur l’écran d’accueil affiche en pastille rouge le nombre de notifications non lues du compte (API Badging : iOS/iPadOS 16.4+ avec les notifications autorisées, Android selon le lanceur, ordinateurs Chrome et Edge). Le nombre est mis à jour à chaque notification reçue sur l’appareil, même application fermée, et dès que l’application ouverte relit ses notifications ; la pastille disparaît quand tout est lu.
+
 #### Rien n’arrive sur l’iPhone ?
 
 Le bouton **Envoyer une notification de test** (une fois les notifications activées) vérifie toute la chaîne et affiche la réponse du service de notification d’Apple. Points à vérifier :

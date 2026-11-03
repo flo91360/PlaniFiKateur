@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.96 — 2026-11-03
+<!-- planifikateur:c3d5af0f-34b3-4b59-8b27-845218568c46 -->
+
+- **Notifications téléphones** : Oui, c'est fait : quand le site est installé sur l'écran d'accueil, son icône affiche maintenant une pastille rouge avec le nombre de notifications non lues du compte. Les 357 tests serveur passent. Les tests navigateur n'ont pas été lancés ici, le worker s'en charge. - **Application fermée** : chaque notification envoyée au téléphone contient le nombre actuel de notifications non lues. Le téléphone l'affiche sur l'icône dès réception. - **Application ouverte** : la pastille suit le compteur de la cloche et disparaît quand tout est lu. **Limites à connaître :** - **Envois** : le serveur ne prévient le téléphone que pour les étapes de l'agent qui vous attendent (question, résultat à valider, tests en échec, carte à tester). Un commentaire seul ne met donc à jour la pastille qu'à la prochaine ouverture de l'application, mais il est bien compté. - **Après lecture** : quand vous lisez vos notifications sur un autre appareil, la pastille de ce téléphone ne baisse qu'à l'ouverture de l'application ou à la notification suivante. - **Appareils compatibles** : la pastille fonctionne sur iPhone et iPad en iOS 16.4 ou plus, avec les notifications activées depuis l'icône de l'écran d'accueil. Sur Android, cela dépend du lanceur. Sur ordinateur, Chrome et Edge l'affichent. Fichiers modifiés : - `server/push.js` - `public/sw.js` - `src/lib/use-notifications.js` - `tests/push.test.js` - `docs/accounts.md` Le test push vérifie que le message envoyé contient bien le compteur, qui passe de 1 à 2 avec une seconde notification non lue. Au lancement de `npm test`, la vérification du formatage a échoué : elle n'a pas pu lire des fichiers de config personnels présents dans le dossier de travail (`.zshrc`, `.vscode`, etc.), sans rapport avec cette carte. J'ai donc vérifié séparément le formatage et le lint des fichiers modifiés, qui sont propres.
+
 ## 0.1.95 — 2026-11-02
 <!-- planifikateur:2d085541-fe3f-4314-b198-1662881813cc -->
 
