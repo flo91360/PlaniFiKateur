@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.98 — 2026-11-03
+<!-- planifikateur:moins-de-notifications-push -->
+
+- **Moins de notifications sur le téléphone** : Pour une carte, le téléphone ne reçoit plus que le résultat final ou une étape qui vous attend : question de l’agent, résultat ou PR à valider, carte terminée ou passée « À tester », tests GitHub en échec après les corrections de l’agent, exécution interrompue ou annulée. Les étapes intermédiaires (PR proposée qui fusionnera seule, contrôles GitHub réussis ou relancés pour correction, fusion approuvée, corrections demandées) restent dans la cloche du site sans prévenir le téléphone. Les commentaires, changements de statut faits par une personne, ajouts au suivi, cartes supprimées et droits modifiés sont toujours envoyés. La pastille de l’icône se met à jour au message suivant ou à l’ouverture de l’application.
+
 ## 0.1.97 — 2026-11-03
 <!-- planifikateur:d81288dc-59ce-4a20-8386-8d62c99dd0b9 -->
 

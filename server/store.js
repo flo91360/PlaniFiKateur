@@ -337,8 +337,8 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
     if (notified)
       for (const userId of new Set(payload.recipientIds))
         db.prepare('INSERT OR IGNORE INTO notifications VALUES (?, ?)').run(userId, inserted.lastInsertRowid);
-    // Chaque notification est aussi envoyée aux appareils abonnés (Web Push), une fois l’écriture
-    // validée : la pastille de l’application installée suit ainsi le nombre de non lues.
+    // Les notifications sont proposées à l’envoi vers les appareils abonnés (Web Push), une fois
+    // l’écriture validée ; l’envoi écarte les étapes intermédiaires de l’agent (pushWanted).
     if (notified)
       emit({
         type: 'push',

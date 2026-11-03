@@ -3,10 +3,30 @@ import { createCipheriv, createECDH, createPrivateKey, hkdfSync, randomBytes, si
 // Notifications Web Push (RFC 8030) : chiffrement aes128gcm du message (RFC 8291) et
 // identification du serveur par VAPID (RFC 8292), avec les seuls modules intégrés de Node.
 
-// Toutes les notifications du site (cloche) sont aussi envoyées aux appareils abonnés : chacune
-// porte le nombre de non lues, affiché en pastille sur l’icône de l’application même fermée. Les
-// navigateurs (iOS en particulier) exigent qu’un message reçu affiche une notification : une mise
-// à jour silencieuse de la pastille n’est pas possible.
+// La cloche du site garde toutes les notifications ; les appareils abonnés ne reçoivent que celles
+// qui annoncent un résultat ou attendent une personne (voir `pushWanted`). Chaque message porte le
+// nombre de non lues, affiché en pastille sur l’icône de l’application même fermée. Les navigateurs
+// (iOS en particulier) exigent qu’un message reçu affiche une notification : une mise à jour
+// silencieuse de la pastille n’est pas possible, elle suit donc le prochain envoi ou l’ouverture.
+
+// Étapes intermédiaires d’une exécution, gardées dans la cloche mais pas envoyées au téléphone :
+// le résultat final (carte « À tester », résultat à valider, échec, interruption) suivra.
+// - work.submit vers « merging » sans approbation : la PR attend les tests puis fusionne seule ;
+// - work.checks hors « waiting » : contrôles réussis, ou correction relancée automatiquement ;
+// - work.approve et work.reject : décision d’une personne, l’agent ou GitHub poursuit.
+export function pushWanted(event) {
+  switch (event.action) {
+    case 'work.submit':
+      return event.state !== 'merging' || Boolean(event.approvalRequired);
+    case 'work.checks':
+      return event.state === 'waiting';
+    case 'work.approve':
+    case 'work.reject':
+      return false;
+    default:
+      return true;
+  }
+}
 
 // Titre et texte de la notification envoyée à l’appareil.
 export function pushMessage(event) {
@@ -19,7 +39,9 @@ export function pushMessage(event) {
         ? 'Résultat à valider'
         : event.state === 'merging' && event.approvalRequired
           ? 'PR à approuver'
-          : 'Résultat proposé',
+          : event.state === 'done'
+            ? 'Carte terminée'
+            : 'Résultat proposé',
     'work.checks': event.state === 'waiting' ? 'Tests GitHub en échec' : 'Contrôles GitHub',
     'work.merged': 'Carte à tester',
     'work.interrupted': 'Exécution interrompue',
@@ -37,7 +59,9 @@ export function pushMessage(event) {
     'work.submit':
       event.state === 'review' || event.approvalRequired
         ? 'Ouvrez la carte pour vérifier le travail de l’agent.'
-        : 'L’agent a proposé un résultat.',
+        : event.state === 'done'
+          ? 'L’agent a terminé la carte.'
+          : 'L’agent a proposé un résultat.',
     'work.checks':
       event.state === 'waiting'
         ? 'L’agent n’a pas pu corriger les tests : il attend une réponse.'
@@ -188,6 +212,7 @@ function unreadCount(store, userId) {
 // la raison du service, sans l’adresse de l’abonnement.
 export function createPushSender(store, { fetch = globalThis.fetch, log = console.error } = {}) {
   const send = async event => {
+    if (!pushWanted(event)) return;
     const message = pushMessage(event);
     if (!message) return;
     const subscriptions = store.pushSubscriptions(event.userIds || []);
