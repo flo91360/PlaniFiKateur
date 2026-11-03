@@ -87,18 +87,24 @@ test('Changelog links the CHANGELOG.md of the associated repository and keeps it
     },
   ]);
   const release = { repository: 'owner/repo', tag: 'v1.2.0', files: [{ name: 'Produit Setup.exe', size: 10 }] };
-  assert.deepEqual(cardLinks({ release, downloads: { folderId: 'drive-version-folder' } }), [
+  // L’exécutable passe par PlaniFiKateur, réservé aux comptes du projet, même pour un dépôt privé.
+  const id = 'projet-1-git-version';
+  assert.deepEqual(cardLinks({ id, release, downloads: { folderId: 'drive-version-folder' } }), [
     {
-      href: 'https://github.com/owner/repo/releases/download/v1.2.0/Produit%20Setup.exe',
-      label: 'Télécharger l’exe sur GitHub',
-      detail: 'Télécharger Produit Setup.exe depuis GitHub',
+      href: '/api/v1/projects/projet-1/releases/v1.2.0/files/Produit%20Setup.exe',
+      label: 'Télécharger l’exe',
+      detail: 'Télécharger Produit Setup.exe',
     },
   ]);
   assert.deepEqual(
-    cardLinks({ release: { ...release, files: [...release.files, { name: 'Outil.exe', size: 5 }] } }).map(
-      link => link.href,
-    ),
-    ['https://github.com/owner/repo/releases/tag/v1.2.0'],
+    cardLinks({ id, release: { ...release, files: [...release.files, { name: 'Outil.exe', size: 5 }] } }).map(link => [
+      link.href,
+      link.label,
+    ]),
+    [
+      ['/api/v1/projects/projet-1/releases/v1.2.0/files/Produit%20Setup.exe', 'Télécharger Produit Setup.exe'],
+      ['/api/v1/projects/projet-1/releases/v1.2.0/files/Outil.exe', 'Télécharger Outil.exe'],
+    ],
   );
   const released = withInfos(linked, {
     ...version,

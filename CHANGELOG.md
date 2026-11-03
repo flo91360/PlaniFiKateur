@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.100 — 2026-11-03
+<!-- planifikateur:telechargement-exe-reserve -->
+
+- **Téléchargement de l’exe réservé aux comptes du projet** : L’exécutable d’une Release GitHub se télécharge désormais par PlaniFiKateur, réservé aux comptes qui voient le projet : le serveur redirige vers l’adresse signée et temporaire fournie par GitHub. Un dépôt privé reste ainsi téléchargeable sans compte GitHub, et le jeton n’est jamais transmis au navigateur.
+
 ## 0.1.99 — 2026-11-03
 <!-- planifikateur:discussion-ergo -->
 

@@ -1,4 +1,4 @@
-import { githubDownloadUrl, githubReleaseUrl } from './github-release.js';
+import { releaseDownloadUrl } from './github-release.js';
 
 export const buildInfo =
   typeof __PLANIFIKATEUR_BUILD_INFO__ === 'undefined'
@@ -102,22 +102,14 @@ export function cardLinks(card) {
           },
         ]
       : []),
-    // L’exécutable se télécharge depuis la Release GitHub ; Google Drive ne sert plus qu’en
-    // l’absence d’exécutable dans la Release.
+    // L’exécutable de la Release GitHub se télécharge par PlaniFiKateur, réservé aux comptes du
+    // projet ; Google Drive ne sert plus qu’en l’absence d’exécutable dans la Release.
     ...(card.release?.files?.length
-      ? [
-          card.release.files.length === 1
-            ? {
-                href: githubDownloadUrl(card.release, card.release.files[0]),
-                label: 'Télécharger l’exe sur GitHub',
-                detail: `Télécharger ${card.release.files[0].name} depuis GitHub`,
-              }
-            : {
-                href: githubReleaseUrl(card.release),
-                label: 'Télécharger sur GitHub',
-                detail: 'Télécharger cette version depuis GitHub',
-              },
-        ]
+      ? card.release.files.map(file => ({
+          href: releaseDownloadUrl(card.id.slice(0, -'-git-version'.length), card.release, file),
+          label: card.release.files.length === 1 ? 'Télécharger l’exe' : `Télécharger ${file.name}`,
+          detail: `Télécharger ${file.name}`,
+        }))
       : card.downloads?.folderId
         ? [
             {

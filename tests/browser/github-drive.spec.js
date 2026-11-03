@@ -108,7 +108,7 @@ test.describe('automatic GitHub delivery', () => {
       'https://drive.google.com/file/d/drive-executable-id/view',
     );
     await page.getByRole('button', { name: 'Terminé', exact: true }).click();
-    // Dès que la Release porte l’exécutable, le lien de la carte Version mène à GitHub.
+    // Dès que la Release porte l’exécutable, la carte Version le propose par PlaniFiKateur (dépôt privé possible).
     const withAsset = JSON.stringify({
       ...JSON.parse(release),
       release: {
@@ -130,9 +130,9 @@ test.describe('automatic GitHub delivery', () => {
       ).status(),
     ).toBe(200);
     await page.reload();
-    await expect(infos.getByRole('link', { name: 'Télécharger l’exe sur GitHub' })).toHaveAttribute(
+    await expect(infos.getByRole('link', { name: 'Télécharger l’exe' })).toHaveAttribute(
       'href',
-      'https://github.com/owner/first/releases/download/v2.0.0/Product-Installation-2.0.0.exe',
+      '/api/v1/projects/planifikateur/releases/v2.0.0/files/Product-Installation-2.0.0.exe',
     );
     await expect(infos.getByRole('link', { name: 'Télécharger sur Google Drive' })).toHaveCount(0);
   });
