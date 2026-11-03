@@ -28,3 +28,53 @@ export function releaseRoutes({ store, config, guards }) {
     },
   ];
 }
+
+// Licences du logiciel livré par le projet : gestion par les responsables, activation publique
+// par le logiciel (clé + empreinte de la machine) et clé publique de vérification des jetons.
+export function licenseRoutes({ store, auth, guards }) {
+  const manager = ctx => {
+    guards.project(ctx);
+    store.requireProject(ctx.user, ctx.params.projectId, 'manager');
+  };
+  return [
+    {
+      path: '/api/v1/projects/:projectId/licenses',
+      guard: manager,
+      methods: {
+        GET: ctx => ctx.send(200, { data: store.licenses(ctx.params.projectId) }),
+        async POST(ctx) {
+          ctx.send(201, { data: store.createLicense(ctx.params.projectId, await ctx.body()) });
+        },
+      },
+    },
+    {
+      path: '/api/v1/projects/:projectId/licenses/:licenseId',
+      guard: manager,
+      methods: {
+        async PATCH(ctx) {
+          const { projectId, licenseId } = ctx.params;
+          ctx.send(200, { data: store.updateLicense(projectId, licenseId, await ctx.body()) });
+        },
+        DELETE(ctx) {
+          store.deleteLicense(ctx.params.projectId, ctx.params.licenseId);
+          ctx.send(200, { data: { id: ctx.params.licenseId, deleted: true } });
+        },
+      },
+    },
+    {
+      path: '/api/v1/licenses/activate',
+      methods: {
+        async POST(ctx) {
+          auth.licenseLimit(ctx.req);
+          ctx.send(200, { data: store.activateLicense(await ctx.body()) });
+        },
+      },
+    },
+    {
+      path: '/api/v1/licenses/public-key',
+      methods: {
+        GET: ctx => ctx.send(200, { data: { algorithm: 'Ed25519', publicKey: store.licensePublicKey() } }),
+      },
+    },
+  ];
+}

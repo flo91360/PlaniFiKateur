@@ -173,6 +173,28 @@ Les sauvegardes ne sont jamais servies comme fichiers publics. Une suppression d
 
 Les cartes incluent `createdBy`, `createdAt`, `updatedBy`, `updatedAt` et les commentaires `authorId`. Les identités sont attribuées par le serveur et restent nulles pour les créateurs inconnus d’avant la migration. Les routes de comptes et d’historique sont décrites dans [accounts.md](accounts.md). Aucun mot de passe, e-mail de compte ou secret de session n’est retourné par les routes de cartes.
 
+## Licences du logiciel d’un projet
+
+Depuis la v0.1.101, un responsable crée dans **Paramètres du projet → Licences** une clé par
+personne autorisée à lancer l’exécutable livré par le dépôt du projet. Le logiciel l’échange contre
+un jeton signé qu’il vérifie hors ligne avec la clé publique du serveur ; il le renouvelle en silence
+et s’arrête si le jeton n’est plus renouvelé (licence désactivée, supprimée ou arrivée à sa date de
+fin) au plus tard 30 jours après le dernier renouvellement.
+
+| Route | Rôle |
+| --- | --- |
+| `GET /api/v1/projects/{projectId}/licenses` | Licences du projet (responsables) : nom, 4 derniers caractères de la clé, postes utilisés et autorisés, date de fin, état |
+| `POST /api/v1/projects/{projectId}/licenses` | `{ name, maxMachines?, expiresOn? }` (2 postes et aucune fin par défaut) ; réponse 201 avec `key`, affichée une seule fois : seule son empreinte est gardée |
+| `PATCH /api/v1/projects/{projectId}/licenses/{licenseId}` | `{ name?, maxMachines?, expiresOn?, revoked?, resetMachines? }` : désactiver ou réactiver, prolonger un abonnement, libérer les postes |
+| `DELETE /api/v1/projects/{projectId}/licenses/{licenseId}` | Supprime la licence et ses postes |
+| `POST /api/v1/licenses/activate` | Public, 30 essais par minute et par adresse. `{ key, product, machine }` : `product` est le dépôt GitHub du projet, `machine` l’empreinte SHA-256 (64 caractères hexadécimaux) du poste. Réponse `{ token, product, license, name, machine, iat, exp, expiresOn }` ; erreurs `license_invalid` (404), `license_revoked` ou `license_expired` (403), `license_machines` (409) |
+| `GET /api/v1/licenses/public-key` | Public. `{ algorithm: "Ed25519", publicKey }` (SPKI PEM) à intégrer au logiciel |
+
+Le jeton vaut `base64url(JSON).base64url(signature Ed25519 du premier segment)`. `exp` (ms) est
+la fin du bail hors ligne : 30 jours, ou la date de fin de la licence si elle est plus proche. La
+clé privée est créée au premier besoin et gardée dans la base, comme les clés Web Push : une base
+restaurée garde les mêmes licences, une base neuve invaliderait les logiciels déjà livrés.
+
 ## Reformulation des descriptions
 
 Avec une session personnelle, `POST /api/v1/projects/{projectId}/refine` reçoit
