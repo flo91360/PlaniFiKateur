@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.102 — 2026-11-03
+<!-- planifikateur:colonnes-infos-hors-idees -->
+
+- **Cartes Infos hors des idées** : Aucune carte rangée dans une colonne Infos (ou Info) ne compte plus parmi les idées d’un projet, même ajoutée à la main : compteurs du menu et statistiques du projet l’excluent.
+
 ## 0.1.101 — 2026-11-03
 <!-- planifikateur:licences-logiciel -->
 
