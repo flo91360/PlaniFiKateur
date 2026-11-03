@@ -15,6 +15,7 @@ import { createReleaseStore } from './store/releases.js';
 import { fail } from './http.js';
 import { notificationRecipients } from './recipients.js';
 import { createPushStore } from './store/push.js';
+import { pushWanted } from './push.js';
 import { migrateWorkspace, readWorkspace, writeWorkspace } from './workspace-tables.js';
 import { applyChanges, ChangeError } from '../src/lib/workspace-changes.js';
 import { allows, createAccess, MEMBER_ROLES, requirements, ROLES } from './access.js';
@@ -314,10 +315,13 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
     if (!isDeepStrictEqual(projects, previous)) writeProjects(validateWorkspace(projects), undefined, { previous });
   };
   const audit = (actor, action, payload = {}, revision = null) => {
-    // Les destinataires d’une action notifiée la voient arriver aussitôt dans leur boîte.
+    // Les destinataires d’une action notifiée la voient arriver aussitôt dans leur boîte. Les étapes
+    // intermédiaires de l’agent ne notifient pas (pushWanted) : chaque notification de la cloche est
+    // ainsi envoyée au téléphone, et la pastille de l’icône reste égale au nombre de non lues.
     const notified =
       NOTIFIED.includes(action) &&
       !(action === 'comment.created' && payload.executionId) &&
+      pushWanted({ action, state: payload.state, approvalRequired: payload.approvalRequired }) &&
       payload.recipientIds?.length;
     if (notified) emit({ type: 'notifications', userIds: payload.recipientIds });
     const inserted = db

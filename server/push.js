@@ -5,8 +5,28 @@ import { createCipheriv, createECDH, createPrivateKey, hkdfSync, randomBytes, si
 
 // Toutes les notifications du site (cloche) sont aussi envoyées aux appareils abonnés : chacune
 // porte le nombre de non lues, affiché en pastille sur l’icône de l’application même fermée. Les
-// navigateurs (iOS en particulier) exigent qu’un message reçu affiche une notification : une mise
-// à jour silencieuse de la pastille n’est pas possible.
+// navigateurs (iOS en particulier) exigent qu’un message reçu affiche une notification : pour que la
+// pastille reste exacte sans ouvrir l’application, seul ce qui mérite une alerte devient notification.
+
+// Notification ou étape intermédiaire d’une exécution ? Les étapes intermédiaires restent dans
+// l’historique et le bandeau « Exécution IA » de la carte, sans notification (cloche ni téléphone) :
+// le résultat final (carte « À tester », résultat à valider, échec, interruption) suivra.
+// - work.submit vers « merging » sans approbation : la PR attend les tests puis fusionne seule ;
+// - work.checks hors « waiting » : contrôles réussis, ou correction relancée automatiquement ;
+// - work.approve et work.reject : décision d’une personne, l’agent ou GitHub poursuit.
+export function pushWanted(event) {
+  switch (event.action) {
+    case 'work.submit':
+      return event.state !== 'merging' || Boolean(event.approvalRequired);
+    case 'work.checks':
+      return event.state === 'waiting';
+    case 'work.approve':
+    case 'work.reject':
+      return false;
+    default:
+      return true;
+  }
+}
 
 // Titre et texte de la notification envoyée à l’appareil.
 export function pushMessage(event) {
@@ -19,7 +39,9 @@ export function pushMessage(event) {
         ? 'Résultat à valider'
         : event.state === 'merging' && event.approvalRequired
           ? 'PR à approuver'
-          : 'Résultat proposé',
+          : event.state === 'done'
+            ? 'Carte terminée'
+            : 'Résultat proposé',
     'work.checks': event.state === 'waiting' ? 'Tests GitHub en échec' : 'Contrôles GitHub',
     'work.merged': 'Carte à tester',
     'work.interrupted': 'Exécution interrompue',
@@ -37,7 +59,9 @@ export function pushMessage(event) {
     'work.submit':
       event.state === 'review' || event.approvalRequired
         ? 'Ouvrez la carte pour vérifier le travail de l’agent.'
-        : 'L’agent a proposé un résultat.',
+        : event.state === 'done'
+          ? 'L’agent a terminé la carte.'
+          : 'L’agent a proposé un résultat.',
     'work.checks':
       event.state === 'waiting'
         ? 'L’agent n’a pas pu corriger les tests : il attend une réponse.'
