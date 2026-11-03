@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { cardLinks, withInfos } from '../src/lib/infos.js';
+import { cardLinks, ideaCards, withInfos } from '../src/lib/infos.js';
 import { validateWorkspace } from '../src/lib/workspace.js';
 import { seed } from '../src/data/demo.js';
 import { createStore } from '../server/store.js';
@@ -215,4 +215,27 @@ test('Changelog history and discussion persist across server restart and reposit
   } finally {
     store.close();
   }
+});
+
+test('Aucune carte d’une colonne Infos ne compte parmi les idées, même ajoutée à la main', () => {
+  const project = withInfos({
+    id: 'p',
+    lists: [
+      { id: 'ideas', name: 'Nouvelles idées', color: 'purple' },
+      { id: 'notes', name: ' info ', color: 'green' },
+    ],
+    cards: [
+      { id: 'idea', listId: 'ideas', title: 'Idée', status: 'draft' },
+      { id: 'note', listId: 'notes', title: 'Note ajoutée', status: 'draft' },
+    ],
+  });
+  const added = { ...project, lists: [...project.lists, { id: 'other', name: 'Infos', color: 'blue' }] };
+  added.cards = [...added.cards, { id: 'other-note', listId: 'other', title: 'Autre', status: 'draft' }];
+  assert.deepEqual(
+    ideaCards(added).map(card => card.id),
+    ['idea'],
+  );
+  const created = withInfos({ id: 'q', lists: [], cards: [] });
+  created.cards.push({ id: 'manual', listId: 'q-infos', title: 'Manuelle', status: 'draft' });
+  assert.deepEqual(ideaCards(created), []);
 });

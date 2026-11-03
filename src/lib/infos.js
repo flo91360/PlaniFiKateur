@@ -5,19 +5,29 @@ export const buildInfo =
     ? { tag: 'Version indisponible', date: '' }
     : __PLANIFIKATEUR_BUILD_INFO__;
 
-// Cartes Infos d’un projet (version, mode d’emploi, changelog) : tenues par le serveur, elles ne
-// comptent pas parmi les idées du projet.
+// Cartes Infos d’un projet (version, mode d’emploi, changelog) : tenues par le serveur.
 export const isSystemCard = (projectId, cardId) =>
   [`${projectId}-git-version`, `${projectId}-readme`, `${projectId}-changelog`].includes(cardId);
-export const ideaCards = project => project.cards.filter(card => !isSystemCard(project.id, card.id));
+// Liste Infos : celle créée par le serveur, ou toute colonne nommée « Info » ou « Infos ».
+const isInfosName = name =>
+  ['info', 'infos'].includes(
+    String(name || '')
+      .trim()
+      .toLocaleLowerCase('fr'),
+  );
+export const isInfosList = (project, list) => list.id === `${project.id}-infos` || isInfosName(list.name);
+// Les idées d’un projet : ni les cartes Infos du serveur, ni aucune carte rangée dans une colonne
+// Infos, même ajoutée à la main.
+export function ideaCards(project) {
+  const infos = new Set(project.lists.filter(list => isInfosList(project, list)).map(list => list.id));
+  return project.cards.filter(card => !isSystemCard(project.id, card.id) && !infos.has(card.listId));
+}
 
 // Stable project-scoped identifiers allow updates without duplicating the card.
 export function withInfos(project, version) {
   const listId = `${project.id}-infos`;
   const cardId = `${project.id}-git-version`;
-  const list =
-    project.lists.find(item => item.id === listId) ||
-    project.lists.find(item => ['info', 'infos'].includes(item.name.trim().toLocaleLowerCase('fr')));
+  const list = project.lists.find(item => item.id === listId) || project.lists.find(item => isInfosName(item.name));
   const card = project.cards.find(item => item.id === cardId);
   const preserve = !version && card;
   version ||= { tag: card?.title || 'Aucun tag disponible', date: '' };
