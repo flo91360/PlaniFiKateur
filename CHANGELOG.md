@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.97 — 2026-11-03
+<!-- planifikateur:d81288dc-59ce-4a20-8386-8d62c99dd0b9 -->
+
+- **Notifications** : La pastille rouge se met maintenant à jour sans ouvrir l'application, à chaque nouvelle notification du compte. Les 358 tests serveur passent. Les tests navigateur n'ont pas été lancés ici, le worker s'en charge. **Cause :** la pastille compte toutes les notifications de la cloche. Mais le serveur ne prévenait le téléphone que pour quelques étapes de l'agent (question, résultat à valider, tests en échec, carte à tester, exécution interrompue). Un commentaire, un changement de statut ou une autre étape de l'agent ajoutait donc une notification non lue sans prévenir le téléphone. La pastille ne bougeait qu'à l'ouverture de l'application. **Ce qui change :** - **Toutes les notifications sont envoyées au téléphone**, chacune avec le nombre actuel de non lues. Cela comprend les commentaires, les changements de statut, les cartes supprimées, l'ajout au suivi d'une carte, les droits modifiés sur un projet et toutes les étapes de l'agent (annulation, corrections demandées, fusion approuvée, contrôles GitHub…). Chaque message a un titre clair et indique qui a fait l'action, par exemple « Nouveau commentaire — Menu · Site, Bob a ajouté un commentaire ». - **Pas de rafale** : quand une même action produit plusieurs notifications, par exemple la suppression d'un projet, chaque personne ne reçoit qu'un seul message, avec le bon total sur la pastille. **Limites à connaître :** - **Chaque mise à jour de la pastille s'accompagne d'une notification visible.** Les navigateurs, et l'iPhone en particulier, l'imposent : ils ne permettent pas de changer la pastille sans afficher de notification. - **Après lecture sur un autre appareil**, la pastille de ce téléphone ne baisse qu'à l'ouverture de l'application ou au message suivant, pour la même raison. **Fichiers modifiés :** - `server/push.js` : un message pour chaque type de notification. - `server/store.js` : envoi au téléphone de toute notification, un seul envoi par personne et par action. - `tests/push.test.js` : un nouveau test vér
+
 ## 0.1.96 — 2026-11-03
 <!-- planifikateur:c3d5af0f-34b3-4b59-8b27-845218568c46 -->
 
