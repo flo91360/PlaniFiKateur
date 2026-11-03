@@ -1,5 +1,5 @@
 // Exécutables Windows attachés à une Release GitHub : la carte Version les propose au
-// téléchargement directement depuis GitHub.
+// téléchargement par PlaniFiKateur, réservé aux comptes du projet (dépôt public ou privé).
 const executableName = /^[^\x00-\x1f/\\]{1,240}\.exe$/i;
 const repositoryName = /^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/;
 
@@ -48,7 +48,7 @@ export function validateGithubRelease(value) {
   return { repository: value.repository, tag: value.tag, files };
 }
 
-export const githubReleaseUrl = release =>
-  `https://github.com/${release.repository}/releases/tag/${encodeURIComponent(release.tag)}`;
-export const githubDownloadUrl = (release, file) =>
-  `https://github.com/${release.repository}/releases/download/${encodeURIComponent(release.tag)}/${encodeURIComponent(file.name)}`;
+// Lien de téléchargement servi par PlaniFiKateur : il vérifie l’accès au projet, puis redirige
+// vers l’adresse signée et temporaire que GitHub fournit pour le fichier.
+export const releaseDownloadUrl = (projectId, release, file) =>
+  `/api/v1/projects/${encodeURIComponent(projectId)}/releases/${encodeURIComponent(release.tag)}/files/${encodeURIComponent(file.name)}`;

@@ -11,6 +11,7 @@ import { createRetention } from './server/retention.js';
 import { createGithubSync } from './server/github-sync.js';
 import { createVersionSync } from './server/project-versions.js';
 import { createRepositoryContext } from './server/repository-context.js';
+import { createReleaseDownloads } from './server/release-download.js';
 import { COMPRESSIBLE, precompress } from './server/compression.js';
 
 const buildInfo = readBuildInfo();
@@ -49,6 +50,7 @@ export default defineConfig({
         const store = createStore(config.database, { backupDirectory: config.backupDirectory, demo: config.demo });
         config.versions = createVersionSync(store, { token: process.env.PLANIFIKATEUR_GITHUB_TOKEN || '' });
         config.repositoryContext = createRepositoryContext({ token: process.env.PLANIFIKATEUR_GITHUB_TOKEN || '' });
+        config.releaseDownloads = createReleaseDownloads({ token: process.env.PLANIFIKATEUR_GITHUB_TOKEN || '' });
         config.backups = createBackups(store, {
           directory: config.backupDirectory,
           intervalMs: config.backupIntervalMs,

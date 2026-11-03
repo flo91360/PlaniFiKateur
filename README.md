@@ -131,7 +131,7 @@ Conserver également des copies hors du volume Railway.
 npm run export:preview
 ```
 
-`dist/PlaniFiKateur-apercu-v0.1.99.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
+`dist/PlaniFiKateur-apercu-v0.1.100.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 
@@ -164,8 +164,11 @@ Releases publiées reçus par le webhook signé mettent la carte à jour immédi
 Pour les dépôts privés, la variable serveur `PLANIFIKATEUR_GITHUB_TOKEN` doit avoir
 un accès en lecture aux dépôts concernés ; elle n’est jamais transmise au navigateur.
 Quand la Release de cette version porte un `.exe`, la carte propose de le télécharger
-directement depuis GitHub (la page de la Release s’il y en a plusieurs) ; le lien
-Google Drive ne sert plus que pour une Release sans exécutable.
+par PlaniFiKateur (un lien par exécutable), réservé aux comptes qui voient le projet :
+le serveur obtient de GitHub l’adresse signée et temporaire du fichier et y redirige,
+si bien qu’un dépôt **privé** reste téléchargeable sans compte GitHub. Le jeton doit
+alors avoir la lecture du contenu du dépôt (Contents: Read) ; le lien Google Drive ne
+sert plus que pour une Release sans exécutable.
 
 Dans les événements du webhook GitHub, activer **Pushes** et **Releases** en plus
 des événements existants. La date affichée est celle du push ou de la création du

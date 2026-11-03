@@ -10,6 +10,7 @@ import { createRetention } from './retention.js';
 import { createGithubSync } from './github-sync.js';
 import { createVersionSync } from './project-versions.js';
 import { createRepositoryContext } from './repository-context.js';
+import { createReleaseDownloads } from './release-download.js';
 import { COMPRESSIBLE, ENCODINGS, accepts } from './compression.js';
 
 const mime = {
@@ -128,6 +129,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const store = createStore(config.database, { backupDirectory: config.backupDirectory, demo: config.demo });
   config.versions = createVersionSync(store, { token: process.env.PLANIFIKATEUR_GITHUB_TOKEN || '' });
   config.repositoryContext = createRepositoryContext({ token: process.env.PLANIFIKATEUR_GITHUB_TOKEN || '' });
+  config.releaseDownloads = createReleaseDownloads({ token: process.env.PLANIFIKATEUR_GITHUB_TOKEN || '' });
   config.backups = createBackups(store, {
     directory: config.backupDirectory,
     intervalMs: config.backupIntervalMs,

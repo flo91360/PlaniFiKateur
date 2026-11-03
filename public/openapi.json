@@ -7918,6 +7918,83 @@
           }
         }
       }
+    },
+    "/api/v1/projects/{projectId}/releases/{tag}/files/{file}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ProjectId"
+        },
+        {
+          "name": "tag",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "Tag de la Release GitHub."
+        },
+        {
+          "name": "file",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "Nom de l’exécutable (.exe) attaché à la Release."
+        }
+      ],
+      "get": {
+        "summary": "Télécharger un exécutable de Release",
+        "description": "Réservé aux comptes qui voient le projet. Le serveur demande à l’API GitHub, avec PLANIFIKATEUR_GITHUB_TOKEN, l’adresse signée et temporaire du fichier et y redirige le navigateur : un dépôt privé reste téléchargeable sans compte GitHub, et le jeton n’est jamais transmis.",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirection vers l’adresse signée du fichier chez GitHub.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session requise.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Projet invisible, ou exécutable inexistant dans cette version (release_file_not_found).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "GitHub ne fournit pas le fichier (release_unavailable), par exemple faute d’accès du jeton au dépôt privé.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {

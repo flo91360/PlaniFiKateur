@@ -69,6 +69,16 @@ export function createReleaseStore({ db, transaction, workflows, synchronizeInfo
         synchronizeInfos();
       });
     },
+    // Exécutable `name` de la Release `tag` du dépôt associé au projet, connu par le changelog.
+    releaseFile(projectId, tag, name) {
+      const repository = workflows.githubProject(projectId);
+      if (!repository) return null;
+      const row = db
+        .prepare('SELECT data FROM github_changelog WHERE repository=? AND tag=?')
+        .get(repository.toLowerCase(), tag);
+      const files = row ? JSON.parse(row.data).files || [] : [];
+      return files.some(file => file.name === name) ? { repository, tag, name } : null;
+    },
     githubVersion(repository) {
       const row = db.prepare('SELECT data FROM github_versions WHERE repository=?').get(repository.toLowerCase());
       return row ? JSON.parse(row.data) : null;
