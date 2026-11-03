@@ -12,6 +12,8 @@ import {
   vapidSubject,
 } from '../server/push.js';
 import { loginRequest, seedAccount } from './helpers/accounts.mjs';
+import { hashPassword } from '../server/accounts.js';
+import { diffWorkspace } from '../src/lib/workspace-changes.js';
 
 // Navigateur abonné : clés de réception, et déchiffrement d’un message selon la RFC 8291.
 function browser() {
@@ -74,23 +76,78 @@ test('messages are encrypted for the subscribed browser and signed with the serv
   }
 });
 
-test('only agent steps that wait for a person become a notification with a link to the card', () => {
-  const base = { projectId: 'p1', cardId: 'c1', projectName: 'Site', cardTitle: 'Menu' };
+test('every account notification becomes a device notification with a link to the card', () => {
+  const base = { projectId: 'p1', cardId: 'c1', projectName: 'Site', cardTitle: 'Menu', actorName: 'Bob' };
   assert.deepEqual(pushMessage({ ...base, action: 'work.question', state: 'waiting' }), {
     title: 'Question de l’agent',
     body: 'Menu · Site\nL’agent attend votre réponse dans la discussion de la carte.',
     url: '/#/projets/p1/cartes/c1',
     tag: 'planifikateur-c1',
   });
-  assert.equal(pushMessage({ ...base, action: 'work.submit', state: 'merging' }), null);
+  assert.equal(pushMessage({ ...base, action: 'work.submit', state: 'merging' }).title, 'Résultat proposé');
   assert.equal(
     pushMessage({ ...base, action: 'work.submit', state: 'merging', approvalRequired: true }).title,
     'PR à approuver',
   );
-  assert.equal(pushMessage({ ...base, action: 'work.checks', state: 'ready' }), null);
+  assert.equal(pushMessage({ ...base, action: 'work.checks', state: 'ready' }).title, 'Contrôles GitHub');
   assert.equal(pushMessage({ ...base, action: 'work.checks', state: 'waiting' }).title, 'Tests GitHub en échec');
   assert.equal(pushMessage({ ...base, action: 'work.merged', state: 'done' }).title, 'Carte à tester');
-  assert.equal(pushMessage({ ...base, action: 'comment.created' }), null);
+  assert.deepEqual(pushMessage({ ...base, action: 'comment.created' }), {
+    title: 'Nouveau commentaire',
+    body: 'Menu · Site\nBob a ajouté un commentaire.',
+    url: '/#/projets/p1/cartes/c1',
+    tag: 'planifikateur-c1',
+  });
+  assert.equal(pushMessage({ ...base, action: 'card.status_changed' }).body, 'Menu · Site\nBob a changé le statut.');
+  // Carte supprimée : le lien ouvre le projet.
+  assert.equal(pushMessage({ ...base, action: 'card.deleted' }).url, '/#/projets/p1');
+  assert.equal(
+    pushMessage({ projectId: 'p1', projectName: 'Site', activityId: 9, action: 'project.access_changed' }).body,
+    'Site\nQuelqu’un a modifié vos droits sur le projet.',
+  );
+});
+
+test('a comment from someone else updates the home screen badge of a closed application', async t => {
+  const store = createStore(':memory:');
+  t.after(() => store.close());
+  const alice = seedAccount(store);
+  const { token } = store.inviteUser({ name: 'Bob', email: 'bob@example.test' }, alice);
+  const bob = store.acceptInvitation(token, 'Bob', await hashPassword('bob-mot-de-passe-123'));
+  const device = browser();
+  const endpoint = 'https://web.push.apple.com/alice-iphone';
+  store.savePushSubscription(alice, { endpoint, keys: device.keys }, 'https://planifikateur.example');
+  const sent = [];
+  const sender = createPushSender(store, {
+    fetch: async (url, options) => {
+      sent.push({ url, ...options });
+      return { status: 201, ok: true };
+    },
+    log: line => assert.fail(line),
+  });
+  t.after(() => sender.close());
+  const comment = (actor, id) => {
+    const before = store.readFor(actor).projects;
+    const after = structuredClone(before);
+    after[0].cards
+      .find(card => card.id === 'c1')
+      .comments.push({ id, author: actor.name, text: id, date: new Date().toISOString() });
+    store.change(diffWorkspace(before, after), actor);
+  };
+  comment(alice, 'alice-1');
+  await sender.settled();
+  assert.equal(sent.length, 0, 'aucune notification pour sa propre action');
+  comment(bob, 'bob-1');
+  await sender.settled();
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].url, endpoint);
+  let message = device.decrypt(sent[0].body);
+  assert.equal(message.title, 'Nouveau commentaire');
+  assert.match(message.body, /Bob a ajouté un commentaire\.$/);
+  assert.equal(message.badge, 1);
+  comment(bob, 'bob-2');
+  await sender.settled();
+  message = device.decrypt(sent[1].body);
+  assert.equal(message.badge, 2, 'la pastille suit le nombre de non lues sans ouvrir l’application');
 });
 
 test('a subscribed account receives the agent question on its devices; expired subscriptions are forgotten', async t => {

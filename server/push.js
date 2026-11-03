@@ -3,13 +3,15 @@ import { createCipheriv, createECDH, createPrivateKey, hkdfSync, randomBytes, si
 // Notifications Web Push (RFC 8030) : chiffrement aes128gcm du message (RFC 8291) et
 // identification du serveur par VAPID (RFC 8292), avec les seuls modules intégrés de Node.
 
-// Étapes de l’agent envoyées aux appareils abonnés : celles qui attendent une personne, plus la
-// fusion qui place la carte « À tester ».
-export const PUSHED = ['work.question', 'work.submit', 'work.checks', 'work.merged', 'work.interrupted'];
+// Toutes les notifications du site (cloche) sont aussi envoyées aux appareils abonnés : chacune
+// porte le nombre de non lues, affiché en pastille sur l’icône de l’application même fermée. Les
+// navigateurs (iOS en particulier) exigent qu’un message reçu affiche une notification : une mise
+// à jour silencieuse de la pastille n’est pas possible.
 
-// Titre et texte de la notification, ou null quand l’étape n’attend personne.
+// Titre et texte de la notification envoyée à l’appareil.
 export function pushMessage(event) {
   const where = [event.cardTitle, event.projectName].filter(Boolean).join(' · ') || 'Une carte';
+  const actor = event.actorName || 'Quelqu’un';
   const titles = {
     'work.question': 'Question de l’agent',
     'work.submit':
@@ -17,26 +19,54 @@ export function pushMessage(event) {
         ? 'Résultat à valider'
         : event.state === 'merging' && event.approvalRequired
           ? 'PR à approuver'
-          : null,
-    'work.checks': event.state === 'waiting' ? 'Tests GitHub en échec' : null,
+          : 'Résultat proposé',
+    'work.checks': event.state === 'waiting' ? 'Tests GitHub en échec' : 'Contrôles GitHub',
     'work.merged': 'Carte à tester',
     'work.interrupted': 'Exécution interrompue',
+    'work.cancel': 'Exécution annulée',
+    'work.reject': 'Corrections demandées',
+    'work.approve': 'Fusion approuvée',
+    'comment.created': 'Nouveau commentaire',
+    'card.status_changed': 'Statut modifié',
+    'card.deleted': 'Carte supprimée',
+    'card.subscriber_added': 'Ajout au suivi',
+    'project.access_changed': 'Droits du projet modifiés',
   };
-  const title = titles[event.action];
-  if (!title) return null;
   const details = {
     'work.question': 'L’agent attend votre réponse dans la discussion de la carte.',
-    'work.submit': 'Ouvrez la carte pour vérifier le travail de l’agent.',
-    'work.checks': 'L’agent n’a pas pu corriger les tests : il attend une réponse.',
+    'work.submit':
+      event.state === 'review' || event.approvalRequired
+        ? 'Ouvrez la carte pour vérifier le travail de l’agent.'
+        : 'L’agent a proposé un résultat.',
+    'work.checks':
+      event.state === 'waiting'
+        ? 'L’agent n’a pas pu corriger les tests : il attend une réponse.'
+        : 'Le résultat des contrôles GitHub est disponible.',
     'work.merged': 'La PR est fusionnée : la carte est dans « À tester ».',
     'work.interrupted': 'Ouvrez la carte pour relancer ou préciser la demande.',
+    'work.cancel': `${actor} a annulé l’exécution.`,
+    'work.reject': `${actor} a demandé des corrections.`,
+    'work.approve': `${actor} a approuvé la fusion de la PR.`,
+    'comment.created': `${actor} a ajouté un commentaire.`,
+    'card.status_changed': `${actor} a changé le statut.`,
+    'card.deleted': `${actor} a supprimé la carte.`,
+    'card.subscriber_added': `${actor} vous a ajouté au suivi de la carte.`,
+    'project.access_changed': `${actor} a modifié vos droits sur le projet.`,
   };
-  const route = event.projectId
-    ? `/#/projets/${encodeURIComponent(event.projectId)}${event.cardId ? `/cartes/${encodeURIComponent(event.cardId)}` : ''}`
-    : '/';
+  const title = titles[event.action] || 'Nouvelle notification';
+  const detail = details[event.action] || 'Ouvrez PlaniFiKateur pour la consulter.';
+  const route =
+    event.projectId && event.action !== 'card.deleted'
+      ? `/#/projets/${encodeURIComponent(event.projectId)}${event.cardId ? `/cartes/${encodeURIComponent(event.cardId)}` : ''}`
+      : event.projectId
+        ? `/#/projets/${encodeURIComponent(event.projectId)}`
+        : '/';
   return {
     title,
-    body: `${where}\n${details[event.action]}`.slice(0, 400),
+    body: `${event.action === 'project.access_changed' ? event.projectName || 'Un projet' : where}\n${detail}`.slice(
+      0,
+      400,
+    ),
     url: route,
     tag: `planifikateur-${event.cardId || event.activityId}`,
   };
@@ -154,7 +184,7 @@ function unreadCount(store, userId) {
   }
 }
 
-// Envoi des étapes de l’agent aux appareils des destinataires. Une erreur est journalisée avec
+// Envoi des notifications aux appareils des destinataires. Une erreur est journalisée avec
 // la raison du service, sans l’adresse de l’abonnement.
 export function createPushSender(store, { fetch = globalThis.fetch, log = console.error } = {}) {
   const send = async event => {

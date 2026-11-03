@@ -15,7 +15,6 @@ import { createReleaseStore } from './store/releases.js';
 import { fail } from './http.js';
 import { notificationRecipients } from './recipients.js';
 import { createPushStore } from './store/push.js';
-import { PUSHED } from './push.js';
 import { migrateWorkspace, readWorkspace, writeWorkspace } from './workspace-tables.js';
 import { applyChanges, ChangeError } from '../src/lib/workspace-changes.js';
 import { allows, createAccess, MEMBER_ROLES, requirements, ROLES } from './access.js';
@@ -179,7 +178,13 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
   };
   const emit = event => {
     if (!queued) return deliver([event]);
-    const key = JSON.stringify([event.type, event.projectId, event.cardId, event.executionId, event.userIds]);
+    // Notifications d’appareil : une seule par transaction et par groupe de destinataires (la
+    // dernière), pour ne pas envoyer une rafale lors d’une suppression de projet par exemple.
+    const key = JSON.stringify(
+      event.type === 'push'
+        ? [event.type, event.userIds]
+        : [event.type, event.projectId, event.cardId, event.executionId, event.userIds],
+    );
     // Plusieurs révisions dans une transaction : un seul événement, depuis la première révision,
     // qui cite tous les projets touchés (ou aucun si l’une d’elles concernait tout le tableau).
     const previous = queued.get(key);
@@ -332,9 +337,9 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
     if (notified)
       for (const userId of new Set(payload.recipientIds))
         db.prepare('INSERT OR IGNORE INTO notifications VALUES (?, ?)').run(userId, inserted.lastInsertRowid);
-    // Étapes de l’agent qui attendent une personne : aussi envoyées aux appareils abonnés (Web Push),
-    // une fois l’écriture validée.
-    if (notified && PUSHED.includes(action))
+    // Chaque notification est aussi envoyée aux appareils abonnés (Web Push), une fois l’écriture
+    // validée : la pastille de l’application installée suit ainsi le nombre de non lues.
+    if (notified)
       emit({
         type: 'push',
         userIds: [...new Set(payload.recipientIds)],
