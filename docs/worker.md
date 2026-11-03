@@ -482,7 +482,11 @@ dépendances, et lance le modèle en lecture seule : Codex en sandbox `read-only
 sans réseau, Claude Code avec les seuls outils Read, Glob et Grep. Ces réponses
 utilisent automatiquement un modèle plus léger : Claude Code passe sur Haiku avec
 un effort faible, Codex garde le modèle du projet avec un effort faible. Sa réponse est
-publiée dans la discussion de la carte, puis la copie est supprimée. Rien n’est
+publiée dans la discussion de la carte, puis la copie est supprimée. Les consignes
+de ces réponses, communes à tous les projets, supposent que la personne qui pose
+la question est une ergothérapeute sans connaissance en programmation : réponse
+courte et claire, sans jargon ni nom de fichier, et détails techniques seulement
+si elle les demande. Rien n’est
 commité ni poussé et aucune PR n’est ouverte. Après plusieurs échecs, la réponse
 l’indique et une nouvelle relance redonne ses tentatives à l’agent.
 

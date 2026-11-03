@@ -377,6 +377,8 @@ test('a Discussion question runs Codex read-only without network and Claude Code
   assert.equal(codexOptions.sandboxMode, 'read-only');
   assert.equal(codexOptions.networkAccessEnabled, false);
   assert.match(prompt, /liste Discussion/);
+  assert.match(prompt, /ergothérapeute qui ne connaît rien à la programmation/);
+  assert.match(prompt, /sauf si elle le demande explicitement/);
   assert.match(prompt, /Et leur rétention \?/);
   let claudeOptions;
   const query = ({ options }) => {

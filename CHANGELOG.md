@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.98 — 2026-11-03
+<!-- planifikateur:discussion-ergo -->
+
+- **Réponses de la colonne Discussion** : Dans la colonne Discussion de tous les projets, l’agent s’adresse désormais à une ergothérapeute qui ne connaît pas la programmation : réponses courtes et claires, avec des mots simples, sans jargon ni nom de fichier, et détails techniques seulement si on les demande.
+
 ## 0.1.97 — 2026-11-03
 <!-- planifikateur:d81288dc-59ce-4a20-8386-8d62c99dd0b9 -->
 
