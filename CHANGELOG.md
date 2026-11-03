@@ -5,7 +5,7 @@ Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, 
 ## 0.1.99 — 2026-11-03
 <!-- planifikateur:discussion-ergo -->
 
-- **Réponses de la colonne Discussion** : Dans la colonne Discussion de tous les projets, l’agent s’adresse désormais à une ergothérapeute qui ne connaît pas la programmation : réponses courtes et claires, avec des mots simples, sans jargon ni nom de fichier, et détails techniques seulement si on les demande.
+- **Réponses de la colonne Discussion** : Dans la colonne Discussion de tous les projets, l’agent s’adresse désormais à une ergothérapeute qui ne connaît pas la programmation : réponses courtes et claires, avec des mots simples, sans jargon ni nom de fichier, et détails techniques seulement si on les demande. Le worker n’interrompt plus une carte quand une prolongation de réservation croise la soumission de son résultat.
 
 ## 0.1.98 — 2026-11-03
 <!-- planifikateur:moins-de-notifications-push -->
