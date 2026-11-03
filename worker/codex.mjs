@@ -79,7 +79,8 @@ ${feedback ? `Retour du worker : ${feedback}` : ''}`;
 export function discussionPrompt(run) {
   return `Tu réponds à une question posée dans la liste Discussion d’un projet PlaniFiKateur.
 Cette carte sert uniquement à échanger sur le fonctionnement du projet et ses futures évolutions : ce n’est pas une demande de modification. Ne modifie, ne crée et ne supprime aucun fichier, ne lance aucune commande qui change le dépôt, et ne fais ni commit, ni push, ni PR. Le dépôt est fourni en lecture seule pour que tu t’appuies sur son code et sa documentation.
-Réponds en français, de façon claire et concrète, à la dernière question ou relance humaine des échanges ci-dessous, en tenant compte des réponses déjà données. Cite les fichiers utiles. Pour une évolution, propose une approche et ses conséquences sans la réaliser ; si une précision manque, réponds au mieux et pose ta question à la fin de ta réponse.
+Réponds en français à la dernière question ou relance humaine des échanges ci-dessous, en tenant compte des réponses déjà données.
+Tu parles à une ergothérapeute qui ne connaît rien à la programmation. Écris une réponse courte et claire : quelques phrases simples, avec des mots de tous les jours et des exemples tirés de l’utilisation de l’application. Parle de ce que la personne voit et fait, pas de la façon dont c’est construit : pas de jargon technique, pas de nom de fichier, de code, de commande ni de détail de programmation, sauf si elle le demande explicitement ; dans ce cas, explique simplement. Pour une évolution, dis ce qui changerait pour elle et ce qu’il faut savoir, sans la réaliser ; si une précision manque, réponds au mieux et pose une seule question simple à la fin.
 Réponds en JSON conforme au schéma : status=result, ta réponse complète dans summary (10 000 caractères au plus), question vide et files=[].
 
 Carte : ${run.cardSnapshot.title}

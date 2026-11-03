@@ -28,6 +28,7 @@ export function createReservation({ site, run, config, log, parentSignal }) {
     failed = false,
     heartbeating = false,
     heartbeatPromise,
+    pendingActions = new Set(),
     usage = null;
   const lose = message => {
     failed = true;
@@ -85,7 +86,14 @@ export function createReservation({ site, run, config, log, parentSignal }) {
     },
     async action(name, data = {}, actionSignal = reservation.signal) {
       const payload = usage ? { ...data, usage } : data;
-      const response = await site.action({ ...reservation.run, leaseToken: token }, name, payload, actionSignal);
+      const pending = site.action({ ...reservation.run, leaseToken: token }, name, payload, actionSignal);
+      pendingActions.add(pending);
+      let response;
+      try {
+        response = await pending;
+      } finally {
+        pendingActions.delete(pending);
+      }
       reservation.run = { ...response, leaseToken: token };
       if (reservation.run.state === 'running') renew(reservation.run);
       else {
@@ -111,7 +119,10 @@ export function createReservation({ site, run, config, log, parentSignal }) {
       .then(response => {
         if (reservation.run.state === 'running') renew(response);
       })
-      .catch(error => {
+      .catch(async error => {
+        // Une action envoyée en parallèle (soumission, question…) a pu terminer l’exécution : le
+        // site refuse alors ce heartbeat. Attendre sa réponse avant de conclure à une perte.
+        await Promise.allSettled([...pendingActions]);
         if (signal.aborted || reservation.run.state !== 'running') return;
         const diagnostic = connectionDiagnostic(error);
         if (temporaryConnectionError(error) && Date.now() < deadline) {
