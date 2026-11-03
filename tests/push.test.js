@@ -168,6 +168,8 @@ test('a subscribed account receives the agent question on its devices; expired s
     body: `${card.title} · ${project.name}\nL’agent attend votre réponse dans la discussion de la carte.`,
     url: `/#/projets/${project.id}/cartes/${card.id}`,
     tag: `planifikateur-${card.id}`,
+    // Notifications non lues du compte : pastille de l’icône sur l’écran d’accueil.
+    badge: 1,
   });
   // Abonnement expiré : oublié au prochain envoi.
   status = 410;
@@ -190,6 +192,7 @@ test('a subscribed account receives the agent question on its devices; expired s
     agent,
   );
   await sender.settled();
+  assert.equal(device.decrypt(sent[1].body).badge, 2, 'la pastille compte toutes les notifications non lues');
   assert.ok(!store.hasPushSubscription(user, endpoint));
   assert.deepEqual(logs, []);
   assert.equal((await api('DELETE', '/push/subscription', { endpoint })).status, 200);

@@ -1,6 +1,14 @@
 /* global self */
 // Service worker de PlaniFiKateur : affiche les notifications Web Push (étapes de l’agent qui
 // attendent une personne) et ouvre la carte concernée au clic. Il n’intercepte aucune requête.
+
+// Pastille de l’icône installée (écran d’accueil) : nombre de notifications non lues, effacée à 0.
+// Ignorée par les navigateurs sans API Badging.
+const setBadge = count => {
+  const nav = self.navigator;
+  if (!Number.isSafeInteger(count) || count < 0 || !nav?.setAppBadge) return Promise.resolve();
+  return (count ? nav.setAppBadge(count) : nav.clearAppBadge()).catch(() => {});
+};
 self.addEventListener('push', event => {
   let message;
   try {
@@ -9,14 +17,17 @@ self.addEventListener('push', event => {
     message = {};
   }
   event.waitUntil(
-    self.registration.showNotification(message.title || 'PlaniFiKateur', {
-      body: message.body || '',
-      tag: message.tag,
-      renotify: !!message.tag,
-      icon: '/icons/icon-192.png',
-      badge: '/icons/icon-192.png',
-      data: { url: typeof message.url === 'string' && message.url.startsWith('/') ? message.url : '/' },
-    }),
+    Promise.all([
+      setBadge(message.badge),
+      self.registration.showNotification(message.title || 'PlaniFiKateur', {
+        body: message.body || '',
+        tag: message.tag,
+        renotify: !!message.tag,
+        icon: '/icons/icon-192.png',
+        badge: '/icons/icon-192.png',
+        data: { url: typeof message.url === 'string' && message.url.startsWith('/') ? message.url : '/' },
+      }),
+    ]),
   );
 });
 

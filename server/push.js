@@ -143,6 +143,17 @@ export function vapidSubject(origin) {
   return 'mailto:notifications@planifikateur.invalid';
 }
 
+// Nombre de notifications non lues d’un compte, affiché en pastille sur l’icône de l’application
+// installée (écran d’accueil) à la réception du message ; null si le compte est introuvable.
+function unreadCount(store, userId) {
+  try {
+    const user = store.userById?.(userId);
+    return user ? store.notifications(user, { limit: 0 }).unread : null;
+  } catch {
+    return null;
+  }
+}
+
 // Envoi des étapes de l’agent aux appareils des destinataires. Une erreur est journalisée avec
 // la raison du service, sans l’adresse de l’abonnement.
 export function createPushSender(store, { fetch = globalThis.fetch, log = console.error } = {}) {
@@ -150,9 +161,15 @@ export function createPushSender(store, { fetch = globalThis.fetch, log = consol
     const message = pushMessage(event);
     if (!message) return;
     const subscriptions = store.pushSubscriptions(event.userIds || []);
+    const badges = new Map();
     await Promise.all(
       subscriptions.map(async subscription => {
-        const result = await deliverPush(store, subscription, message, { fetch });
+        if (!badges.has(subscription.user_id))
+          badges.set(subscription.user_id, unreadCount(store, subscription.user_id));
+        const badge = badges.get(subscription.user_id);
+        const result = await deliverPush(store, subscription, badge === null ? message : { ...message, badge }, {
+          fetch,
+        });
         if (result.ok || [404, 410].includes(result.status)) return;
         log(
           result.status
