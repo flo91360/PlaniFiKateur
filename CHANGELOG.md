@@ -2,10 +2,15 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
-## 0.1.98 — 2026-11-03
+## 0.1.99 — 2026-11-03
 <!-- planifikateur:discussion-ergo -->
 
 - **Réponses de la colonne Discussion** : Dans la colonne Discussion de tous les projets, l’agent s’adresse désormais à une ergothérapeute qui ne connaît pas la programmation : réponses courtes et claires, avec des mots simples, sans jargon ni nom de fichier, et détails techniques seulement si on les demande.
+
+## 0.1.98 — 2026-11-03
+<!-- planifikateur:moins-de-notifications-push -->
+
+- **Moins de notifications sur le téléphone** : Pour une carte, seul le résultat final ou une étape qui vous attend devient une notification : question de l’agent, résultat ou PR à valider, carte terminée ou passée « À tester », tests GitHub en échec après les corrections de l’agent, exécution interrompue ou annulée. Les étapes intermédiaires (PR proposée qui fusionnera seule, contrôles GitHub réussis ou relancés pour correction, fusion approuvée, corrections demandées) restent dans l’historique et le bandeau « Exécution IA » de la carte, sans notification ni dans la cloche ni sur le téléphone. Chaque notification de la cloche arrive donc sur le téléphone, et la pastille de l’icône reste égale au nombre de non lues sans ouvrir l’application. Les commentaires, changements de statut faits par une personne, ajouts au suivi, cartes supprimées et droits modifiés notifient toujours.
 
 ## 0.1.97 — 2026-11-03
 <!-- planifikateur:d81288dc-59ce-4a20-8386-8d62c99dd0b9 -->

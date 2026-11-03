@@ -7,6 +7,7 @@ import {
   createPushSender,
   encryptPush,
   pushMessage,
+  pushWanted,
   vapidAuthorization,
   vapidPublicKey,
   vapidSubject,
@@ -105,6 +106,29 @@ test('every account notification becomes a device notification with a link to th
     pushMessage({ projectId: 'p1', projectName: 'Site', activityId: 9, action: 'project.access_changed' }).body,
     'Site\nQuelqu’un a modifié vos droits sur le projet.',
   );
+});
+
+test('only the final result of a card reaches the devices, not the intermediate agent steps', () => {
+  const sent = event => pushWanted(event);
+  // Résultat final ou étape qui attend une personne.
+  assert.equal(sent({ action: 'work.question', state: 'waiting' }), true);
+  assert.equal(sent({ action: 'work.submit', state: 'review' }), true);
+  assert.equal(sent({ action: 'work.submit', state: 'done' }), true);
+  assert.equal(sent({ action: 'work.submit', state: 'merging', approvalRequired: true }), true);
+  assert.equal(sent({ action: 'work.checks', state: 'waiting' }), true);
+  assert.equal(sent({ action: 'work.merged', state: 'done' }), true);
+  assert.equal(sent({ action: 'work.interrupted', state: 'interrupted' }), true);
+  assert.equal(sent({ action: 'work.cancel', state: 'cancelled' }), true);
+  assert.equal(sent({ action: 'comment.created' }), true);
+  assert.equal(sent({ action: 'card.status_changed' }), true);
+  // Étapes intermédiaires : la PR fusionnera seule, la correction est relancée, l’agent poursuit.
+  assert.equal(sent({ action: 'work.submit', state: 'merging' }), false);
+  assert.equal(sent({ action: 'work.submit', state: 'merging', approvalRequired: false }), false);
+  assert.equal(sent({ action: 'work.checks', state: 'merging' }), false);
+  assert.equal(sent({ action: 'work.checks', state: 'ready' }), false);
+  assert.equal(sent({ action: 'work.approve', state: 'merging' }), false);
+  assert.equal(sent({ action: 'work.reject', state: 'ready' }), false);
+  assert.equal(pushMessage({ action: 'work.submit', state: 'done', cardTitle: 'Menu' }).title, 'Carte terminée');
 });
 
 test('a comment from someone else updates the home screen badge of a closed application', async t => {
