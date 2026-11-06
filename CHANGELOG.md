@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.103 — 2026-11-06
+<!-- planifikateur:mobile-dezoome -->
+
+- **Site dézoomé sur téléphone** : Sur téléphone, le site s’ouvre désormais à 80 % de sa taille pour montrer davantage du tableau (colonnes, cartes, détails) sans pincer l’écran. Le zoom manuel reste possible ; tablettes et ordinateurs gardent l’échelle normale.
+
 ## 0.1.102 — 2026-11-03
 <!-- planifikateur:colonnes-infos-hors-idees -->
 

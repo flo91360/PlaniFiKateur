@@ -14,6 +14,7 @@ import { createId as uid } from './lib/id.js';
 import { apiData } from './lib/api-client.js';
 import { applyAccent } from './lib/accents.js';
 import { applyTheme, storedTheme, useTheme } from './lib/theme.js';
+import { applyMobileViewport } from './lib/mobile-viewport.js';
 import { useWorkspace, offlineMode, exportWithAlert } from './lib/use-workspace.js';
 import { useCardFollowers } from './lib/use-card-followers.js';
 import { useWorkStatus } from './lib/use-work-status.js';
@@ -633,8 +634,9 @@ function App() {
   );
 }
 
-// Thème choisi sur l’appareil, posé avant le premier rendu.
+// Thème choisi sur l’appareil et échelle du téléphone, posés avant le premier rendu.
 applyTheme(storedTheme());
+applyMobileViewport();
 createRoot(document.getElementById('root')).render(
   <ErrorBoundary
     fallback={() => (
