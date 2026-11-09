@@ -195,6 +195,9 @@ Le jeton vaut `base64url(JSON).base64url(signature Ed25519 du premier segment)`.
 la fin du bail hors ligne : 30 jours, ou la date de fin de la licence si elle est plus proche. La
 clé privée est créée au premier besoin et gardée dans la base, comme les clés Web Push : une base
 restaurée garde les mêmes licences, une base neuve invaliderait les logiciels déjà livrés.
+L’adresse du site est en revanche écrite dans le logiciel : après un changement d’hébergement,
+publier une version qui pointe vers la nouvelle adresse avant d’arrêter l’ancienne
+([bascule vers le VPS](vps.md#7-repointer-les-logiciels-sous-licence)).
 
 ## Reformulation des descriptions
 

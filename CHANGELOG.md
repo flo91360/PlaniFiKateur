@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.105 — 2026-11-09
+<!-- planifikateur:licences-apres-bascule-vps -->
+
+- **Licences après la bascule vers le VPS** : La procédure de bascule vers le VPS ajoute l’étape qui repointe les logiciels sous licence vers la nouvelle adresse du site avant d’arrêter Railway.
+
 ## 0.1.104 — 2026-11-09
 <!-- planifikateur:documents-depot-prive -->
 
