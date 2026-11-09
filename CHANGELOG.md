@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.108 — 2026-11-09
+<!-- planifikateur:defilordi-journal-fusion -->
+
+- **Débloquer les fusions des cartes DefilOrdi** : Les cartes DefilOrdi ne passent plus sans fin de « fusion » à « au travail » : le worker n’écrit plus CHANGELOG.md dans leurs PR (la CI de DefilOrdi le fabrique sur main), et le commit « Journal des modifications » poussé sur main après chaque Release n’oblige plus les PR en attente à être remises à jour avant de fusionner.
+
 ## 0.1.107 — 2026-11-09
 <!-- planifikateur:deploiement-sans-coupure -->
 

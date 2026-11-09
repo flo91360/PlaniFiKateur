@@ -1,4 +1,4 @@
-import { mergeAgentPullRequest } from './merge.mjs';
+import { mergeAgentPullRequest, targetIncluded } from './merge.mjs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { defaultExecutionProfile, installedProfile } from './execution-profile.mjs';
 
@@ -257,20 +257,21 @@ export function createGithubClient(token, transport = fetch, wait = delay) {
     },
     unlabel: (repo, number, signal) =>
       request(`/repos/${repo}/issues/${number}/labels/planifikateur-agent`, 'DELETE', undefined, signal),
-    async behindMain(repo, headSha, signal, targetBranch = 'main') {
+    // La PR doit-elle intégrer la branche cible avant de fusionner ? (voir targetIncluded)
+    async behindMain(repo, headSha, signal, targetBranch = 'main', ignoredPaths = []) {
       const branch = await request(
         `/repos/${repo}/branches/${encodeURIComponent(targetBranch)}`,
         'GET',
         undefined,
         signal,
       );
-      const comparison = await request(
-        `/repos/${repo}/compare/${branch.commit.sha}...${headSha}`,
-        'GET',
-        undefined,
-        signal,
-      );
-      return !['ahead', 'identical'].includes(comparison.status);
+      return !(await targetIncluded(
+        (path, method = 'GET', data) => request(path, method, data, signal),
+        `/repos/${repo}`,
+        branch.commit.sha,
+        headSha,
+        ignoredPaths,
+      ));
     },
   };
 }

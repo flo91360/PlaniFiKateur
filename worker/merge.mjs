@@ -1,6 +1,30 @@
-import { defaultExecutionProfile, installedProfile } from './execution-profile.mjs';
+import { defaultExecutionProfile, installedProfile, targetOnlyPaths } from './execution-profile.mjs';
 // Trusted worker code shared with the GitHub Actions merger.
 export const requiredJobs = ['Tests serveur', 'Tests navigateur'];
+
+// La PR contient-elle la branche cible ? Les commits de la branche cible qui ne touchent que des
+// fichiers qu’elle seule fait évoluer (`ignoredPaths`, comme le CHANGELOG.md recopié par la CI de
+// DefilOrdi après chaque Release) ne l’obligent pas à être remise à jour, si la PR ne les modifie
+// pas : la fusion donne alors exactement l’arbre testé, plus ces fichiers. Sans cette tolérance,
+// chaque commit de journal relançait l’agent sur toutes les PR en attente, dont la CI finissait
+// juste après le commit de journal suivant, et aucune ne fusionnait.
+export async function targetIncluded(request, root, targetSha, headSha, ignoredPaths = []) {
+  const comparison = await request(`${root}/compare/${targetSha}...${headSha}`);
+  if (['ahead', 'identical'].includes(comparison.status)) return true;
+  if (!ignoredPaths.length || comparison.status !== 'diverged') return false;
+  // Listes de fichiers limitées à 300 par GitHub : une liste pleine peut être incomplète.
+  const listed = files => Array.isArray(files) && files.length < 300;
+  const touches = file => [file.filename, file.previous_filename].some(name => ignoredPaths.includes(name));
+  if (!listed(comparison.files) || comparison.files.some(touches)) return false;
+  const target = await request(`${root}/compare/${headSha}...${targetSha}`);
+  return (
+    listed(target.files) &&
+    target.files.length > 0 &&
+    target.files.every(file =>
+      [file.filename, file.previous_filename].filter(Boolean).every(name => ignoredPaths.includes(name)),
+    )
+  );
+}
 
 export async function mergeAgentPullRequest({
   repository,
@@ -65,8 +89,8 @@ export async function mergeAgentPullRequest({
   )
     return { merged: false, reason: 'pr_changed' };
   const branch = await request(`${root}/branches/${encodeURIComponent(profile.branch)}`);
-  const comparison = await request(`${root}/compare/${branch.commit.sha}...${pr.head.sha}`);
-  if (!['ahead', 'identical'].includes(comparison.status)) return { merged: false, reason: 'update_branch_required' };
+  if (!(await targetIncluded(request, root, branch.commit.sha, pr.head.sha, targetOnlyPaths(profile))))
+    return { merged: false, reason: 'update_branch_required' };
   const current = await request(`${root}/actions/runs/${runId}`);
   if (current.run_attempt !== run.run_attempt || current.status !== 'completed' || current.conclusion !== 'success')
     return { merged: false, reason: 'rerun_in_progress' };

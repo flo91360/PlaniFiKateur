@@ -4,7 +4,9 @@
 // - repositories : noms de dépôt qui choisissent ce profil par défaut ;
 // - versioning : fichier de version (npm : package.json et son lockfile, dans `directory` s’il est
 //   donné, godot : project.godot), version du paquet Rust de `cargo` (Cargo.toml et Cargo.lock),
-//   titre du changelog (`bracketed` : « ## [x.y.z] - date ») et documents dont le numéro suit la version ;
+//   titre du changelog (`bracketed` : « ## [x.y.z] - date » ; `generated` : CHANGELOG.md fabriqué par
+//   la CI du dépôt sur la branche cible, que le worker n’écrit pas et qu’une PR ne modifie pas) et
+//   documents dont le numéro suit la version ;
 // - instructions : consignes propres au projet ajoutées à la demande envoyée au modèle ;
 // - protectedPaths : fichiers qu’une carte ne peut pas modifier, comme les workflows GitHub et
 //   les scripts npm (configuration des tests, worker et livraison) : le worker les rétablit
@@ -64,9 +66,13 @@ export const executionPresets = {
     ],
     workflow: { file: 'build-windows.yml', name: 'Windows .exe', jobs: ['build'] },
     repositories: ['defilordi'],
-    versioning: { format: 'npm' },
+    // Après chaque fusion, la CI de main publie la Release puis recopie CHANGELOG.md sur main
+    // (« Journal des modifications : version … [skip ci] ») : le worker n’y écrit pas.
+    versioning: { format: 'npm', changelog: 'generated' },
     protectedPaths: ['vitest.config.*', 'tsconfig*.json'],
     environment: { ELECTRON_SKIP_BINARY_DOWNLOAD: '1' },
+    instructions:
+      'CHANGELOG.md est fabriqué par la CI du dépôt après chaque fusion : ne le modifie pas, le worker le reprend tel qu’il est sur main. Le worker augmente lui-même la version de package.json et package-lock.json. Décris la livraison en remplaçant entièrement la section « ## Prochaine version » de changements.md ; en cas de conflit sur ce fichier, cette section ne garde que les puces de cette carte, jamais celles venues de main.',
   },
   trameergo: {
     label: 'TrameErgo — Vue et Tauri',
@@ -153,6 +159,11 @@ export function defaultExecutionProfile(repository = '') {
 // Règles installées d’un profil validé (versionnage, consignes, environnement), jamais celles
 // d’un profil reçu du site.
 export const presetRules = profile => executionPresets[profile?.preset] || {};
+// CHANGELOG.md fabriqué sur la branche cible par la CI du dépôt (`changelog: 'generated'`).
+export const generatedChangelog = profile => presetRules(profile).versioning?.changelog === 'generated';
+// Fichiers que seule la branche cible fait évoluer, hors de toute PR : un commit de la branche cible
+// qui ne touche qu’eux n’oblige pas à remettre à jour une PR qui ne les modifie pas.
+export const targetOnlyPaths = profile => (generatedChangelog(profile) ? ['CHANGELOG.md'] : []);
 // Profil réellement exécuté par le worker : seuls le preset et la branche viennent du site ; les
 // commandes et les contrôles GitHub sont ceux des presets installés avec ce worker. Un site
 // compromis ou un profil enregistré par une version précédente ne peut donc pas imposer de commande.

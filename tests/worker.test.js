@@ -1264,12 +1264,15 @@ for (const preset of ['planifikateur', 'defilordi', 'funkart'])
       assert.equal(JSON.parse(await f.git(['show', 'main:package.json'], f.bare)).version, '1.0.1');
       assert.equal(JSON.parse(await f.git(['show', 'main:package-lock.json'], f.bare)).packages[''].version, '1.0.1');
     } else assert.match(await f.git(['show', 'main:project.godot'], f.bare), /config\/version="1.0.1"/);
-    assert.match(
-      await f.git(['show', 'main:CHANGELOG.md'], f.bare),
-      new RegExp(
-        `\\n## 1\\.0\\.1 — \\d{4}-\\d{2}-\\d{2}\\n<!-- planifikateur:${run.id} -->\\n\\n- \\*\\*.+\\*\\* : Greeting translated`,
-      ),
-    );
+    // DefilOrdi fabrique son CHANGELOG.md sur main par sa CI : le worker ne l’écrit pas.
+    if (preset === 'defilordi') await assert.rejects(f.git(['show', 'main:CHANGELOG.md'], f.bare), /CHANGELOG\.md/);
+    else
+      assert.match(
+        await f.git(['show', 'main:CHANGELOG.md'], f.bare),
+        new RegExp(
+          `\\n## 1\\.0\\.1 — \\d{4}-\\d{2}-\\d{2}\\n<!-- planifikateur:${run.id} -->\\n\\n- \\*\\*.+\\*\\* : Greeting translated`,
+        ),
+      );
     assert.equal(f.current().id, run.id);
   });
 

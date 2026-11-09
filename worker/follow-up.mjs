@@ -1,5 +1,5 @@
 import { ApiError } from './clients.mjs';
-import { defaultExecutionProfile } from './execution-profile.mjs';
+import { defaultExecutionProfile, targetOnlyPaths } from './execution-profile.mjs';
 import { legacyPublicationQuestion } from './legacy-publication.mjs';
 
 // Suivi des tâches connues du worker : état sur le site, PR et fusion automatique. Une erreur sur
@@ -124,7 +124,8 @@ export function createFollowUp({
       );
       return null;
     }
-    if (await github.behindMain(run.repository, pr.head.sha, signal, profile.branch)) return run;
+    if (await github.behindMain(run.repository, pr.head.sha, signal, profile.branch, targetOnlyPaths(profile)))
+      return run;
     if (!pr.labels.some(l => l.name === 'planifikateur-agent')) await github.label(run.repository, pr.number, signal);
     // Validation humaine attendue pour ce commit : aucune fusion n’est possible, inutile d’interroger
     // les contrôles GitHub. Le site garde la décision finale au moment de fusionner (merge-eligibility).
