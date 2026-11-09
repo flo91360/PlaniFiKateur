@@ -86,9 +86,10 @@ export function withInfos(project, version) {
   };
 }
 
-export const readmeUrl = repository => `https://github.com/${repository}#readme`;
-// HEAD suit la branche par défaut du dépôt, où le worker tient CHANGELOG.md à jour.
-export const changelogUrl = repository => `https://github.com/${repository}/blob/HEAD/CHANGELOG.md`;
+// README et CHANGELOG.md de la branche par défaut, servis par PlaniFiKateur aux comptes du projet :
+// le serveur les lit avec son jeton GitHub, le dépôt peut donc être privé.
+export const projectDocumentUrl = (projectId, document) =>
+  `/api/v1/projects/${encodeURIComponent(projectId)}/documents/${document}`;
 export const driveFolderUrl = folderId => `https://drive.google.com/drive/folders/${folderId}`;
 
 // Liens affichés sous la carte du tableau (label) et dans son détail (detail).
@@ -97,7 +98,7 @@ export function cardLinks(card) {
     ...(card.readme
       ? [
           {
-            href: readmeUrl(card.readme),
+            href: projectDocumentUrl(card.id.slice(0, -'-readme'.length), 'readme'),
             label: 'Lire le mode d’emploi (README)',
             detail: 'Consulter le mode d’emploi (README)',
           },
@@ -106,7 +107,7 @@ export function cardLinks(card) {
     ...(card.changelog
       ? [
           {
-            href: changelogUrl(card.changelog),
+            href: projectDocumentUrl(card.id.slice(0, -'-changelog'.length), 'changelog'),
             label: 'Lire le changelog (CHANGELOG.md)',
             detail: 'Consulter le changelog (CHANGELOG.md)',
           },
@@ -138,7 +139,7 @@ function withReadme(projectId, cards, listId, repository) {
   const card = cards.find(item => item.id === cardId);
   if (repository === undefined) repository = card?.readme || '';
   const description = repository
-    ? `Ce que fait le projet, comment l’installer, l’utiliser et le tester : ${readmeUrl(repository)}`
+    ? 'Ce que fait le projet, comment l’installer, l’utiliser et le tester : ouvrez « Lire le mode d’emploi (README) », lisible avec votre compte PlaniFiKateur même si le dépôt est privé.'
     : 'Associez un dépôt GitHub au projet pour afficher le lien vers son mode d’emploi (README).';
   const { readme, ...previous } = card || {
     id: cardId,
@@ -170,7 +171,7 @@ function withChangelog(projectId, cards, listId, version) {
     : version === undefined && card
       ? card.description
       : version?.repository
-        ? `Chaque livraison est inscrite dans CHANGELOG.md : ${changelogUrl(version.repository)}\nLes notes des releases GitHub apparaîtront aussi ici dès leur publication.`
+        ? 'Chaque livraison est inscrite dans CHANGELOG.md : ouvrez « Lire le changelog (CHANGELOG.md) », lisible avec votre compte PlaniFiKateur même si le dépôt est privé.\nLes notes des releases GitHub apparaîtront aussi ici dès leur publication.'
         : 'Associez un dépôt GitHub au projet pour afficher les nouveautés de chaque version.';
   const repository = version === undefined ? card?.changelog || '' : version.repository || '';
   const { changelog, ...previous } = card || {
