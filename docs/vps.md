@@ -34,7 +34,7 @@ que le site serve la nouvelle version.
 ## Bascule depuis Railway
 
 Prévoir une demi-heure. Les étapes 1 à 3 se font sans coupure ; la bascule elle-même (étapes 4
-à 7) interrompt le site quelques minutes.
+à 6) interrompt le site quelques minutes.
 
 ### 1. Adresse fixe et ports (console AWS)
 
@@ -107,11 +107,33 @@ certificat. Se connecter avec son compte habituel.
 - GitHub, dépôt → **Settings → Secrets and variables → Actions → Variables** : créer
   `PLANIFIKATEUR_URL` = `https://<domaine>` pour la vérification des déploiements.
 
-### 7. Arrêter Railway
+### 7. Repointer les logiciels sous licence
 
-Après une journée sans problème, dans Railway : supprimer le service du site (ou au moins
-retirer son déploiement) pour ne plus être facturé. Garder une copie téléchargée de la base au
-préalable.
+Le serveur des licences ([licences du logiciel d’un projet](api.md#licences-du-logiciel-dun-projet))
+fait partie du site : il a suivi la base, avec sa clé privée, ses licences et ses postes. Les
+logiciels déjà livrés n’ont donc besoin ni de nouvelle clé publique ni de nouvelle clé de licence.
+En revanche, chaque logiciel contient l’**adresse** du serveur, qui est encore celle de Railway
+(pour DefilOrdi : `SERVEUR_LICENCES` dans `src/main/licence-config.ts`).
+
+Tant que ces logiciels interrogent Railway, ils voient l’ancienne base : une licence désactivée
+ou prolongée sur le VPS ne change rien pour eux, et une licence créée sur le VPS est refusée à
+l’activation comme clé inconnue. Il faut donc, juste après la bascule :
+
+1. remplacer l’adresse Railway par `https://<domaine>` dans chaque logiciel sous licence, puis
+   publier une nouvelle version ;
+2. installer cette version sur chaque poste. Une version restée sur l’ancienne adresse continue
+   de fonctionner hors ligne avec son jeton, puis s’arrête au plus tard 30 jours après son dernier
+   renouvellement, une fois Railway arrêté : elle demande alors une clé qu’elle ne peut plus
+   activer.
+
+Avec un domaine à vous, l’adresse ne changera plus lors d’un prochain déménagement. Avec sslip.io,
+elle dépend de l’IP Elastic : la garder associée à l’instance.
+
+### 8. Arrêter Railway
+
+Après une journée sans problème, et une fois les logiciels sous licence repointés (étape 7),
+dans Railway : supprimer le service du site (ou au moins retirer son déploiement) pour ne plus
+être facturé. Garder une copie téléchargée de la base au préalable.
 
 À refaire sur chaque appareil : se reconnecter et, si besoin, réactiver **Notifications sur cet
 appareil** (une nouvelle adresse est un nouveau site pour le navigateur) ; sur iPhone, ajouter
