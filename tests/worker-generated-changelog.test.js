@@ -13,7 +13,7 @@ import { gitCommand } from '../scripts/delivery.mjs';
 const profile = validateExecutionProfile({ preset: 'defilordi' });
 const details = { runId: 'carte-1', title: 'Klavicoeur', summary: 'Temps réduit.' };
 
-async function fixture(t) {
+async function fixture(t, { changelog = true } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'planifikateur-generated-')),
     cwd = join(root, 'source');
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -29,7 +29,7 @@ async function fixture(t) {
     join(cwd, 'package-lock.json'),
     JSON.stringify({ name: 'defilordi', version: '0.8.52', packages: { '': { version: '0.8.52' } } }),
   );
-  await writeFile(join(cwd, 'CHANGELOG.md'), '# Journal\n\n## 0.8.52 (2026-11-09)\n\n- Licence.\n');
+  if (changelog) await writeFile(join(cwd, 'CHANGELOG.md'), '# Journal\n\n## 0.8.52 (2026-11-09)\n\n- Licence.\n');
   await git('add', '.');
   await git('commit', '-m', 'Initial');
   await git('remote', 'add', 'origin', join(root, 'remote.git'));
@@ -49,6 +49,13 @@ test('a generated changelog is never written by the worker and any earlier entry
   assert.equal((await verifyDelivery(f.cwd, profile, f.command)).version, '0.8.53');
   await writeFile(join(f.cwd, 'CHANGELOG.md'), `${main}- ajout\n`);
   await assert.rejects(verifyDelivery(f.cwd, profile, f.command), /fabriqué par la CI/);
+});
+
+test('a generated changelog absent from main is removed from the delivery instead of being created', async t => {
+  const f = await fixture(t, { changelog: false });
+  await writeFile(join(f.cwd, 'CHANGELOG.md'), '# Changelog\n\n## 0.8.53 — 2026-11-09\n\n- **Carte** : texte.\n');
+  assert.equal((await prepareDelivery(f.cwd, profile, f.command, details)).version, '0.8.53');
+  await assert.rejects(readFile(join(f.cwd, 'CHANGELOG.md'), 'utf8'), { code: 'ENOENT' });
 });
 
 function github({ prFiles, targetFiles, status = 'diverged' }) {
