@@ -34,7 +34,8 @@ test('Infos links the README of the associated repository and keeps it on naviga
   const linked = withInfos(empty, { ...version, repository: 'owner/repo' });
   assert.equal(linked.cards.length, 3);
   assert.equal(linked.cards[1].readme, 'owner/repo');
-  assert.match(linked.cards[1].description, /https:\/\/github\.com\/owner\/repo#readme/);
+  assert.match(linked.cards[1].description, /Lire le mode d’emploi \(README\)/);
+  assert.doesNotMatch(linked.cards[1].description, /github\.com/);
   assert.deepEqual(
     validateWorkspace([{ ...linked, name: 'P', description: '', emoji: '◈', color: '#fff' }])[0].cards,
     linked.cards.map(card => ({
@@ -70,15 +71,15 @@ test('Changelog links the CHANGELOG.md of the associated repository and keeps it
   assert.deepEqual(cardLinks(empty.cards[2]), []);
   const linked = withInfos(empty, { ...version, repository: 'owner/repo' });
   assert.equal(linked.cards[2].changelog, 'owner/repo');
-  assert.match(linked.cards[2].description, /https:\/\/github\.com\/owner\/repo\/blob\/HEAD\/CHANGELOG\.md/);
+  assert.match(linked.cards[2].description, /Lire le changelog \(CHANGELOG\.md\)/);
   assert.deepEqual(cardLinks(linked.cards[2]), [
     {
-      href: 'https://github.com/owner/repo/blob/HEAD/CHANGELOG.md',
+      href: '/api/v1/projects/project/documents/changelog',
       label: 'Lire le changelog (CHANGELOG.md)',
       detail: 'Consulter le changelog (CHANGELOG.md)',
     },
   ]);
-  assert.equal(cardLinks(linked.cards[1])[0].href, 'https://github.com/owner/repo#readme');
+  assert.equal(cardLinks(linked.cards[1])[0].href, '/api/v1/projects/project/documents/readme');
   assert.deepEqual(cardLinks({ downloads: { folderId: 'drive-version-folder' } }), [
     {
       href: 'https://drive.google.com/drive/folders/drive-version-folder',

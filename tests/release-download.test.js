@@ -94,3 +94,45 @@ test('an unexpected GitHub answer never redirects outside GitHub', async t => {
   assert.equal(response.status, 502);
   assert.equal((await response.json()).error.code, 'release_unavailable');
 });
+
+// Faux GitHub : README et CHANGELOG.md bruts du dépôt privé.
+function documents(calls) {
+  return async (url, options) => {
+    calls.push({ url, headers: options.headers });
+    if (url === 'https://api.github.com/repos/owner/private/readme') return new Response('# Produit\n\nMode d’emploi');
+    if (url === 'https://api.github.com/repos/owner/private/contents/CHANGELOG.md')
+      return new Response('# Changelog\n\n## 2.0.0\n- Défilement plus doux');
+    return new Response('{}', { status: 404 });
+  };
+}
+
+test('a project member reads the README and CHANGELOG of a private repository without GitHub access', async t => {
+  const calls = [];
+  const { get } = await fixture(t, createReleaseDownloads({ token: 'secret-token', transport: documents(calls) }));
+  const read = path => get(`../documents/${path}`);
+  const changelog = await read('changelog');
+  assert.equal(changelog.status, 200);
+  assert.equal(changelog.headers.get('content-type'), 'text/plain; charset=utf-8');
+  assert.equal(changelog.headers.get('cache-control'), 'private, no-store');
+  assert.match(changelog.headers.get('content-security-policy'), /sandbox/);
+  assert.equal(await changelog.text(), '# Changelog\n\n## 2.0.0\n- Défilement plus doux');
+  const readme = await read('readme');
+  assert.equal(await readme.text(), '# Produit\n\nMode d’emploi');
+  assert.equal(calls[0].headers.Authorization, 'Bearer secret-token');
+  assert.equal(calls[0].headers.Accept, 'application/vnd.github.raw');
+  assert.equal((await get(`../documents/readme`, '')).status, 401);
+  const unknown = await read('license');
+  assert.equal(unknown.status, 404);
+  assert.equal((await unknown.json()).error.code, 'document_not_found');
+  assert.equal(calls.length, 2, 'GitHub n’est appelé qu’après les contrôles');
+});
+
+test('a missing document answers 502 without exposing the GitHub answer', async t => {
+  const { get } = await fixture(
+    t,
+    createReleaseDownloads({ transport: async () => new Response('{}', { status: 404 }) }),
+  );
+  const response = await get('../documents/changelog');
+  assert.equal(response.status, 502);
+  assert.equal((await response.json()).error.code, 'document_unavailable');
+});
