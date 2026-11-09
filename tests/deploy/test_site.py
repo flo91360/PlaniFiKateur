@@ -1,4 +1,5 @@
 import gzip
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -20,8 +21,10 @@ class Docker:
 
     def __init__(self):
         self.containers = {"planifikateur-site": self.container(OLD, running=True)}
-        self.containers["planifikateur-site-proxy"] = {"running": True, "labels": {site.DOMAIN_LABEL: "exemple.fr"},
-                                                       "image": site.PROXY_IMAGE}
+        config = hashlib.sha256(site.CADDYFILE.format(domain="exemple.fr").encode()).hexdigest()[:16]
+        self.containers["planifikateur-site-proxy"] = {
+            "running": True, "labels": {site.DOMAIN_LABEL: "exemple.fr", site.PROXY_CONFIG_LABEL: config},
+            "image": site.PROXY_IMAGE}
         self.networks = {"planifikateur"}
         self.calls = []
         self.serving = {}
@@ -56,9 +59,9 @@ class Docker:
             return 0, ""
         if action == "create":
             name = args[args.index("--name") + 1]
-            label = args[args.index("--label") + 1]
-            key, _, value = label.partition("=")
-            self.containers[name] = {"running": False, "labels": {key: value}, "image": "image-" + value, "args": args}
+            labels = dict(args[i + 1].partition("=")[::2] for i, arg in enumerate(args) if arg == "--label")
+            image = "image-" + next(iter(labels.values()))
+            self.containers[name] = {"running": False, "labels": labels, "image": image, "args": args}
             return 0, name
         if action == "start":
             c = self.containers[args[-1]]
@@ -169,7 +172,11 @@ class SiteTests(unittest.TestCase):
         self.env.write_text("PLANIFIKATEUR_DOMAIN=203-0-113-7.sslip.io\n")
         self.make().update()
         proxy = self.docker.containers["planifikateur-site-proxy"]["args"]
-        self.assertEqual(proxy[-6:], ["caddy", "reverse-proxy", "--from", "203-0-113-7.sslip.io", "--to", "site:3000"])
+        self.assertEqual(proxy[-5:], ["--entrypoint", "sh", site.PROXY_IMAGE, "-c", site.PROXY_START])
+        config = proxy[proxy.index("--env") + 1]
+        self.assertTrue(config.startswith("PLANIFIKATEUR_CADDYFILE=203-0-113-7.sslip.io {"))
+        self.assertIn("reverse_proxy site:3000", config)
+        self.assertIn("lb_try_duration 60s", config)
         self.assertIn("443:443", proxy)
         self.env.write_text('PLANIFIKATEUR_DOMAIN=exemple.fr\nPLANIFIKATEUR_OWNER_TOKEN="secret"\n')
         with self.assertRaisesRegex(site.UpdateError, "ligne 2 .* guillemets .* PLANIFIKATEUR_OWNER_TOKEN"):
@@ -178,6 +185,21 @@ class SiteTests(unittest.TestCase):
             self.env.write_text(f"PLANIFIKATEUR_DOMAIN={domain}\n")
             with self.assertRaises(site.UpdateError):
                 self.make().update()
+
+    def test_proxy_holds_requests_during_restart_and_is_recreated_once_for_a_new_configuration(self):
+        self.docker.containers["planifikateur-site"]["labels"][site.REVISION_LABEL] = SHA
+        self.make().update()
+        self.assertNotIn("create", self.actions())
+        self.docker.containers["planifikateur-site-proxy"]["labels"][site.PROXY_CONFIG_LABEL] = "ancienne"
+        self.docker.calls.clear()
+        self.make().update()
+        proxy = self.docker.containers["planifikateur-site-proxy"]
+        self.assertTrue(proxy["running"])
+        self.assertIn("--entrypoint", proxy["args"])
+        self.assertNotEqual(proxy["labels"][site.PROXY_CONFIG_LABEL], "ancienne")
+        self.docker.calls.clear()
+        self.make().update()
+        self.assertNotIn("create", self.actions())
 
     def database(self, path, revision=3):
         db = sqlite3.connect(path)
