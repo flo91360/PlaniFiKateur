@@ -7940,7 +7940,7 @@
       ],
       "get": {
         "summary": "Lire le README ou le changelog du dépôt",
-        "description": "Réservé aux comptes qui voient le projet. Le serveur lit le fichier de la branche par défaut du dépôt associé avec PLANIFIKATEUR_GITHUB_TOKEN et le renvoie en texte : un dépôt privé reste lisible sans compte GitHub, et le jeton n’est jamais transmis.",
+        "description": "Réservé aux comptes qui voient le projet. Le serveur lit le fichier de la branche par défaut du dépôt associé avec PLANIFIKATEUR_GITHUB_TOKEN et le renvoie sous forme de page HTML mise en forme (titres, listes, liens ; HTML brut échappé, CSP stricte) : un dépôt privé reste lisible sans compte GitHub, et le jeton n’est jamais transmis.",
         "security": [
           {
             "ownerSession": []
@@ -7948,9 +7948,9 @@
         ],
         "responses": {
           "200": {
-            "description": "Contenu Markdown du fichier, en texte brut.",
+            "description": "Page HTML autonome présentant le document mis en forme.",
             "content": {
-              "text/plain": {
+              "text/html": {
                 "schema": {
                   "type": "string"
                 }

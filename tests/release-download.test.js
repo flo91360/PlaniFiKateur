@@ -112,12 +112,14 @@ test('a project member reads the README and CHANGELOG of a private repository wi
   const read = path => get(`../documents/${path}`);
   const changelog = await read('changelog');
   assert.equal(changelog.status, 200);
-  assert.equal(changelog.headers.get('content-type'), 'text/plain; charset=utf-8');
+  assert.equal(changelog.headers.get('content-type'), 'text/html; charset=utf-8');
   assert.equal(changelog.headers.get('cache-control'), 'private, no-store');
-  assert.match(changelog.headers.get('content-security-policy'), /sandbox/);
-  assert.equal(await changelog.text(), '# Changelog\n\n## 2.0.0\n- Défilement plus doux');
+  assert.match(changelog.headers.get('content-security-policy'), /default-src 'none'.*sandbox/);
+  const page = await changelog.text();
+  assert.match(page, /<h2>2\.0\.0<\/h2>\n<ul><li>Défilement plus doux<\/li><\/ul>/);
+  assert.match(page, /<header><p>private<\/p><h1>Changelog<\/h1><\/header>/);
   const readme = await read('readme');
-  assert.equal(await readme.text(), '# Produit\n\nMode d’emploi');
+  assert.match(await readme.text(), /<h1>Produit<\/h1>\n<p>Mode d’emploi<\/p>/);
   assert.equal(calls[0].headers.Authorization, 'Bearer secret-token');
   assert.equal(calls[0].headers.Accept, 'application/vnd.github.raw');
   assert.equal((await get(`../documents/readme`, '')).status, 401);

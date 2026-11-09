@@ -1,4 +1,5 @@
 import { httpError } from '../http.js';
+import { markdownPage } from '../markdown.js';
 
 // Exécutables des Releases GitHub du dépôt associé, réservés aux comptes qui voient le projet.
 export function releaseRoutes({ store, config, guards }) {
@@ -26,13 +27,22 @@ export function releaseRoutes({ store, config, guards }) {
               'document_unavailable',
               'GitHub ne fournit pas ce document pour le moment. Réessayez dans quelques minutes.',
             );
-          const body = Buffer.from(text, 'utf8');
+          // Page mise en forme (titres, listes, liens) plutôt que le Markdown brut.
+          const body = Buffer.from(
+            markdownPage({
+              title: document === 'readme' ? 'Mode d’emploi' : 'Changelog',
+              subtitle: repository.split('/').pop(),
+              markdown: text,
+            }),
+            'utf8',
+          );
           ctx.res.writeHead(200, {
-            'Content-Type': 'text/plain; charset=utf-8',
+            'Content-Type': 'text/html; charset=utf-8',
             'Content-Length': body.length,
-            'Content-Disposition': `inline; filename="${document === 'readme' ? 'README' : 'CHANGELOG'}.md"`,
-            'Content-Security-Policy': "default-src 'none'; sandbox",
+            'Content-Security-Policy':
+              "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation",
             'X-Content-Type-Options': 'nosniff',
+            'Referrer-Policy': 'no-referrer',
             'Cache-Control': 'private, no-store',
           });
           ctx.res.end(body);

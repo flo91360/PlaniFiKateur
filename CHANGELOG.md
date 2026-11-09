@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.106 — 2026-11-09
+<!-- planifikateur:documents-mis-en-forme -->
+
+- **README et changelog mis en forme** : Le mode d’emploi et le changelog d’un projet s’ouvrent désormais dans une page lisible aux couleurs du site (titres, listes, liens, tableaux) au lieu du Markdown brut.
+
 ## 0.1.105 — 2026-11-09
 <!-- planifikateur:licences-apres-bascule-vps -->
 
