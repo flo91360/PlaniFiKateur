@@ -7919,6 +7919,77 @@
         }
       }
     },
+    "/api/v1/projects/{projectId}/documents/{document}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ProjectId"
+        },
+        {
+          "name": "document",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "readme",
+              "changelog"
+            ]
+          },
+          "description": "readme (README de la branche par défaut) ou changelog (CHANGELOG.md)."
+        }
+      ],
+      "get": {
+        "summary": "Lire le README ou le changelog du dépôt",
+        "description": "Réservé aux comptes qui voient le projet. Le serveur lit le fichier de la branche par défaut du dépôt associé avec PLANIFIKATEUR_GITHUB_TOKEN et le renvoie en texte : un dépôt privé reste lisible sans compte GitHub, et le jeton n’est jamais transmis.",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Contenu Markdown du fichier, en texte brut.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session requise.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Projet invisible, document inconnu (document_not_found) ou aucun dépôt associé (repository_missing).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "GitHub ne fournit pas le fichier (document_unavailable), par exemple fichier absent ou jeton sans accès au dépôt privé.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{projectId}/releases/{tag}/files/{file}": {
       "parameters": [
         {

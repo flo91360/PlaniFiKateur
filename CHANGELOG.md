@@ -3,9 +3,9 @@
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
 ## 0.1.104 — 2026-11-09
-<!-- planifikateur:licences-apres-bascule-vps -->
+<!-- planifikateur:documents-depot-prive -->
 
-- **Licences après la bascule vers le VPS** : La procédure de bascule vers le VPS ajoute l’étape qui repointe les logiciels sous licence vers la nouvelle adresse du site avant d’arrêter Railway.
+- **README et changelog lisibles sans compte GitHub** : Les liens « Lire le mode d’emploi » et « Lire le changelog » de la colonne Infos ouvrent désormais le README et le CHANGELOG.md du dépôt via PlaniFiKateur : un compte du projet les lit même quand le dépôt est privé, sans compte GitHub.
 
 ## 0.1.103 — 2026-11-06
 <!-- planifikateur:mobile-dezoome -->

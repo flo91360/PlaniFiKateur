@@ -181,11 +181,12 @@ supprimer sa discussion. Une erreur GitHub conserve la dernière valeur connue.
 
 La même colonne contient aussi une carte **Mode d’emploi du projet**, créée par
 défaut pour chaque projet. Dès qu’un dépôt GitHub est associé, elle affiche le
-lien vers son README (`https://github.com/<dépôt>#readme`), cliquable directement
+lien vers son README, servi par PlaniFiKateur (`/api/v1/projects/<projet>/documents/readme`), cliquable directement
 sous la carte du tableau (**Lire le mode d’emploi (README)**) et dans son détail
 (**Consulter le mode d’emploi (README)**) : une personne qui teste
-le projet y trouve ce qui a été réalisé et comment l’utiliser. Pour un dépôt
-privé, la lecture du README demande un accès GitHub au dépôt.
+le projet y trouve ce qui a été réalisé et comment l’utiliser. Le serveur lit le
+fichier avec `PLANIFIKATEUR_GITHUB_TOKEN` : un compte du projet le lit même quand le
+dépôt est privé, sans compte GitHub.
 
 La carte **Changelog** est également créée par défaut dans cette colonne, y
 compris pour les projets existants. Elle présente les notes des releases GitHub
@@ -198,7 +199,8 @@ caractères ; ouvrir la carte permet de lire son contenu et de discuter des nouv
 Dès qu’un dépôt est associé, un lien **Lire le changelog (CHANGELOG.md)**
 s’affiche directement sous la carte du tableau, et **Consulter le changelog
 (CHANGELOG.md)** dans son détail. Il ouvre le fichier `CHANGELOG.md` de la branche
-par défaut (`https://github.com/<dépôt>/blob/HEAD/CHANGELOG.md`), que le worker
+par défaut, servi de la même façon par PlaniFiKateur
+(`/api/v1/projects/<projet>/documents/changelog`, dépôt privé possible), que le worker
 complète à chaque livraison avec la nouvelle version, la date, le titre de la
 carte et le résumé des modifications (voir
 [le guide multi-projets](docs/multi-projets.md#changelog-de-chaque-projet)).

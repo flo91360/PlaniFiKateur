@@ -3,6 +3,42 @@ import { httpError } from '../http.js';
 // Exécutables des Releases GitHub du dépôt associé, réservés aux comptes qui voient le projet.
 export function releaseRoutes({ store, config, guards }) {
   return [
+    // README et CHANGELOG.md du dépôt associé, lus par le serveur avec son jeton : l’ergothérapeute
+    // ou tout autre compte du projet les consulte sans accès GitHub au dépôt privé.
+    {
+      path: '/api/v1/projects/:projectId/documents/:document',
+      guard: guards.project,
+      methods: {
+        async GET(ctx) {
+          const { projectId, document } = ctx.params;
+          if (!['readme', 'changelog'].includes(document))
+            throw httpError(404, 'document_not_found', 'Document inconnu : readme ou changelog.');
+          const repository = store.workflows.githubProject(projectId);
+          if (!repository)
+            throw httpError(404, 'repository_missing', 'Associez un dépôt GitHub au projet pour lire ce document.');
+          let text = null;
+          try {
+            text = await config.releaseDownloads?.document(repository, document);
+          } catch {}
+          if (text === null || text === undefined)
+            throw httpError(
+              502,
+              'document_unavailable',
+              'GitHub ne fournit pas ce document pour le moment. Réessayez dans quelques minutes.',
+            );
+          const body = Buffer.from(text, 'utf8');
+          ctx.res.writeHead(200, {
+            'Content-Type': 'text/plain; charset=utf-8',
+            'Content-Length': body.length,
+            'Content-Disposition': `inline; filename="${document === 'readme' ? 'README' : 'CHANGELOG'}.md"`,
+            'Content-Security-Policy': "default-src 'none'; sandbox",
+            'X-Content-Type-Options': 'nosniff',
+            'Cache-Control': 'private, no-store',
+          });
+          ctx.res.end(body);
+        },
+      },
+    },
     {
       path: '/api/v1/projects/:projectId/releases/:tag/files/:file',
       guard: guards.project,
