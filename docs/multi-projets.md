@@ -85,9 +85,9 @@ les noms de profils.
 
 ## Changelog de chaque projet
 
-À chaque livraison de code, quel que soit le profil, le worker ajoute lui-même
+À chaque livraison de code, sauf pour DefilOrdi (voir plus bas), le worker ajoute lui-même
 une section en tête du fichier `CHANGELOG.md` du dépôt (créé s’il manque), avant
-les tests locaux et dans le même commit que la PR. Pour DefilOrdi, FunKart,
+les tests locaux et dans le même commit que la PR. Pour FunKart,
 TrameErgo et AutoCorrectNEPSY, la section porte la nouvelle version préparée par le worker et sa
 date (`## 1.4.2 — 2026-10-13`, ou `## [1.4.2] - 2026-10-13` pour TrameErgo et
 AutoCorrectNEPSY, format attendu par leur CI) ; pour PlaniFiKateur, dont la version n’est pas
@@ -98,6 +98,17 @@ la même exécution au lieu d’en ajouter une. L’historique déjà présent e
 conservé ; un `CHANGELOG.md` qui n’est pas un fichier ordinaire bloque la
 livraison. Chaque version fusionnée sur GitHub contient ainsi l’ensemble des
 modifications livrées depuis la mise en place du changelog.
+
+DefilOrdi fabrique son `CHANGELOG.md` lui-même : après chaque fusion, la CI de
+`main` publie la Release puis recopie le journal sur `main` (commit « Journal
+des modifications : version … [skip ci] »), à partir de la section « Prochaine
+version » de `changements.md` que l’agent rédige. Le worker n’écrit donc pas
+`CHANGELOG.md` dans ces PR et reprend celui de `main` s’il a été modifié. Un
+commit de `main` qui ne touche que ce fichier n’oblige pas non plus une PR en
+attente à être remise à jour : elle fusionne dès que sa CI est verte. Auparavant,
+chaque commit de journal relançait l’agent sur toutes les PR en attente, dont la
+CI se terminait juste après le commit de journal suivant : les cartes passaient
+sans fin de « fusion » à « au travail ».
 
 Cette règle fait partie du code installé du worker : elle ne dépend pas des
 workflows des dépôts et ne peut pas être modifiée par la branche livrée.

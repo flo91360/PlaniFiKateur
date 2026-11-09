@@ -8,7 +8,7 @@ import { createCodexRunner } from './codex.mjs';
 import { checkGeneratedFile, collectOutputs } from './outputs.mjs';
 import { createClaudeRunner } from './claude.mjs';
 import { validateAi, efforts, effortLabels } from './ai-settings.mjs';
-import { defaultExecutionProfile, installedProfile } from './execution-profile.mjs';
+import { defaultExecutionProfile, generatedChangelog, installedProfile } from './execution-profile.mjs';
 import { projectDiagnostic } from './runtime.mjs';
 import { prepareDelivery } from './delivery.mjs';
 import { protectedChanges, protectedQuestion, restoreProtected } from './protected.mjs';
@@ -183,7 +183,11 @@ export function createWorker(config, dependencies = {}) {
         summary: result.summary,
         date: new Date(task.job.checkpoint?.deliveryDate || Date.now()),
       });
-      checks.push(`Livraison ${version} : version et CHANGELOG.md vérifiés avant les tests`);
+      checks.push(
+        generatedChangelog(task.job.executionProfile)
+          ? `Livraison ${version} : version vérifiée avant les tests (CHANGELOG.md fabriqué par la CI du dépôt)`
+          : `Livraison ${version} : version et CHANGELOG.md vérifiés avant les tests`,
+      );
     }
     return { outputs, checks, artifactOnly: outputs.length > 0 && !previous && !repositoryChanged };
   }

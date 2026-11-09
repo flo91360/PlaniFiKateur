@@ -1,4 +1,4 @@
-import { readFile, lstat } from 'node:fs/promises';
+import { readFile, lstat, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   bumpProjectVersion,
@@ -9,8 +9,8 @@ import {
   readVersionText,
   versionFile,
 } from './project-version.mjs';
-import { recordChangelog, versionHeading } from './changelog.mjs';
-import { presetRules } from './execution-profile.mjs';
+import { CHANGELOG_FILE, recordChangelog, versionHeading } from './changelog.mjs';
+import { generatedChangelog, presetRules } from './execution-profile.mjs';
 
 const regularText = async (cwd, file) => {
   if (!(await lstat(join(cwd, file))).isFile()) throw new Error(`${file} doit être un fichier ordinaire.`);
@@ -57,6 +57,14 @@ export async function verifyDelivery(cwd, profile, command, base = `origin/${pro
   for (const module of versioning.modules || [])
     if (moduleVersion(await regularText(cwd, module)) !== version)
       throw new Error(`${module} doit porter la même version (__version__) que ${file}.`);
+  // CHANGELOG.md fabriqué par la CI du dépôt : la livraison le laisse tel qu’il est sur la branche cible.
+  if (generatedChangelog(profile)) {
+    const changed = await command(['git', 'diff', '--name-only', base, '--', CHANGELOG_FILE]);
+    const untracked = await command(['git', 'ls-files', '--others', '--exclude-standard', '--', CHANGELOG_FILE]);
+    if (changed.trim() || untracked.trim())
+      throw new Error(`${CHANGELOG_FILE} est fabriqué par la CI du dépôt : la livraison ne doit pas le modifier.`);
+    return { version, previous, notes: '' };
+  }
   const changelog = await regularText(cwd, 'CHANGELOG.md');
   const sections = changelog
     .replaceAll('\r\n', '\n')
@@ -73,6 +81,20 @@ export async function verifyDelivery(cwd, profile, command, base = `origin/${pro
 export async function prepareDelivery(cwd, profile, command, details) {
   const version = await bumpProjectVersion(cwd, profile, command);
   if (!version) throw new Error('Le profil ne permet pas de préparer une version pour cette livraison.');
-  await recordChangelog(cwd, { ...details, version, style: presetRules(profile).versioning?.changelog });
+  if (generatedChangelog(profile)) await restoreTargetChangelog(cwd, profile, command);
+  else await recordChangelog(cwd, { ...details, version, style: presetRules(profile).versioning?.changelog });
   return verifyDelivery(cwd, profile, command);
+}
+// Reprend CHANGELOG.md de la branche cible (ou le retire s’il n’y existe pas), y compris l’entrée
+// qu’une version précédente du worker avait écrite dans la branche de la tâche.
+async function restoreTargetChangelog(cwd, profile, command, base = `origin/${profile.branch}`) {
+  const existing = await command(['git', 'cat-file', '-e', `${base}:${CHANGELOG_FILE}`]).then(
+    () => true,
+    () => false,
+  );
+  if (existing) await command(['git', '--literal-pathspecs', 'checkout', base, '--', CHANGELOG_FILE]);
+  else {
+    await command(['git', 'rm', '--cached', '--quiet', '--ignore-unmatch', '--', CHANGELOG_FILE]);
+    await rm(join(cwd, CHANGELOG_FILE), { force: true });
+  }
 }
