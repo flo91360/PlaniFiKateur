@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.107 — 2026-11-09
+<!-- planifikateur:deploiement-sans-coupure -->
+
+- **Déploiements du site sans erreur visible** : Pendant une mise à jour du site sur le VPS, Caddy garde les requêtes quelques secondes le temps que la nouvelle version démarre, au lieu d’afficher une erreur 502.
+
 ## 0.1.106 — 2026-11-09
 <!-- planifikateur:documents-mis-en-forme -->
 

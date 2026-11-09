@@ -11,6 +11,8 @@ Railway. Trois conteneurs Docker y fonctionnent alors :
 
 Le port du site n’est jamais publié sur la machine : seul Caddy l’atteint, par le réseau Docker
 `planifikateur`. Les certificats sont gardés dans le volume `planifikateur-site-data-caddy`.
+La configuration de Caddy est écrite par `deploy/site.py` ; quand elle change, le mandataire est
+recréé une fois (coupure d’environ une seconde, certificats conservés).
 
 ## Mises à jour automatiques
 
@@ -22,7 +24,11 @@ du worker ([mises à jour du worker](worker-updates.md)) et partage son verrou :
 2. l’image est construite depuis le contenu exact de ce commit (`git archive`), pendant que le
    site actuel reste en ligne ;
 3. l’ancien site s’arrête puis le nouveau démarre sur le même volume (SQLite n’accepte qu’un
-   serveur à la fois) : le site est indisponible quelques secondes ;
+   serveur à la fois). Pendant ces quelques secondes, Caddy garde les requêtes et réessaie la
+   connexion jusqu’à 60 secondes au lieu de répondre une erreur 502 : une page ou une action
+   lancée à ce moment attend un peu puis aboutit. Seules les connexions refusées sont
+   réessayées, une requête déjà reçue par le site n’est jamais rejouée. Les mises à jour en
+   direct du tableau se reconnectent seules ;
 4. le nouveau site doit servir le commit attendu sur `/build-info.json` dans les deux minutes,
    sinon l’ancien est redémarré et cette révision n’est plus retentée (option `--retry` pour
    forcer) ; le conteneur précédent est gardé sous `planifikateur-site-previous` ;

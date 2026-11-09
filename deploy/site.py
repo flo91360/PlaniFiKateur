@@ -8,6 +8,7 @@ Secrets stay in the private env file passed to Docker; neither they nor command 
 import argparse
 import fcntl
 import gzip
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -26,9 +27,22 @@ UpdateError, command, failure_message, read_env, tested = (
 
 REVISION_LABEL = "io.planifikateur.site.revision"
 DOMAIN_LABEL = "io.planifikateur.site.domain"
+PROXY_CONFIG_LABEL = "io.planifikateur.site.proxy-config"
 # Caddy obtains and renews the Let's Encrypt certificate itself (ports 80 and 443).
 PROXY_IMAGE = "caddy:2.10-alpine"
 ALIAS = "site"
+# While the site restarts (old container stopped, new one starting), Caddy keeps the requests and
+# retries the connection instead of answering 502: an update is seen as a short wait, not an outage.
+# Only connections refused or unresolved are retried, so a request already received is never replayed.
+HOLD_SECONDS = 60
+CADDYFILE = """{domain} {{
+\treverse_proxy """ + ALIAS + """:3000 {{
+\t\tlb_try_duration """ + str(HOLD_SECONDS) + """s
+\t\tlb_try_interval 250ms
+\t}}
+}}
+"""
+PROXY_START = 'printf "%s" "$PLANIFIKATEUR_CADDYFILE" > /etc/caddy/Caddyfile && exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile'
 DOMAIN = re.compile(r"^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
 SHA = re.compile(r"^[0-9a-f]{40}$")
 PROBE = """fetch('http://127.0.0.1:3000/build-info.json',{signal:AbortSignal.timeout(5000)})
@@ -219,18 +233,25 @@ class Site:
         self.run(["docker", "image", "prune", "--force"], optional=True, timeout=600)
 
     def ensure_proxy(self, domain):
+        config = CADDYFILE.format(domain=domain)
+        digest = hashlib.sha256(config.encode()).hexdigest()[:16]
         labels = self.inspect(self.proxy, ".Config.Labels")
         if labels is not None and labels.get(DOMAIN_LABEL) != domain:
             self.log("Nom de domaine modifié : recréation du mandataire HTTPS.")
             self.remove(self.proxy)
             labels = None
+        elif labels is not None and labels.get(PROXY_CONFIG_LABEL) != digest:
+            self.log("Configuration du mandataire HTTPS modifiée : recréation (coupure d’une seconde environ).")
+            self.remove(self.proxy)
+            labels = None
         if labels is None:
             # Certificates live in their own volume, kept across updates (Let's Encrypt limits renewals).
             self.cmd("docker", "create", "--name", self.proxy, "--restart", "unless-stopped",
-                     "--label", DOMAIN_LABEL + "=" + domain, "--network", self.options.network,
+                     "--label", DOMAIN_LABEL + "=" + domain, "--label", PROXY_CONFIG_LABEL + "=" + digest,
+                     "--network", self.options.network, "--env", "PLANIFIKATEUR_CADDYFILE=" + config,
                      "-p", "80:80", "-p", "443:443", "-p", "443:443/udp",
                      "--mount", "source=" + self.options.volume + "-caddy,target=/data",
-                     PROXY_IMAGE, "caddy", "reverse-proxy", "--from", domain, "--to", ALIAS + ":3000")
+                     "--entrypoint", "sh", PROXY_IMAGE, "-c", PROXY_START)
         if not self.running(self.proxy):
             self.cmd("docker", "start", self.proxy)
 
