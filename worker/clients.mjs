@@ -2,6 +2,20 @@ import { mergeAgentPullRequest, targetIncluded } from './merge.mjs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { defaultExecutionProfile, installedProfile } from './execution-profile.mjs';
 
+// Exécution annulée parce qu’une autre, sur le même commit, l’a remplacée dans le groupe de
+// concurrence (ouverture et étiquette de la PR déclenchées dans la même seconde) : GitHub peut
+// donner à l’annulée le numéro le plus grand. Elle n’apporte aucun verdict et ne doit pas cacher
+// celui de sa remplaçante, créée au même moment ou après elle. Une exécution annulée qui a démarré
+// après toutes les autres continue, elle, de bloquer la fusion.
+export function supersededRun(run, runs) {
+  if (run.status !== 'completed' || run.conclusion !== 'cancelled') return false;
+  const created = Date.parse(run.created_at);
+  return (
+    Number.isFinite(created) &&
+    runs.some(other => other !== run && other.conclusion !== 'cancelled' && Date.parse(other.created_at) >= created)
+  );
+}
+
 export class PublicationPendingError extends Error {
   constructor() {
     super('GitHub n’a pas encore confirmé le commit testé sur la PR. Nouvelle tentative automatique.');
@@ -129,11 +143,10 @@ export function createGithubClient(token, transport = fetch, wait = delay) {
           undefined,
           signal,
         );
-        return runs
-          .filter(
-            run => run.head_sha === pr.head.sha && run.head_branch === pr.head.ref && run.event === 'pull_request',
-          )
-          .sort((a, b) => b.id - a.id)[0];
+        const candidates = runs.filter(
+          run => run.head_sha === pr.head.sha && run.head_branch === pr.head.ref && run.event === 'pull_request',
+        );
+        return candidates.filter(run => !supersededRun(run, candidates)).sort((a, b) => b.id - a.id)[0];
       };
       const latest = await latestRun();
       if (!latest || latest.status !== 'completed') return { merged: false, reason: 'tests_pending' };

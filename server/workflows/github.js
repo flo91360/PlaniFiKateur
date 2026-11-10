@@ -82,9 +82,17 @@ export function createGithub(
           )
             continue;
           if (pr?.repository !== repository.toLowerCase() || pr.headSha !== check.head_sha) continue;
+          // Une exécution annulée n’apporte aucun verdict : elle ne remplace pas un résultat connu,
+          // et une annulée retenue ne cache pas le résultat de sa remplaçante, même si GitHub a donné
+          // un numéro plus petit à cette dernière (ouverture et étiquette dans la même seconde).
+          const stored = run.githubChecks,
+            older =
+              !!stored &&
+              (stored.runId > check.id || (stored.runId === check.id && stored.attempt >= check.run_attempt));
           if (
-            run.githubChecks?.runId > check.id ||
-            (run.githubChecks?.runId === check.id && run.githubChecks?.attempt >= check.run_attempt)
+            check.conclusion === 'cancelled'
+              ? stored && (stored.conclusion !== 'cancelled' || older)
+              : older && stored.conclusion !== 'cancelled'
           )
             continue;
           run.githubChecks = {

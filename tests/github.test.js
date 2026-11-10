@@ -163,6 +163,21 @@ test('superseded CI does not requeue the agent and later successful tests allow 
   assert.equal(f.store.workflows.list(f.project.id, f.card.id)[0].id, run.id);
 });
 
+test('a cancelled run with a larger number does not hide the result of its replacement', async t => {
+  const f = await fixture(t);
+  f.submit(f.prepare());
+  const cancelled = f.check('cancelled');
+  cancelled.workflow_run.id++;
+  await f.webhook('workflow_run', cancelled);
+  const revision = f.store.getRevision();
+  await f.webhook('workflow_run', cancelled);
+  assert.equal(f.store.getRevision(), revision);
+  await f.webhook('workflow_run', f.check('success'));
+  const current = f.store.workflows.list(f.project.id, f.card.id)[0];
+  assert.equal(current.state, 'merging');
+  assert.deepEqual([current.githubChecks.runId, current.githubChecks.conclusion], [42, 'success']);
+});
+
 test('failed checks requeue work; obsolete commits, cancelled work and unmerged closure cannot finish it', async t => {
   const f = await fixture(t);
   f.submit(f.prepare());
@@ -338,6 +353,29 @@ test('worker merger never uses an older green run when newer tests are pending, 
       f.calls.some(call => call.method === 'PUT'),
       false,
     );
+  }
+});
+
+test('worker merger ignores a run cancelled by its replacement started in the same second', async () => {
+  const created_at = '2026-11-10T09:18:32Z';
+  for (const [later, merged] of [
+    [created_at, true],
+    ['2026-11-10T09:18:33Z', false],
+  ]) {
+    const f = mergeFixture({ run: { created_at } });
+    f.pr.head.ref = f.run.head_branch;
+    const cancelled = { ...f.run, id: 13, conclusion: 'cancelled', created_at: later };
+    const client = createGithubClient('test-token', async (url, options) => {
+      const parsed = new URL(url),
+        path = parsed.pathname;
+      if (path.endsWith('/ci.yml/runs')) return Response.json({ workflow_runs: [cancelled, f.run] });
+      return Response.json(
+        await f.request(path + parsed.search, options.method, options.body && JSON.parse(options.body)),
+      );
+    });
+    const result = await client.mergeWhenReady(repository, f.pr, async () => true);
+    // Annulée en même temps que sa remplaçante verte : la fusion passe. Démarrée après : elle bloque.
+    assert.equal(result.merged, merged);
   }
 });
 
