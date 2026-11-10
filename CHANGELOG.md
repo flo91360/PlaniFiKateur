@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.109 — 2026-11-11
+<!-- planifikateur:fusion-ci-annulee-defilordi -->
+
+- **Fusion malgré une CI annulée en double** : Une carte ne reste plus bloquée aux tests quand GitHub annule l’un des deux contrôles lancés en même temps à l’ouverture de la PR : le worker et le site retiennent le contrôle qui a réellement tourné.
+
 ## 0.1.108 — 2026-11-09
 <!-- planifikateur:defilordi-journal-fusion -->
 
