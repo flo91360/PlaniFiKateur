@@ -1,6 +1,7 @@
 # Améliorer les projets depuis PlaniFiKateur
 
-Le même worker AWS peut traiter PlaniFiKateur, DefilOrdi, FunKart et TrameErgo, une tâche à
+Le même worker AWS peut traiter PlaniFiKateur, DefilOrdi, FunKart, TrameErgo, AutoCorrectNEPSY et
+YaKaFauKon, une tâche à
 la fois. Le projet fournit le dépôt, le moteur IA, le modèle et le profil
 d’exécution ; la carte fournit le titre, la description, les pièces jointes et
 l’effort. Les secrets restent dans l’environnement privé du worker.
@@ -13,7 +14,7 @@ Dans **Paramètres du projet** :
 2. Choisir le moteur et le modèle IA.
 3. Dans **Exécution et connexion du projet**, choisir le profil et la branche
    cible, puis enregistrer. Sans réglage explicite, les dépôts nommés DefilOrdi,
-   FunKart et TrameErgo reçoivent automatiquement leur profil ; les autres utilisent le
+   FunKart, TrameErgo, AutoCorrectNEPSY et YaKaFauKon reçoivent automatiquement leur profil ; les autres utilisent le
    profil PlaniFiKateur.
 4. Dans **Connexion de l’agent**, autoriser ce projet pour l’identité du worker.
 5. Consulter le diagnostic du worker. Il vérifie les outils, la présence d’une
@@ -39,6 +40,7 @@ fusionne automatiquement. Le webhook signé termine la carte.
 | DefilOrdi | Node 22 ; `npm ci`, `npm run typecheck`, `npm test`, `npm run build` | `build-windows.yml`, nom **Windows .exe**, job **build** |
 | FunKart | Godot 4.4.1 ; import, `tests/test_profiles.gd`, `tests/autoplay.gd -- --fast` | `build.yml`, nom **Construire le jeu**, job **export** |
 | TrameErgo | Node 22 ; dans `tablette/` : `npm ci`, `npm test`, `npm run build` | `tablette.yml`, nom **Application tablette et Windows**, jobs **tablette** et **build** |
+| YaKaFauKon | Godot 4.7.2 ; import, `tests/run_tests.gd`, `tests/gameplay_test.gd`, `tests/profile_test.gd`, `tests/flow_test.gd` | `build.yml`, nom **Construire le jeu**, job **export** |
 | AutoCorrectNEPSY | Python 3.10+ ; environnement virtuel `.planifikateur/venv`, `pip install -e ".[test]"`, `pytest -q` | `tests.yml`, nom **Tests et exécutable Windows**, jobs **Version**, **Tests Python 3.10 (Linux)**, **Tests Python 3.12 (Linux)**, **Tests Python 3.12 (Windows)** et **Exécutable Windows** |
 
 TrameErgo est une application Vue 3 placée dans `tablette/`, publiée sur
@@ -49,6 +51,14 @@ Playwright (Chromium et WebKit) et l’installateur Windows sont les jobs
 livraison de code, le worker augmente la même version dans
 `tablette/package.json`, son lockfile, `tablette/src-tauri/Cargo.toml` et
 l’entrée du paquet dans `Cargo.lock`, comme le vérifie la CI du dépôt.
+
+YaKaFauKon est un jeu Godot 4.7.2 d’apprentissage de la frappe au clavier pour
+l’ergothérapie. Le worker importe le projet puis lance ses quatre scripts de
+tests (logique, partie jouée automatiquement, profils et sauvegardes, parcours
+des écrans), protégés comme les workflows. Le workflow **Construire le jeu** du
+dépôt rejoue ces tests, fabrique `YaKaFauKon.exe` et, quand `config/version` de
+`project.godot` change sur `main`, publie le tag et la Release avec la section
+`## [x.y.z] - date` que le worker écrit dans `CHANGELOG.md`.
 
 AutoCorrectNEPSY est un paquet Python (correction du subtest Copie de figures de
 la NEPSY-II, interface Tkinter et exécutable Windows). Le worker crée un
@@ -114,8 +124,10 @@ Cette règle fait partie du code installé du worker : elle ne dépend pas des
 workflows des dépôts et ne peut pas être modifiée par la branche livrée.
 
 Le conteneur contient Node 22 et 24, Chromium, Python 3 avec `venv` et le
-binaire officiel Godot 4.4.1 avec vérification SHA-512. La fabrication des
-exécutables Windows de DefilOrdi, TrameErgo et AutoCorrectNEPSY et des exports
+binaires officiels Godot 4.4.1 (FunKart) et 4.7.2 (YaKaFauKon), vérifiés par
+SHA-512 et rangés dans `/opt/godot/<version>/godot` : le worker place en tête du
+`PATH` la version du profil de la tâche. La fabrication des
+exécutables Windows de DefilOrdi, TrameErgo et AutoCorrectNEPSY et YaKaFauKon et des exports
 Windows/Linux de FunKart reste sur GitHub Actions. Le worker évite le
 téléchargement du binaire Electron pendant ses vérifications locales.
 
@@ -151,8 +163,9 @@ moteur même si le nouveau moteur du projet n’est pas encore configuré.
 Les anciennes exécutions déjà prises en charge conservent les commandes du
 worker précédent. Un ancien worker est refusé pour les nouveaux profils.
 
-Hors Docker, fournir Node 22 dans `PLANIFIKATEUR_NODE22_BIN` et placer Godot 4.4.1
-dans `PATH`. Le contrôleur continue de tourner avec Node 24.
+Hors Docker, fournir Node 22 dans `PLANIFIKATEUR_NODE22_BIN` et chaque version
+de Godot dans `PLANIFIKATEUR_GODOT_DIR/<version>/godot` (par défaut `/opt/godot`),
+ou à défaut dans `PATH`. Le contrôleur continue de tourner avec Node 24.
 
 ## API
 

@@ -97,6 +97,8 @@ export function readWorkerConfig(env = process.env) {
     revision,
     discovery,
     node22Bin: resolve(env.PLANIFIKATEUR_NODE22_BIN || '/opt/node22/bin'),
+    // Une version de Godot par sous-dossier : <godotRoot>/<version>/godot.
+    godotRoot: resolve(env.PLANIFIKATEUR_GODOT_DIR || '/opt/godot'),
     codexHome: resolve(env.CODEX_HOME || `${stateRoot}/codex`),
     model: env.PLANIFIKATEUR_CODEX_MODEL || undefined,
     claudeApiKey: env.ANTHROPIC_API_KEY || undefined,
