@@ -47,6 +47,7 @@ export const executionPresets = {
       'tests/execution-profiles.test.js',
       'tests/trameergo-profile.test.js',
       'tests/autocorrectnepsy-profile.test.js',
+      'tests/yakafaukon-profile.test.js',
       'tests/delivery.test.js',
       'tests/deploy.test.js',
       'tests/deploy/**',
@@ -107,6 +108,27 @@ export const executionPresets = {
     repositories: ['funkart'],
     versioning: { format: 'godot' },
     protectedPaths: ['tests/test_profiles.gd', 'tests/autoplay.gd'],
+  },
+  yakafaukon: {
+    label: 'YaKaFauKon — Godot',
+    description: 'Godot 4.7.2 · tests de logique, de jeu, de profils et d’écrans, exe Windows sur GitHub',
+    nodeMajor: 24,
+    godotVersion: '4.7.2',
+    branch: 'main',
+    installCommands: [['godot', '--headless', '--import']],
+    testCommands: [
+      ['godot', '--headless', '--path', '.', '--script', 'res://tests/run_tests.gd'],
+      ['godot', '--headless', '--path', '.', '--script', 'res://tests/gameplay_test.gd'],
+      ['godot', '--headless', '--path', '.', '--script', 'res://tests/profile_test.gd'],
+      ['godot', '--headless', '--path', '.', '--script', 'res://tests/flow_test.gd'],
+    ],
+    workflow: { file: 'build.yml', name: 'Construire le jeu', jobs: ['export'] },
+    repositories: ['yakafaukon'],
+    // La CI du dépôt exige une section « ## [x.y.z] » de CHANGELOG.md pour publier la Release.
+    versioning: { format: 'godot', changelog: 'bracketed' },
+    protectedPaths: ['tests/run_tests.gd', 'tests/gameplay_test.gd', 'tests/profile_test.gd', 'tests/flow_test.gd'],
+    instructions:
+      'Jeu Godot 4.7.2 (GDScript) pour apprendre la frappe au clavier en ergothérapie, joué par des enfants de 8 à 16 ans souvent dyslexiques ou TDAH : textes de l’interface simples, en français. Le code est dans scripts/ (core, world, ui, screens) et les données du jeu dans scripts/core/data.gd. Les quatre scripts de tests/ sont lancés par le worker et la CI ; tu peux ajouter des vérifications dans d’autres fichiers de tests/ appelés depuis le code testé, mais ne modifie pas ces quatre scripts. La CI fabrique YaKaFauKon.exe et publie la Release : ne range jamais d’exe ni de dossier build/ dans le dépôt. Laisse vides file_version et product_version dans export_presets.cfg. Le worker augmente lui-même config/version dans project.godot et complète CHANGELOG.md : ne les modifie pas.',
   },
   autocorrectnepsy: {
     label: 'AutoCorrectNEPSY — Python',

@@ -39,9 +39,11 @@ export function checkWorkflowTrigger(contents, branch) {
 
 export function runtimeEnvironment(profile, config) {
   const bin = profile.nodeMajor === 22 ? config.node22Bin : dirname(process.execPath);
+  // Godot de la version du profil d’abord, puis celui du PATH (worker hors Docker).
+  const godot = profile.godotVersion && config.godotRoot ? [join(config.godotRoot, profile.godotVersion)] : [];
   return {
     ...commandEnvironment(),
-    PATH: `${bin}${delimiter}${process.env.PATH || ''}`,
+    PATH: [...godot, bin, process.env.PATH || ''].join(delimiter),
     ...presetRules(profile).environment,
   };
 }

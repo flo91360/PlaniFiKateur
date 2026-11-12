@@ -10,7 +10,11 @@ COPY --from=node22 /usr/local/lib/node_modules/npm /opt/node22/lib/node_modules/
 RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /opt/node22/bin/npm \
     && ln -s ../lib/node_modules/npm/bin/npx-cli.js /opt/node22/bin/npx
 COPY worker/install-godot.py /tmp/install-godot.py
-RUN python3 /tmp/install-godot.py && rm /tmp/install-godot.py
+# Une version de Godot par dossier : le profil du projet choisit la sienne (PATH du worker).
+RUN python3 /tmp/install-godot.py --version 4.4.1 --destination /opt/godot/4.4.1/godot \
+    && python3 /tmp/install-godot.py --version 4.7.2 --destination /opt/godot/4.7.2/godot \
+    && ln -s /opt/godot/4.4.1/godot /usr/local/bin/godot \
+    && rm /tmp/install-godot.py
 # Le code du worker appartient à root : ni l'agent ni les tests du projet ne peuvent le modifier.
 COPY worker/package.json worker/package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund

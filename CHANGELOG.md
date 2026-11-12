@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.110 — 2026-11-12
+<!-- planifikateur:profil-yakafaukon -->
+
+- **Profil YaKaFauKon pour le jeu Godot 4.7.2** : Nouveau profil d’exécution pour flo91360/YaKaFauKon : import du projet et ses quatre scripts de tests sous Godot 4.7.2, job export du workflow Construire le jeu exigé avant la fusion, version de project.godot et changelog « ## [x.y.z] - date » écrits par le worker. L’image du worker installe Godot 4.4.1 et 4.7.2 côte à côte et chaque tâche utilise la version de son profil.
+
 ## 0.1.109 — 2026-11-11
 <!-- planifikateur:fusion-ci-annulee-defilordi -->
 
