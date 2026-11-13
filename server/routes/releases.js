@@ -1,5 +1,5 @@
 import { httpError } from '../http.js';
-import { markdownPage } from '../markdown.js';
+import { markdownPage, themeFromCookie } from '../markdown.js';
 
 // Exécutables des Releases GitHub du dépôt associé, réservés aux comptes qui voient le projet.
 export function releaseRoutes({ store, config, guards }) {
@@ -33,6 +33,7 @@ export function releaseRoutes({ store, config, guards }) {
               title: document === 'readme' ? 'Mode d’emploi' : 'Changelog',
               subtitle: repository.split('/').pop(),
               markdown: text,
+              theme: themeFromCookie(ctx.req.headers.cookie),
             }),
             'utf8',
           );
