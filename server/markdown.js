@@ -128,7 +128,8 @@ export function markdownToHtml(markdown) {
 }
 
 const STYLE = `
-:root{color-scheme:light dark;--primary:#28734b;--text:light-dark(#263b33,#e3ece8);--muted:light-dark(#646f6b,#9fb0a9);--page:light-dark(#f7faf9,#111816);--surface:light-dark(#fff,#1a2320);--tint:light-dark(#f2f7f4,#1f2a26);--border:light-dark(#e2e9e6,#2c3a35);--link:light-dark(#28734b,#a4dfc7)}
+:root{color-scheme:light dark}:root[data-theme=clair]{color-scheme:light}:root[data-theme=sombre]{color-scheme:dark}
+:root{--primary:#28734b;--text:light-dark(#263b33,#e3ece8);--muted:light-dark(#646f6b,#9fb0a9);--page:light-dark(#f7faf9,#111816);--surface:light-dark(#fff,#1a2320);--tint:light-dark(#f2f7f4,#1f2a26);--border:light-dark(#e2e9e6,#2c3a35);--link:light-dark(#28734b,#a4dfc7)}
 *{box-sizing:border-box}
 body{margin:0;background:var(--page);color:var(--text);font:16px/1.6 "DM Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 header{background:#193d2f;color:#eff6f3;padding:18px 24px}
@@ -147,10 +148,18 @@ li{margin:.2em 0}
 @media (max-width:640px){main{margin:0;border:0;border-radius:0;padding:4px 18px 24px}}
 `;
 
+// Thème choisi dans l’interface (cookie posé par src/lib/theme.js), ou null pour suivre le système.
+export function themeFromCookie(header) {
+  const value = /(?:^|;\s*)planifikateur_theme=([^;]*)/.exec(header || '')?.[1];
+  return value === 'clair' || value === 'sombre' ? value : null;
+}
+
 // Page complète, autonome (aucun script ni ressource externe) : le serveur la sert avec une CSP stricte.
-export function markdownPage({ title, subtitle, markdown }) {
+// Sans thème choisi, les couleurs suivent celui du système (`color-scheme: light dark`).
+export function markdownPage({ title, subtitle, markdown, theme = null }) {
+  const themed = theme === 'clair' || theme === 'sombre' ? ` data-theme="${theme}"` : '';
   return `<!DOCTYPE html>
-<html lang="fr">
+<html lang="fr"${themed}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">

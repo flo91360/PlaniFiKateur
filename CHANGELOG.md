@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.111 — 2026-11-13
+<!-- planifikateur:lecteurs-md-theme -->
+
+- **Thème des lecteurs Markdown** : Le README et le changelog ouverts depuis le tableau suivent désormais le thème clair ou sombre choisi dans le site, et plus seulement celui du système.
+
 ## 0.1.110 — 2026-11-12
 <!-- planifikateur:profil-yakafaukon -->
 

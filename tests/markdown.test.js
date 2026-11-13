@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { markdownToHtml, markdownPage } from '../server/markdown.js';
+import { markdownToHtml, markdownPage, themeFromCookie } from '../server/markdown.js';
+import { applyTheme, themeCookie } from '../src/lib/theme.js';
 
 test('a changelog is laid out with headings, nested lists, emphasis, code and links', () => {
   const html = markdownToHtml(
@@ -56,4 +57,31 @@ test('raw HTML and unsafe links in a document are never interpreted', () => {
   const page = markdownPage({ title: 'Mode d’emploi', subtitle: '<DefilOrdi>', markdown: '# A' });
   assert.match(page, /^<!DOCTYPE html>/);
   assert.match(page, /<p>&lt;DefilOrdi&gt;<\/p>/);
+});
+
+test('a document page follows the theme chosen in the interface, or the system one', () => {
+  assert.equal(themeFromCookie('planifikateur_session=abc; planifikateur_theme=sombre'), 'sombre');
+  assert.equal(themeFromCookie('planifikateur_theme=clair'), 'clair');
+  assert.equal(themeFromCookie('planifikateur_theme="><script>'), null);
+  assert.equal(themeFromCookie(undefined), null);
+  const dark = markdownPage({ title: 'Changelog', subtitle: 'depot', markdown: '# 1.0', theme: 'sombre' });
+  assert.match(dark, /<html lang="fr" data-theme="sombre">/);
+  assert.match(dark, /:root\[data-theme=sombre\]\{color-scheme:dark\}/);
+  assert.match(markdownPage({ title: 'T', subtitle: 's', markdown: '' }), /<html lang="fr">/);
+  assert.match(markdownPage({ title: 'T', subtitle: 's', markdown: '', theme: 'x' }), /<html lang="fr">/);
+});
+
+test('the interface copies its theme into a cookie read by the document pages', () => {
+  assert.equal(themeCookie('sombre'), 'planifikateur_theme=sombre; Path=/; Max-Age=31536000; SameSite=Lax');
+  assert.match(themeCookie('systeme'), /^planifikateur_theme=; Path=\/; Max-Age=0/);
+  const root = { dataset: {} };
+  const previous = globalThis.document;
+  globalThis.document = { documentElement: root, cookie: '' };
+  try {
+    applyTheme('clair');
+    assert.equal(root.dataset.theme, 'clair');
+    assert.match(globalThis.document.cookie, /^planifikateur_theme=clair;/);
+  } finally {
+    globalThis.document = previous;
+  }
 });

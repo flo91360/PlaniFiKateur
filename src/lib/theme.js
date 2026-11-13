@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useState } from 'react';
 
 export const THEME_STORAGE = 'planifikateur.theme';
+// Copie du choix dans un cookie lisible par le serveur : les pages qu’il sert lui-même (README,
+// changelog) n’exécutent aucun script et ne peuvent donc pas lire le stockage local.
+export const THEME_COOKIE = 'planifikateur_theme';
 export const THEMES = [
   { id: 'systeme', label: 'Comme le système' },
   { id: 'clair', label: 'Clair' },
@@ -20,10 +23,22 @@ export function storedTheme() {
   }
 }
 
+export function themeCookie(theme) {
+  return theme === 'clair' || theme === 'sombre'
+    ? `${THEME_COOKIE}=${theme}; Path=/; Max-Age=31536000; SameSite=Lax`
+    : `${THEME_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`;
+}
+
 export function applyTheme(theme, root = globalThis.document?.documentElement) {
   if (!root) return;
   if (theme === 'clair' || theme === 'sombre') root.dataset.theme = theme;
   else delete root.dataset.theme;
+  if (root !== globalThis.document?.documentElement) return;
+  try {
+    globalThis.document.cookie = themeCookie(theme);
+  } catch {
+    // Cookies refusés : les documents servis par le serveur suivent alors le thème du système.
+  }
 }
 
 const darkQuery = () => globalThis.matchMedia?.('(prefers-color-scheme: dark)');
