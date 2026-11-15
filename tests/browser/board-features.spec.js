@@ -1,6 +1,34 @@
 import { expect, seed, isSystemCard, test, login } from './support.js';
 
 test.describe('reliable and accessible interface', () => {
+  test('project symbols and names line up in the sidebar', { tag: '@mobile' }, async ({ page, appServer }) => {
+    await login(page, appServer);
+    const menu = page.getByRole('button', { name: 'Ouvrir les projets', exact: true });
+    if (await menu.isVisible()) await menu.click();
+    const nav = page.getByRole('navigation', { name: 'Projets' });
+    await expect(nav.locator('.project-symbol').first()).toBeVisible();
+    // Des symboles de largeurs différentes (emoji large, symbole texte étroit) gardent la même colonne.
+    const symbols = ['🤖', '🏎️', '◈', '❖', '✅', 'A'];
+    const positions = await nav.locator('.project-link').evaluateAll((links, list) => {
+      const rows = [...links];
+      while (rows.length < list.length) {
+        const copy = rows[0].cloneNode(true);
+        rows.at(-1).after(copy);
+        rows.push(copy);
+      }
+      return rows.map((link, i) => {
+        link.querySelector('.project-symbol').textContent = list[i % list.length];
+        const symbol = link.querySelector('.project-symbol').getBoundingClientRect();
+        const name = link.querySelector('.project-symbol + span').getBoundingClientRect();
+        return { symbol: Math.round(symbol.left), width: Math.round(symbol.width), name: Math.round(name.left) };
+      });
+    }, symbols);
+    expect(positions.length).toBeGreaterThan(1);
+    expect(new Set(positions.map(p => p.symbol)).size).toBe(1);
+    expect(new Set(positions.map(p => p.width)).size).toBe(1);
+    expect(new Set(positions.map(p => p.name)).size).toBe(1);
+  });
+
   test('closing a form with unsaved input asks before discarding it', async ({ page, appServer }) => {
     await login(page, appServer);
     await page.getByRole('button', { name: 'Ajouter une carte dans Bugs', exact: true }).click();
