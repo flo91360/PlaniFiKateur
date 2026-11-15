@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.112 — 2026-11-15
+<!-- planifikateur:aligner-icones-projets -->
+
+- **Icônes des projets alignées** : Dans la liste des projets, chaque icône occupe désormais une case de même largeur : les icônes et les noms des projets sont alignés, quelle que soit la largeur de l’emoji ou du symbole choisi.
+
 ## 0.1.111 — 2026-11-13
 <!-- planifikateur:lecteurs-md-theme -->
 
