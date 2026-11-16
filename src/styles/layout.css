@@ -124,12 +124,25 @@
   font-size: 21px;
   line-height: 1;
 }
+.project-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .project-count {
+  flex: 0 0 auto;
   margin-left: auto;
+  min-width: 26px;
+  box-sizing: border-box;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
   background: #ffffff0d;
   border-radius: 4px;
   padding: 2px 6px;
   font-size: 11px;
+  line-height: 16px;
   color: var(--sidebar-soft);
 }
 .new-project {

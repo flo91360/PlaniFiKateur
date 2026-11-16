@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.113 — 2026-11-16
+<!-- planifikateur:aligner-compteurs-projets -->
+
+- **Compteurs des projets alignés** : Dans la liste des projets, les pastilles de compteur ont une largeur fixe et forment une même colonne à droite ; un nom trop long est raccourci avec des points de suspension au lieu de décaler la pastille.
+
 ## 0.1.112 — 2026-11-15
 <!-- planifikateur:aligner-icones-projets -->
 

@@ -113,7 +113,9 @@ export default function Sidebar({ projects, currentId, user, offline, open, onCl
               <span className="project-symbol" style={{ color: p.color }}>
                 {p.emoji}
               </span>
-              <span>{p.name}</span>
+              <span className="project-name" title={p.name}>
+                {p.name}
+              </span>
               <span className="project-count">{ideaCards(p).length}</span>
             </button>
           ))}

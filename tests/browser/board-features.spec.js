@@ -1,7 +1,7 @@
 import { expect, seed, isSystemCard, test, login } from './support.js';
 
 test.describe('reliable and accessible interface', () => {
-  test('project symbols and names line up in the sidebar', { tag: '@mobile' }, async ({ page, appServer }) => {
+  test('project symbols, names and counts line up in the sidebar', { tag: '@mobile' }, async ({ page, appServer }) => {
     await login(page, appServer);
     const menu = page.getByRole('button', { name: 'Ouvrir les projets', exact: true });
     if (await menu.isVisible()) await menu.click();
@@ -19,14 +19,25 @@ test.describe('reliable and accessible interface', () => {
       return rows.map((link, i) => {
         link.querySelector('.project-symbol').textContent = list[i % list.length];
         const symbol = link.querySelector('.project-symbol').getBoundingClientRect();
-        const name = link.querySelector('.project-symbol + span').getBoundingClientRect();
-        return { symbol: Math.round(symbol.left), width: Math.round(symbol.width), name: Math.round(name.left) };
+        if (i === 4) link.querySelector('.project-name').textContent = 'AutoCorrectNEPSY avec un nom très long';
+        const name = link.querySelector('.project-name').getBoundingClientRect();
+        const count = link.querySelector('.project-count');
+        count.textContent = String([0, 1, 9, 12, 4, 7][i % 6]);
+        const box = count.getBoundingClientRect();
+        return {
+          symbol: Math.round(symbol.left),
+          width: Math.round(symbol.width),
+          name: Math.round(name.left),
+          count: [Math.round(box.left), Math.round(box.right), Math.round(box.top - link.getBoundingClientRect().top)],
+        };
       });
     }, symbols);
     expect(positions.length).toBeGreaterThan(1);
     expect(new Set(positions.map(p => p.symbol)).size).toBe(1);
     expect(new Set(positions.map(p => p.width)).size).toBe(1);
     expect(new Set(positions.map(p => p.name)).size).toBe(1);
+    // Les pastilles de compteur (0, 1, 9, 12…) forment aussi une colonne, même avec un nom long.
+    expect(new Set(positions.map(p => p.count.join())).size).toBe(1);
   });
 
   test('closing a form with unsaved input asks before discarding it', async ({ page, appServer }) => {
