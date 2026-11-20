@@ -619,6 +619,7 @@ function App() {
                 return { index: siblings.indexOf(selected), count: siblings.length };
               })()}
               onReorder={delta => reorderCard(selected.id, delta)}
+              onOpenCard={setSelectedId}
               onClose={() => setSelectedId(null)}
               onUpdate={patch => updateCard(selected.id, patch)}
               onDelete={() => {

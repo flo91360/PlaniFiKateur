@@ -130,3 +130,52 @@ test.describe('description assistant', () => {
     await expect(page.getByRole('button', { name: 'Rétablir le texte précédent', exact: true })).toHaveCount(0);
   });
 });
+
+test.describe('discussion summary', () => {
+  const calls = [];
+  const query = ({ prompt }) => {
+    calls.push(prompt);
+    return (async function* () {
+      yield { type: 'system', subtype: 'init', model: 'claude-opus-5-5' };
+      yield {
+        type: 'result',
+        subtype: 'success',
+        is_error: false,
+        structured_output: { title: 'Exporter les cartes en CSV', prompt: 'Objectif\nAjouter un export CSV.' },
+      };
+    })();
+  };
+  test.use({
+    refiner: createRefiner({
+      token: 'browser-subscription-secret',
+      query,
+      directory: join(tmpdir(), 'planifikateur-browser-summary'),
+    }),
+  });
+
+  test('one click turns a discussion into an improvement card ready for the agent', async ({ page, appServer }) => {
+    calls.length = 0;
+    await login(page, appServer);
+    await page.getByRole('button', { name: 'Ajouter une carte dans Discussion', exact: true }).click();
+    await page.getByLabel('Titre de la carte', { exact: true }).fill('Exporter les cartes ?');
+    await page.getByLabel('Description', { exact: true }).fill('Peut-on exporter les cartes ?');
+    await page.getByRole('button', { name: 'Créer la carte', exact: true }).click();
+    await page.getByRole('heading', { name: 'Exporter les cartes ?', exact: true }).click();
+    await page.getByLabel('Votre commentaire', { exact: true }).fill('Oui, en CSV avec les étiquettes.');
+    await page.getByRole('button', { name: 'Publier', exact: true }).click();
+    await expect(page.getByText('Modifications enregistrées')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Créer la carte d’implémentation dans Améliorations', exact: true }).click();
+    await expect(
+      page.getByText('Carte « Exporter les cartes en CSV » créée dans Améliorations : elle est confiée à l’agent.'),
+    ).toBeVisible();
+    expect(calls[0]).toContain('Question : Peut-on exporter les cartes ?');
+    expect(calls[0]).toContain('Oui, en CSV avec les étiquettes.');
+    await page.getByRole('button', { name: 'Ouvrir la carte', exact: true }).click();
+    await expect(page.getByLabel('Titre de la carte', { exact: true })).toHaveValue('Exporter les cartes en CSV');
+    await expect(page.getByLabel('Description', { exact: true })).toHaveValue('Objectif\nAjouter un export CSV.');
+    await expect(page.locator('.detail-status')).toContainText('dans Améliorations');
+    await expect(page.getByLabel('Statut', { exact: true })).toHaveValue('ready');
+    await expect(page.getByRole('button', { name: /Créer la carte d’implémentation/ })).toHaveCount(0);
+  });
+});

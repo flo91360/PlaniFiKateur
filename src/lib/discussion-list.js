@@ -1,4 +1,5 @@
 import { findDoneList, withDoneList } from './done-list.js';
+import { isInfosList } from './infos.js';
 
 // Liste « Discussion » d’un projet : ses cartes sont des questions pour échanger sur le
 // fonctionnement du projet et ses évolutions, jamais des demandes de modification. Elles ne sont
@@ -43,3 +44,12 @@ export function restartList(project) {
 
 // Listes tenues par le site dans chaque projet : Discussion, puis À tester.
 export const withProjectLists = project => withDoneList(withDiscussionList(project));
+
+// Liste qui reçoit une carte d’implémentation tirée d’une discussion : « Améliorations », sinon la
+// première liste de travail (ni Discussion, ni « À tester », ni Infos).
+const plainName = name => name.trim().toLocaleLowerCase('fr').normalize('NFD').replace(/\p{M}/gu, '');
+export function implementationList(project) {
+  const excluded = new Set([findDiscussionList(project)?.id, findDoneList(project)?.id]);
+  const lists = project.lists.filter(list => !excluded.has(list.id) && !isInfosList(project, list));
+  return lists.find(list => ['ameliorations', 'amelioration'].includes(plainName(list.name))) || lists[0] || null;
+}

@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.114 — 2026-11-20
+<!-- planifikateur:discussion-demande-ia -->
+
+- **Carte d’implémentation depuis une discussion** : Sous la discussion d’une carte de la liste Discussion, le bouton « Créer la carte d’implémentation » fait résumer par l’IA les demandes de la conversation et crée aussitôt une carte dans Améliorations : la demande en description, une copie des pièces jointes, et le statut « Prête à démarrer » pour que l’agent la prenne en charge.
+
 ## 0.1.113 — 2026-11-16
 <!-- planifikateur:aligner-compteurs-projets -->
 

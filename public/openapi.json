@@ -3697,6 +3697,140 @@
         }
       }
     },
+    "/api/v1/projects/{projectId}/cards/{cardId}/implementation": {
+      "post": {
+        "summary": "Créer la carte d’implémentation d’une carte Discussion",
+        "description": "Session personnelle, rôle éditeur au moins, corps vide. Le serveur lit la carte enregistrée de la liste Discussion (titre, question et commentaires, sans les messages du site) et l’envoie à Claude Code avec le contexte du projet et la documentation du dépôt, comme la reformulation. Claude Code s’exécute sans aucun outil : il résume ce que les personnes ont demandé ou validé en une demande d’implémentation et propose un titre. Les commentaires les plus anciens sont omis au-delà de 60 000 caractères. Le serveur crée ensuite la carte dans la liste « Améliorations » (sinon la première liste hors Discussion, « À tester » et Infos), avec la demande pour description, une copie des pièces jointes, la priorité, l’effort et les étiquettes de la discussion. Créée par un responsable, elle est « Prête à démarrer » et l’agent la prend en charge ; sinon elle reste en brouillon. Partage la limite de dix appels par minute et par compte avec la reformulation.",
+        "security": [
+          {
+            "ownerSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cardId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Carte créée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "card",
+                        "list",
+                        "attachments",
+                        "model",
+                        "sources"
+                      ],
+                      "properties": {
+                        "card": {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "title",
+                            "listId",
+                            "status"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "title": {
+                              "type": "string",
+                              "maxLength": 140,
+                              "description": "Titre proposé par l’IA, sinon celui de la carte Discussion."
+                            },
+                            "listId": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "ready",
+                                "draft"
+                              ],
+                              "description": "« ready » pour un responsable, « draft » sinon."
+                            }
+                          }
+                        },
+                        "list": {
+                          "type": "string",
+                          "description": "Nom de la liste de la nouvelle carte."
+                        },
+                        "attachments": {
+                          "type": "integer",
+                          "description": "Nombre de pièces jointes copiées."
+                        },
+                        "model": {
+                          "type": "string",
+                          "description": "Modèle ayant produit la demande."
+                        },
+                        "sources": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "description": "Documentation du dépôt transmise au modèle ; vide sans dépôt accessible."
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Carte hors de la liste Discussion (`not_discussion`) ou discussion vide (`empty_discussion`)."
+          },
+          "401": {
+            "description": "Session requise."
+          },
+          "403": {
+            "description": "Origine non autorisée ou rôle insuffisant."
+          },
+          "404": {
+            "description": "Projet ou carte inexistants (`card_not_found`)."
+          },
+          "409": {
+            "description": "Aucune liste ne peut recevoir la carte (`no_target_list`)."
+          },
+          "429": {
+            "description": "Plus de dix appels IA en une minute pour ce compte (`too_many_refinements`) ou limite de l’abonnement Claude atteinte (`ai_quota`)."
+          },
+          "502": {
+            "description": "Jeton refusé ou expiré (`ai_unauthorized`), modèle indisponible (`ai_rejected`), Claude Code indisponible (`ai_unavailable`) ou réponse inexploitable (`summary_invalid`)."
+          },
+          "503": {
+            "description": "IA non configurée sur le serveur (`ai_not_configured`) ou Claude saturé (`ai_busy`)."
+          },
+          "504": {
+            "description": "Pas de réponse de Claude en deux minutes (`ai_timeout`)."
+          }
+        }
+      }
+    },
     "/api/v1/session": {
       "get": {
         "summary": "État de connexion de l’interface",
