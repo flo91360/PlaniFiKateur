@@ -218,7 +218,7 @@ export function createWorker(config, dependencies = {}) {
 
   // Le modèle réalise la demande ; ses livrables et les tests sont vérifiés jusqu’à trois fois,
   // chaque échec lui étant renvoyé pour correction. Renvoie le résultat validé ou sa question.
-  async function produce(task, checkout, previous, ciFeedback = '') {
+  async function produce(task, checkout, previous, ciFeedback = '', { infrastructure = false } = {}) {
     const { job, reservation } = task;
     const runner = job.ai.engine === 'claude-code' ? claude : model;
     const onRuntime = async runtime => {
@@ -233,16 +233,17 @@ export function createWorker(config, dependencies = {}) {
         message: `IA utilisée : ${engineName(safe.engine)} · ${safe.model} · effort ${effortLabels[safe.effort]}.`,
       });
     };
-    let feedback = [checkout.conflicts, ciFeedback].filter(Boolean).join('\n\n');
     let cached = job.checkpoint;
-    // PR déjà publiée, reprise seulement parce que la branche cible a avancé : sans conflit, sans
-    // échec de CI ni nouvelle demande, le résultat IA publié reste valable. Seuls la version et les
-    // tests sont refaits sur le dépôt à jour, sans nouvel appel au modèle.
+    // PR déjà publiée, reprise seulement parce que la branche cible a avancé ou parce que la CI a
+    // échoué pour une raison d’infrastructure (panne passagère du runner GitHub) : sans conflit ni
+    // nouvelle demande, le résultat IA publié reste valable. Seuls la version et les tests sont
+    // refaits sur le dépôt à jour, sans nouvel appel au modèle ; le nouveau commit relance la CI.
     const refresh =
       !!cached?.published &&
-      !feedback &&
-      reservation.run.githubChecks?.conclusion !== 'failure' &&
+      !checkout.conflicts &&
+      (infrastructure || (!ciFeedback && reservation.run.githubChecks?.conclusion !== 'failure')) &&
       cached.context === requestFingerprint(reservation.run, job);
+    let feedback = [checkout.conflicts, refresh ? '' : ciFeedback].filter(Boolean).join('\n\n');
     if (cached) {
       try {
         if (
@@ -268,7 +269,9 @@ export function createWorker(config, dependencies = {}) {
         await reservation.action('progress', {
           message:
             refresh && round === 0
-              ? `${checkout.targetBranch} a avancé : la PR est mise à jour avec le résultat IA déjà publié, sans nouvel appel au modèle.`
+              ? infrastructure
+                ? 'Les contrôles GitHub ont échoué à cause de l’infrastructure (runner GitHub), pas du code : la PR est republiée avec le résultat IA déjà publié, sans nouvel appel au modèle.'
+                : `${checkout.targetBranch} a avancé : la PR est mise à jour avec le résultat IA déjà publié, sans nouvel appel au modèle.`
               : 'Résultat IA sauvegardé : reprise des vérifications sans nouvel appel au modèle.',
         });
       } else {
@@ -473,22 +476,34 @@ export function createWorker(config, dependencies = {}) {
 
   // Après un échec des contrôles GitHub, le modèle reçoit les jobs et étapes en échec avec la fin
   // de leurs journaux, plutôt qu’un simple « les contrôles ont échoué ».
+  // Un échec dont tous les jobs relèvent de l’infrastructure (voir infrastructureFailure) est signalé :
+  // la PR est alors republiée sans demander de correction au modèle.
   async function failedChecksFeedback({ job, reservation }) {
     const checks = reservation.run.githubChecks;
-    if (checks?.conclusion !== 'failure' || !Number.isSafeInteger(checks.runId) || !github.failedChecks) return '';
+    if (checks?.conclusion !== 'failure' || !Number.isSafeInteger(checks.runId) || !github.failedChecks)
+      return { feedback: '', infrastructure: false };
     const intro = `Les contrôles GitHub de la PR ont échoué${checks.url ? ` (${checks.url})` : ''}.`;
     try {
       const failed = await github.failedChecks(job.repository, checks.runId, reservation.signal);
-      if (!failed.length) return `${intro} Reproduis l’échec localement et corrige sa cause.`;
-      return `${intro} Corrige la cause de ces échecs :\n\n${failed
-        .map(
-          check =>
-            `Job « ${check.name} »${check.steps.length ? ` — étapes en échec : ${check.steps.join(', ')}` : ''}${check.log ? `\nFin du journal :\n${clean(check.log)}` : ''}`,
-        )
-        .join('\n\n')}`;
+      if (!failed.length)
+        return { feedback: `${intro} Reproduis l’échec localement et corrige sa cause.`, infrastructure: false };
+      return {
+        feedback: `${intro} Corrige la cause de ces échecs :\n\n${failed
+          .map(
+            check =>
+              `Job « ${check.name} »${check.steps.length ? ` — étapes en échec : ${check.steps.join(', ')}` : ''}${check.log ? `\nFin du journal :\n${clean(check.log)}` : ''}`,
+          )
+          .join('\n\n')}`,
+        // Une seule republication sans le modèle : si l’échec revient, le modèle corrige.
+        infrastructure:
+          (reservation.run.ciFailures || 0) <= 1 && failed.every(check => infrastructureFailure(check.log)),
+      };
     } catch (error) {
       if (reservation.signal.aborted) throw error;
-      return `${intro} Leurs journaux sont indisponibles (${clean(error.message)}) : reproduis l’échec localement et corrige sa cause.`;
+      return {
+        feedback: `${intro} Leurs journaux sont indisponibles (${clean(error.message)}) : reproduis l’échec localement et corrige sa cause.`,
+        infrastructure: false,
+      };
     }
   }
 
@@ -575,14 +590,14 @@ export function createWorker(config, dependencies = {}) {
         await github.unlabel(job.repository, pr.number, reservation.signal);
     }
     log(`Prise en charge ${reservation.run.id}.`);
-    const ciFeedback = await failedChecksFeedback(task);
+    const ci = await failedChecksFeedback(task);
     await reservation.action('progress', {
       message: `Le worker prépare le dépôt et lance ${engineName(job.ai.engine)}.`,
     });
     const checkout = await reservation.phase('préparation du dépôt', config.setupTimeoutMs, () =>
       prepareCheckout(task),
     );
-    const produced = await produce(task, checkout, previous, ciFeedback);
+    const produced = await produce(task, checkout, previous, ci.feedback, { infrastructure: ci.infrastructure });
     if (produced.status === 'question') return waitForAnswer(task, produced.question);
     return reservation.phase('publication', config.publicationTimeoutMs, () => publish(task, checkout, produced));
   }
@@ -781,6 +796,21 @@ export function createWorker(config, dependencies = {}) {
       return { status: 'idle' };
     },
   };
+}
+
+// Fin de journal d’un job GitHub en échec pour une raison étrangère au code : paquets système ou
+// navigateurs introuvables, réseau coupé, service GitHub indisponible, runner arrêté ou disque plein.
+// Ces échecs se résolvent en relançant les contrôles ; le modèle n’a rien à corriger.
+const INFRASTRUCTURE_FAILURES = [
+  /Unable to locate package|has no installation candidate|Failed to install browsers/i,
+  /Temporary failure resolving|Could not resolve host|getaddrinfo (EAI_AGAIN|ENOTFOUND)/i,
+  /npm (ERR!|error) (code|errno) (ECONNRESET|ETIMEDOUT|EAI_AGAIN)\b/,
+  /\b(502 Bad Gateway|503 Service Unavailable|504 Gateway Time-?out)\b/i,
+  /runner has received a shutdown signal|lost communication with the server|No space left on device/i,
+  /Failed to download action|Unable to resolve action/i,
+];
+export function infrastructureFailure(log) {
+  return typeof log === 'string' && INFRASTRUCTURE_FAILURES.some(pattern => pattern.test(log));
 }
 
 export function workflowScopeRefused(output) {

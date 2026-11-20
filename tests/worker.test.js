@@ -9,7 +9,7 @@ import { createStore } from '../server/store.js';
 import { createAppServer } from '../server/index.js';
 import { seedAccount } from './helpers/accounts.mjs';
 import { readWorkerConfig } from '../worker/config.mjs';
-import { createWorker } from '../worker/worker.mjs';
+import { createWorker, infrastructureFailure } from '../worker/worker.mjs';
 import { createState } from '../worker/state.mjs';
 import { commandEnvironment, runCommand } from '../worker/commands.mjs';
 import { createCodexRunner, taskPrompt } from '../worker/codex.mjs';
@@ -1849,6 +1849,57 @@ test('after failed GitHub checks the model receives the failed jobs and the end 
   assert.match(feedback, /run\/77/);
   assert.match(feedback, /Job « Tests navigateur » — étapes en échec : Playwright/);
   assert.match(feedback, /menu introuvable/);
+});
+
+test('a GitHub checks failure caused by the runner republishes the PR once without calling the model', async t => {
+  const f = await fixture(t);
+  f.prepare();
+  const fail = (sha, id) => {
+    const { workflow } = f.current().executionProfile;
+    f.store.workflows.githubChecks({
+      action: 'completed',
+      repository: { full_name: repository },
+      workflow_run: {
+        id,
+        run_attempt: 1,
+        name: workflow.name,
+        path: `.github/workflows/${workflow.file}`,
+        event: 'pull_request',
+        status: 'completed',
+        conclusion: 'failure',
+        head_sha: sha,
+        head_repository: { full_name: repository },
+        html_url: `https://github.com/run/${id}`,
+      },
+    });
+  };
+  f.github.failedChecks = async () => [
+    {
+      name: 'tablette',
+      steps: ['Parcours dans le navigateur (Playwright)'],
+      log: 'E: Unable to locate package libgtk-4-1\nFailed to install browsers',
+    },
+  ];
+  const first = await f.worker.tick();
+  fail(first.sha, 77);
+  assert.equal(f.current().state, 'ready');
+  assert.equal((await f.worker.tick()).status, 'merging');
+  assert.equal(f.modelCalls.length, 1, 'Le modèle n’est pas sollicité pour une panne du runner.');
+  // La même panne revient : le modèle reçoit cette fois les journaux pour corriger.
+  fail(f.current().submissions.at(-1).pullRequest.headSha, 78);
+  assert.equal(f.current().state, 'ready');
+  await f.worker.tick();
+  assert.equal(f.modelCalls.length, 2);
+  assert.match(f.modelCalls[1].feedback, /Unable to locate package/);
+});
+
+test('infrastructureFailure recognises runner failures but not a failing test', () => {
+  assert.ok(infrastructureFailure('E: Unable to locate package libopus0'));
+  assert.ok(infrastructureFailure('npm error code ECONNRESET'));
+  assert.ok(infrastructureFailure('The runner has received a shutdown signal.'));
+  assert.ok(!infrastructureFailure('AssertionError: expected 2 to equal 3'));
+  assert.ok(!infrastructureFailure(''));
+  assert.ok(!infrastructureFailure(undefined));
 });
 
 test('a follow-up failure on one task is retried later and never blocks the queue', async t => {
