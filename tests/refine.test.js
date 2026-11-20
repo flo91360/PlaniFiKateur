@@ -6,8 +6,8 @@ import { join } from 'node:path';
 import { createStore } from '../server/store.js';
 import { createAppServer } from '../server/index.js';
 import { readConfig } from '../server/config.js';
-import { createRefiner, validateRefinement } from '../server/refine.js';
-import { seedAccount, loginRequest } from './helpers/accounts.mjs';
+import { createRefiner, summaryPrompt, validateRefinement } from '../server/refine.js';
+import { seedAccount, loginRequest, testEmail } from './helpers/accounts.mjs';
 
 const token = 'sk-ant-oat01-test-subscription-token';
 const output = { prompt: 'Objectif\nAjouter un bouton.', questions: [] };
@@ -280,4 +280,115 @@ test('the refine route returns a proposal with project context and limits each a
   assert.equal(limited.status, 429);
   assert.equal((await limited.json()).error.code, 'too_many_refinements');
   assert.equal(calls.length, 10);
+});
+
+test('a discussion card becomes an implementation card ready for the agent', async t => {
+  const { query, calls } = fakeQuery([
+    { type: 'system', subtype: 'init', model: 'claude-opus-5-5' },
+    success({ title: '  Exporter   les cartes en CSV ', prompt: 'Objectif\nAjouter un export CSV.' }),
+  ]);
+  const directory = await mkdtemp(join(tmpdir(), 'planifikateur-summary-route-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const { base, Cookie, store } = await fixture(t, { refiner: createRefiner({ token, query, directory }) });
+  const initial = store.read();
+  const project = initial.projects.find(item => item.id === 'planifikateur');
+  const data = Buffer.from('maquette').toString('base64');
+  project.cards.push(
+    {
+      id: 'summary-question',
+      listId: 'planifikateur-discussion',
+      title: 'Exporter ?',
+      description: 'Peut-on exporter les cartes ?',
+      status: 'draft',
+      priority: 'high',
+      tags: ['Export'],
+      checklist: [],
+      attachments: [{ id: 'summary-file', name: 'maquette.txt', type: 'text/plain', size: 8, data }],
+      comments: [
+        { id: 'summary-c1', author: 'Alice', text: 'Ajoutons un export CSV.', date: '2026-11-20T09:00:00.000Z' },
+      ],
+    },
+    {
+      ...structuredClone(project.cards[0]),
+      id: 'summary-elsewhere',
+      listId: 'bugs',
+      comments: [],
+      checklist: [],
+      attachments: [],
+    },
+  );
+  store.write(initial.projects, initial.revision, store.userByEmail(testEmail));
+  const implement = (cardId, headers = { Cookie }) =>
+    fetch(`${base}/api/v1/projects/planifikateur/cards/${cardId}/implementation`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: '{}',
+    });
+  assert.equal((await implement('summary-question', {})).status, 401);
+  assert.equal((await implement('missing')).status, 404);
+  const outside = await implement('summary-elsewhere');
+  assert.equal(outside.status, 400);
+  assert.equal((await outside.json()).error.code, 'not_discussion');
+  const response = await implement('summary-question');
+  assert.equal(response.status, 201);
+  const result = (await response.json()).data;
+  assert.deepEqual(result, {
+    card: { id: result.card.id, title: 'Exporter les cartes en CSV', listId: 'improvements', status: 'ready' },
+    list: 'Améliorations',
+    attachments: 1,
+    model: 'claude-opus-5-5',
+    sources: [],
+  });
+  const created = store.read().projects[0].cards.find(item => item.id === result.card.id);
+  assert.equal(created.description, 'Objectif\nAjouter un export CSV.');
+  assert.equal(created.status, 'ready');
+  assert.equal(created.priority, 'high');
+  assert.deepEqual(created.tags, ['Export']);
+  assert.equal(created.attachments.length, 1);
+  assert.notEqual(created.attachments[0].id, 'summary-file');
+  assert.equal(created.attachments[0].data, data);
+  assert.equal(created.attachments[0].name, 'maquette.txt');
+  const [{ prompt, options }] = calls;
+  assert.deepEqual(options.tools, []);
+  assert.deepEqual(options.outputFormat.schema.required, ['title', 'prompt']);
+  assert.match(options.systemPrompt, /demande d’implémentation/);
+  for (const expected of [
+    'Projet : PlaniFiKateur',
+    'Titre : Exporter ?',
+    'Question : Peut-on exporter les cartes ?',
+    'Alice (personne)',
+    'Ajoutons un export CSV.',
+  ])
+    assert.ok(prompt.includes(expected), expected);
+});
+
+test('the summary prompt labels agent answers and leaves out site messages', () => {
+  const prompt = summaryPrompt({
+    project: { name: 'Projet' },
+    card: {
+      title: 'Exporter ?',
+      description: '',
+      comments: [
+        { author: 'Agent IA', authorKind: 'agent', text: 'Seul le JSON existe.', date: '2026-11-20T09:00:00.000Z' },
+        { author: 'Florian', authorKind: 'user', text: 'Ajoutons le CSV.' },
+        { author: 'GitHub', authorKind: 'system', text: 'PR fusionnée.' },
+      ],
+    },
+  });
+  assert.equal(
+    prompt,
+    'Projet : Projet\n\nDiscussion à synthétiser :\n<<<\nTitre : Exporter ?\n\nCommentaires :\n[Agent IA (agent IA), 2026-11-20T09:00:00.000Z]\nSeul le JSON existe.\n\n[Florian (personne)]\nAjoutons le CSV.\n>>>',
+  );
+});
+
+test('a long discussion keeps its question and latest comments', () => {
+  const comments = Array.from({ length: 20 }, (_, index) => ({
+    author: 'Florian',
+    text: `${index} ${'x'.repeat(5000)}`,
+  }));
+  const prompt = summaryPrompt({ card: { title: 'Idée', description: 'Question', comments } });
+  assert.match(prompt, /\(9 commentaires plus anciens omis\)/);
+  assert.ok(prompt.includes('Question : Question'));
+  assert.ok(prompt.includes(`19 ${'x'.repeat(10)}`));
+  assert.ok(!prompt.includes(`\n8 ${'x'.repeat(10)}`));
 });

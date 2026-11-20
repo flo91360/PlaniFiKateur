@@ -5,6 +5,7 @@ import Attachments from './Attachments.jsx';
 import Avatar from './Avatar.jsx';
 import CardSubscription from './CardSubscription.jsx';
 import DescriptionAssistant from './DescriptionAssistant.jsx';
+import DiscussionSummary from './DiscussionSummary.jsx';
 import Dialog from './Dialog.jsx';
 import LocalForm from './LocalForm.jsx';
 import Status, { PriorityOptions, StatusOptions } from './Status.jsx';
@@ -64,7 +65,7 @@ function CardResources({ card }) {
 
 // Discussion entre l’agent et les personnes : questions de l’agent et réponses. L’activité de l’agent
 // figure dans le bandeau « Exécution IA » ; `statusHint` rappelle l’attente quand ce bandeau est absent.
-function Discussion({ card, user, readOnly, statusHint, onUpdate }) {
+function Discussion({ card, user, readOnly, statusHint, onUpdate, children }) {
   const [comment, setComment] = useState('');
   const publish = () => {
     if (!comment.trim()) return;
@@ -122,6 +123,7 @@ function Discussion({ card, user, readOnly, statusHint, onUpdate }) {
           </button>
         </LocalForm>
       )}
+      {children}
     </div>
   );
 }
@@ -199,6 +201,7 @@ export default function CardDetail({
   lists,
   position = null,
   onReorder = () => {},
+  onOpenCard = () => {},
   onClose,
   onUpdate,
   onDelete,
@@ -399,7 +402,21 @@ export default function CardDetail({
             readOnly={requestLocked}
             onChange={attachments => update({ attachments })}
           />
-          <Discussion card={card} user={user} readOnly={readOnly} statusHint={!executionShown} onUpdate={onUpdate} />
+          <Discussion card={card} user={user} readOnly={readOnly} statusHint={!executionShown} onUpdate={onUpdate}>
+            {discussion && !readOnly && !offline && (
+              <DiscussionSummary
+                projectId={projectId}
+                card={card}
+                lists={lists}
+                canLaunch={canLaunch}
+                onCreated={onWorkflowRefresh}
+                onOpenCard={cardId => {
+                  saveFields();
+                  onOpenCard(cardId);
+                }}
+              />
+            )}
+          </Discussion>
           {!offline && <ActivityPanel projectId={projectId} cardId={card.id} />}
         </div>
         <aside className="detail-side">

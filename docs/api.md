@@ -234,6 +234,27 @@ atteinte (`ai_quota`), 502 pour un jeton refusé ou expiré (`ai_unauthorized`),
 modèle indisponible (`ai_rejected`) ou une réponse inexploitable, 503 si Claude est
 saturé (`ai_busy`), 504 au-delà de deux minutes (`ai_timeout`).
 
+Depuis une carte de la liste Discussion, `POST /api/v1/projects/{projectId}/cards/{cardId}/implementation`
+(corps vide, rôle éditeur au moins) crée la carte d’implémentation et répond 201 avec
+`{ "data": { "card": { "id": "…", "title": "…", "listId": "…", "status": "ready" }, "list": "Améliorations", "attachments": 1, "model": "…", "sources": ["README"] } }`.
+Le serveur lit la carte enregistrée : son titre, sa question et ses commentaires
+(personnes et agent, sans les messages du site), avec le même contexte de projet
+et de dépôt que la reformulation. Claude Code, toujours sans outil, résume ce que
+les personnes ont demandé ou validé en une demande d’implémentation structurée,
+signale « À préciser » les points restés ouverts et propose un titre (celui de la
+carte Discussion à défaut). Au-delà de 60 000 caractères, les commentaires les
+plus anciens sont omis. La carte est créée dans la liste « Améliorations » (sinon
+la première liste hors Discussion, « À tester » et Infos), avec la demande pour
+description, une copie des pièces jointes, la priorité, l’effort et les étiquettes
+de la discussion. Créée par un responsable, elle est « Prête à démarrer » et
+l’agent la prend en charge sans autre étape ; créée par un éditeur, elle reste en
+brouillon. Dans l’interface, c’est le bouton « Créer la carte d’implémentation »
+sous la discussion. Erreurs : 400 pour une carte hors Discussion
+(`not_discussion`) ou une discussion vide (`empty_discussion`), 404
+(`card_not_found`), 409 sans liste de destination (`no_target_list`), puis les
+mêmes erreurs IA que la reformulation (`summary_invalid` pour une réponse
+inexploitable) ; la limite de dix appels par minute est commune aux deux routes.
+
 Le suivi personnel des cartes utilise les routes de souscription documentées dans [Comptes individuels](accounts.md#suivre-une-carte), avec une session et un projet explicite.
 
 ## Travail des agents
