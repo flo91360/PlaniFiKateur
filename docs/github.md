@@ -1,4 +1,4 @@
-# PR d’agent : tests puis fusion automatique — v0.1.114
+# PR d’agent : tests puis fusion automatique — v0.1.115
 
 Toutes les nouvelles tâches sont livrées par PR GitHub avec fusion automatique,
 sans sélection du mode de livraison. Depuis la v0.1.28, un responsable peut exiger

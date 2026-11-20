@@ -131,7 +131,7 @@ Conserver également des copies hors du volume Railway.
 npm run export:preview
 ```
 
-`dist/PlaniFiKateur-apercu-v0.1.114.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
+`dist/PlaniFiKateur-apercu-v0.1.115.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 
@@ -160,7 +160,8 @@ Quand la discussion a abouti, **Créer la carte d’implémentation**, sous les
 commentaires, fait résumer par l’IA les demandes de la conversation et crée
 aussitôt une carte dans Améliorations : la demande en description, une copie des
 pièces jointes, la priorité et les étiquettes de la discussion. Créée par un
-responsable, elle passe « Prête à démarrer » et l’agent la prend en charge.
+responsable, elle passe « Prête à démarrer » et l’agent la prend en charge. La
+carte Discussion est alors supprimée et la nouvelle carte s’ouvre à sa place.
 
 La colonne **Info / Infos** contient une carte de version propre au dépôt associé
 au projet : son titre est le dernier tag publié et sa description indique sa date

@@ -336,10 +336,13 @@ test('a discussion card becomes an implementation card ready for the agent', asy
     card: { id: result.card.id, title: 'Exporter les cartes en CSV', listId: 'improvements', status: 'ready' },
     list: 'Améliorations',
     attachments: 1,
+    deleted: 'summary-question',
     model: 'claude-opus-5-5',
     sources: [],
   });
-  const created = store.read().projects[0].cards.find(item => item.id === result.card.id);
+  const cards = store.read().projects[0].cards;
+  assert.ok(!cards.some(item => item.id === 'summary-question'));
+  const created = cards.find(item => item.id === result.card.id);
   assert.equal(created.description, 'Objectif\nAjouter un export CSV.');
   assert.equal(created.status, 'ready');
   assert.equal(created.priority, 'high');
