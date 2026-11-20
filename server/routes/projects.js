@@ -109,7 +109,7 @@ export function projectRoutes({ store, config, auth, guards, refiner }) {
     {
       // Carte d’implémentation tirée d’une carte de la liste Discussion : l’IA résume les demandes de
       // la conversation, puis la carte est créée dans Améliorations avec une copie des pièces jointes,
-      // prête pour l’agent quand un responsable la crée.
+      // prête pour l’agent quand un responsable la crée, et la carte Discussion est supprimée.
       path: '/api/v1/projects/:projectId/cards/:cardId/implementation',
       guard: guards.project,
       methods: {
@@ -150,12 +150,21 @@ export function projectRoutes({ store, config, auth, guards, refiner }) {
             checklist: [],
             attachments: (card.attachments || []).map(file => ({ ...file, id: createId() })),
           };
-          store.change([{ type: 'card.create', projectId: project.id, card: created }], ctx.user, { strict: true });
+          // La carte Discussion a rempli son rôle : elle est supprimée dans la même transaction.
+          store.change(
+            [
+              { type: 'card.create', projectId: project.id, card: created },
+              { type: 'card.delete', projectId: project.id, cardId: card.id },
+            ],
+            ctx.user,
+            { strict: true },
+          );
           ctx.send(201, {
             data: {
               card: { id: created.id, title: created.title, listId: list.id, status: created.status },
               list: list.name,
               attachments: created.attachments.length,
+              deleted: card.id,
               model: result.model,
               sources: documents.map(file => file.name),
             },

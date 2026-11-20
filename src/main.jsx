@@ -176,6 +176,13 @@ function App() {
 
   // L’adresse suit le projet et la carte affichés ; ouvrir une carte ajoute une entrée d’historique,
   // pour que « Précédent » la referme. Une adresse inconnue (carte supprimée, projet masqué) est oubliée.
+  // Carte d’implémentation créée par le serveur depuis une discussion : ouverte dès sa réception.
+  const [awaitedCard, setAwaitedCard] = useState(null);
+  useEffect(() => {
+    if (!awaitedCard || !project?.cards.some(card => card.id === awaitedCard)) return;
+    setSelectedId(awaitedCard);
+    setAwaitedCard(null);
+  }, [awaitedCard, project]);
   useEffect(() => {
     if (offlineMode || acceptingInvitation || !ready || !project) return;
     if (selectedId && !selected) {
@@ -619,7 +626,13 @@ function App() {
                 return { index: siblings.indexOf(selected), count: siblings.length };
               })()}
               onReorder={delta => reorderCard(selected.id, delta)}
-              onOpenCard={setSelectedId}
+              onImplemented={result => {
+                setSelectedId(null);
+                setAwaitedCard(result.card.id);
+                setNotice(
+                  `Carte « ${result.card.title} » créée dans ${result.list}${result.card.status === 'ready' ? ', confiée à l’agent' : ''} ; carte Discussion supprimée`,
+                );
+              }}
               onClose={() => setSelectedId(null)}
               onUpdate={patch => updateCard(selected.id, patch)}
               onDelete={() => {

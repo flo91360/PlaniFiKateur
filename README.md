@@ -160,7 +160,8 @@ Quand la discussion a abouti, **Créer la carte d’implémentation**, sous les
 commentaires, fait résumer par l’IA les demandes de la conversation et crée
 aussitôt une carte dans Améliorations : la demande en description, une copie des
 pièces jointes, la priorité et les étiquettes de la discussion. Créée par un
-responsable, elle passe « Prête à démarrer » et l’agent la prend en charge.
+responsable, elle passe « Prête à démarrer » et l’agent la prend en charge. La
+carte Discussion est alors supprimée et la nouvelle carte s’ouvre à sa place.
 
 La colonne **Info / Infos** contient une carte de version propre au dépôt associé
 au projet : son titre est le dernier tag publié et sa description indique sa date

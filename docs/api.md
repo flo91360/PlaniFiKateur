@@ -236,7 +236,7 @@ saturé (`ai_busy`), 504 au-delà de deux minutes (`ai_timeout`).
 
 Depuis une carte de la liste Discussion, `POST /api/v1/projects/{projectId}/cards/{cardId}/implementation`
 (corps vide, rôle éditeur au moins) crée la carte d’implémentation et répond 201 avec
-`{ "data": { "card": { "id": "…", "title": "…", "listId": "…", "status": "ready" }, "list": "Améliorations", "attachments": 1, "model": "…", "sources": ["README"] } }`.
+`{ "data": { "card": { "id": "…", "title": "…", "listId": "…", "status": "ready" }, "list": "Améliorations", "attachments": 1, "deleted": "…", "model": "…", "sources": ["README"] } }`.
 Le serveur lit la carte enregistrée : son titre, sa question et ses commentaires
 (personnes et agent, sans les messages du site), avec le même contexte de projet
 et de dépôt que la reformulation. Claude Code, toujours sans outil, résume ce que
@@ -248,7 +248,8 @@ la première liste hors Discussion, « À tester » et Infos), avec la demande p
 description, une copie des pièces jointes, la priorité, l’effort et les étiquettes
 de la discussion. Créée par un responsable, elle est « Prête à démarrer » et
 l’agent la prend en charge sans autre étape ; créée par un éditeur, elle reste en
-brouillon. Dans l’interface, c’est le bouton « Créer la carte d’implémentation »
+brouillon. La carte Discussion est supprimée dans la même transaction (`deleted`
+donne son identifiant) et l’interface ouvre la nouvelle carte à sa place. Dans l’interface, c’est le bouton « Créer la carte d’implémentation »
 sous la discussion. Erreurs : 400 pour une carte hors Discussion
 (`not_discussion`) ou une discussion vide (`empty_discussion`), 404
 (`card_not_found`), 409 sans liste de destination (`no_target_list`), puis les

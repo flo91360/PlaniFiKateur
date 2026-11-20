@@ -3,9 +3,9 @@
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
 ## 0.1.115 — 2026-11-20
-<!-- planifikateur:relance-echec-infrastructure-ci -->
+<!-- planifikateur:discussion-suppression-apres-carte -->
 
-- **Relance des contrôles en panne de runner** : Une carte dont les contrôles GitHub échouent à cause du runner (paquets introuvables, réseau, service indisponible) est republiée une fois sans nouvel appel au modèle, ce qui relance les contrôles.
+- **Carte Discussion supprimée après la carte d’implémentation** : « Créer la carte d’implémentation » supprime ensuite la carte Discussion et ouvre directement la nouvelle carte dans Améliorations.
 
 ## 0.1.114 — 2026-11-20
 <!-- planifikateur:discussion-demande-ia -->
