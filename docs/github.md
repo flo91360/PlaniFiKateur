@@ -1,4 +1,4 @@
-# PR d’agent : tests puis fusion automatique — v0.1.114
+# PR d’agent : tests puis fusion automatique — v0.1.115
 
 Toutes les nouvelles tâches sont livrées par PR GitHub avec fusion automatique,
 sans sélection du mode de livraison. Depuis la v0.1.28, un responsable peut exiger
@@ -97,7 +97,11 @@ réelles sur le VPS.
 6. Si les tests échouent, leur webhook remet l’exécution en file. Réserver à
    nouveau, corriger, pousser et soumettre la nouvelle référence de commit. Le
    worker transmet au modèle les jobs et étapes en échec avec la fin de leurs
-   journaux. Après **trois échecs consécutifs**, l’exécution passe en question
+   journaux. Si ces journaux montrent une panne du runner GitHub (paquets
+   système ou navigateurs introuvables, réseau, service GitHub indisponible,
+   runner arrêté, disque plein), le premier échec ne sollicite pas le modèle : la
+   PR est republiée avec le résultat déjà publié, ce qui relance les contrôles.
+   Après **trois échecs consécutifs**, l’exécution passe en question
    (« À préciser ») : une personne consulte les journaux puis répond pour
    relancer une correction, ou annule. Une exécution annulée reste en attente
    des tests et de la fusion : elle ne renvoie pas la tâche à Codex lorsque
