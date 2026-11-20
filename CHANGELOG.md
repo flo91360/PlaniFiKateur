@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.117 — 2026-11-20
+<!-- planifikateur:version-infos-10-min -->
+
+- **Version des projets actualisée plus souvent** : La carte Version de la colonne Infos consulte GitHub toutes les 10 minutes au lieu d'une heure : une nouvelle Release d'un projet sans webhook (par exemple FunKart) apparaît rapidement.
+
 ## 0.1.116 — 2026-11-20
 <!-- planifikateur:relance-echec-infrastructure-ci-2 -->
 
