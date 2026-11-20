@@ -3700,7 +3700,7 @@
     "/api/v1/projects/{projectId}/cards/{cardId}/implementation": {
       "post": {
         "summary": "Créer la carte d’implémentation d’une carte Discussion",
-        "description": "Session personnelle, rôle éditeur au moins, corps vide. Le serveur lit la carte enregistrée de la liste Discussion (titre, question et commentaires, sans les messages du site) et l’envoie à Claude Code avec le contexte du projet et la documentation du dépôt, comme la reformulation. Claude Code s’exécute sans aucun outil : il résume ce que les personnes ont demandé ou validé en une demande d’implémentation et propose un titre. Les commentaires les plus anciens sont omis au-delà de 60 000 caractères. Le serveur crée ensuite la carte dans la liste « Améliorations » (sinon la première liste hors Discussion, « À tester » et Infos), avec la demande pour description, une copie des pièces jointes, la priorité, l’effort et les étiquettes de la discussion. Créée par un responsable, elle est « Prête à démarrer » et l’agent la prend en charge ; sinon elle reste en brouillon. Partage la limite de dix appels par minute et par compte avec la reformulation.",
+        "description": "Session personnelle, rôle éditeur au moins, corps vide. Le serveur lit la carte enregistrée de la liste Discussion (titre, question et commentaires, sans les messages du site) et l’envoie à Claude Code avec le contexte du projet et la documentation du dépôt, comme la reformulation. Claude Code s’exécute sans aucun outil : il résume ce que les personnes ont demandé ou validé en une demande d’implémentation et propose un titre. Les commentaires les plus anciens sont omis au-delà de 60 000 caractères. Le serveur crée ensuite la carte dans la liste « Améliorations » (sinon la première liste hors Discussion, « À tester » et Infos), avec la demande pour description, une copie des pièces jointes, la priorité, l’effort et les étiquettes de la discussion. Créée par un responsable, elle est « Prête à démarrer » et l’agent la prend en charge ; sinon elle reste en brouillon. La carte Discussion est supprimée dans la même transaction. Partage la limite de dix appels par minute et par compte avec la reformulation.",
         "security": [
           {
             "ownerSession": []
@@ -3741,6 +3741,7 @@
                         "card",
                         "list",
                         "attachments",
+                        "deleted",
                         "model",
                         "sources"
                       ],
@@ -3782,6 +3783,10 @@
                         "attachments": {
                           "type": "integer",
                           "description": "Nombre de pièces jointes copiées."
+                        },
+                        "deleted": {
+                          "type": "string",
+                          "description": "Identifiant de la carte Discussion supprimée."
                         },
                         "model": {
                           "type": "string",

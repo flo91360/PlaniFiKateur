@@ -201,7 +201,7 @@ export default function CardDetail({
   lists,
   position = null,
   onReorder = () => {},
-  onOpenCard = () => {},
+  onImplemented = () => {},
   onClose,
   onUpdate,
   onDelete,
@@ -409,10 +409,9 @@ export default function CardDetail({
                 card={card}
                 lists={lists}
                 canLaunch={canLaunch}
-                onCreated={onWorkflowRefresh}
-                onOpenCard={cardId => {
-                  saveFields();
-                  onOpenCard(cardId);
+                onImplemented={async result => {
+                  await onWorkflowRefresh();
+                  onImplemented(result);
                 }}
               />
             )}
