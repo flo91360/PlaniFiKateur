@@ -131,7 +131,7 @@ Conserver également des copies hors du volume Railway.
 npm run export:preview
 ```
 
-`dist/PlaniFiKateur-apercu-v0.1.116.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
+`dist/PlaniFiKateur-apercu-v0.1.117.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 
@@ -166,8 +166,10 @@ carte Discussion est alors supprimée et la nouvelle carte s’ouvre à sa place
 La colonne **Info / Infos** contient une carte de version propre au dépôt associé
 au projet : son titre est le dernier tag publié et sa description indique sa date
 de publication, en heure de Paris. Le serveur consulte GitHub au démarrage, après une
-configuration de dépôt et toutes les heures. Les pushs de tags et les
-Releases publiées reçus par le webhook signé mettent la carte à jour immédiatement.
+configuration de dépôt, puis toutes les 10 minutes avec `PLANIFIKATEUR_GITHUB_TOKEN`
+(toutes les heures sans jeton). Les pushs de tags et les Releases publiées reçus par
+le webhook signé mettent la carte à jour immédiatement : l’ajouter aussi sur le dépôt
+de chaque projet suivi pour éviter ce délai.
 Pour les dépôts privés, la variable serveur `PLANIFIKATEUR_GITHUB_TOKEN` doit avoir
 un accès en lecture aux dépôts concernés ; elle n’est jamais transmise au navigateur.
 Quand la Release de cette version porte un `.exe`, la carte propose de le télécharger

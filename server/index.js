@@ -127,7 +127,13 @@ export function createAppServer({ store, config = {}, dist = resolve('dist') }) 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const config = readConfig();
   const store = createStore(config.database, { backupDirectory: config.backupDirectory, demo: config.demo });
-  config.versions = createVersionSync(store, { token: process.env.PLANIFIKATEUR_GITHUB_TOKEN || '' });
+  // Avec un jeton (5 000 requêtes/h), une Release publiée sans webhook apparaît en 10 min au plus ;
+  // sans jeton, la limite anonyme de 60 requêtes/h impose de rester à une heure.
+  const versionToken = process.env.PLANIFIKATEUR_GITHUB_TOKEN || '';
+  config.versions = createVersionSync(store, {
+    token: versionToken,
+    intervalMs: (versionToken ? 10 : 60) * 60000,
+  });
   config.repositoryContext = createRepositoryContext({ token: process.env.PLANIFIKATEUR_GITHUB_TOKEN || '' });
   config.releaseDownloads = createReleaseDownloads({ token: process.env.PLANIFIKATEUR_GITHUB_TOKEN || '' });
   config.backups = createBackups(store, {
