@@ -1,4 +1,5 @@
 import { githubEvent } from '../github.js';
+import { deploymentAlert } from '../alerts.js';
 import { releaseVersion, tagPushVersion } from '../project-versions.js';
 import { driveReleaseFromBody } from '../../src/lib/drive-release.js';
 import { httpError } from '../http.js';
@@ -44,7 +45,7 @@ export function githubRoutes({ store, config, auth }) {
             event === 'pull_request'
               ? store.workflows.githubMerged(data)
               : event === 'workflow_run'
-                ? store.workflows.githubChecks(data)
+                ? (deploymentAlert(store, data), store.workflows.githubChecks(data))
                 : { updated: false };
           ctx.send(200, { data: result });
         },

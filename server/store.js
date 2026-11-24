@@ -15,6 +15,7 @@ import { createReleaseStore } from './store/releases.js';
 import { fail } from './http.js';
 import { notificationRecipients } from './recipients.js';
 import { createPushStore } from './store/push.js';
+import { createAlertStore } from './store/alerts.js';
 import { createLicenseStore } from './store/licenses.js';
 import { createGithubDeliveries } from './github-deliveries.js';
 import { pushWanted } from './push.js';
@@ -106,6 +107,7 @@ export const NOTIFIED = [
   'work.cancel',
   'work.reject',
   'project.access_changed',
+  'system.alert',
 ];
 // Réglages rattachés à un projet, effacés avec lui et rétablis par une restauration.
 export const PROJECT_SETTINGS = [
@@ -356,7 +358,7 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
         action,
         actorName: actor?.name || 'Administration',
         ...Object.fromEntries(
-          ['projectId', 'cardId', 'projectName', 'cardTitle', 'state'].map(key => [key, payload[key]]),
+          ['projectId', 'cardId', 'projectName', 'cardTitle', 'state', 'details'].map(key => [key, payload[key]]),
         ),
       });
     return inserted;
@@ -737,11 +739,13 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
   const accounts = createAccountStore({ db, transaction, audit, access, userById });
   const history = createHistoryStore({ db, emit });
   const push = createPushStore({ db });
+  const alerts = createAlertStore({ db, transaction, audit });
   const licenses = createLicenseStore({ db, transaction, repositoryOf: workflows.githubProject });
   return {
     workflows,
     githubDeliveries: createGithubDeliveries(db),
     ...push,
+    ...alerts,
     ...licenses,
     // Abonnement aux événements validés ; renvoie la fonction de désabonnement.
     subscribe(listener) {

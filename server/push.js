@@ -45,6 +45,7 @@ export function pushMessage(event) {
     'card.deleted': 'Carte supprimée',
     'card.subscriber_added': 'Ajout au suivi',
     'project.access_changed': 'Droits du projet modifiés',
+    'system.alert': event.details?.title || 'Alerte de PlaniFiKateur',
   };
   const details = {
     'work.question': 'L’agent attend votre réponse dans la discussion de la carte.',
@@ -67,6 +68,7 @@ export function pushMessage(event) {
     'card.deleted': `${actor} a supprimé la carte.`,
     'card.subscriber_added': `${actor} vous a ajouté au suivi de la carte.`,
     'project.access_changed': `${actor} a modifié vos droits sur le projet.`,
+    'system.alert': event.details?.text || 'Ouvrez PlaniFiKateur pour la consulter.',
   };
   const title = titles[event.action] || 'Nouvelle notification';
   const detail = details[event.action] || 'Ouvrez PlaniFiKateur pour la consulter.';
@@ -78,10 +80,10 @@ export function pushMessage(event) {
         : '/';
   return {
     title,
-    body: `${event.action === 'project.access_changed' ? event.projectName || 'Un projet' : where}\n${detail}`.slice(
-      0,
-      400,
-    ),
+    body: (event.action === 'system.alert'
+      ? detail
+      : `${event.action === 'project.access_changed' ? event.projectName || 'Un projet' : where}\n${detail}`
+    ).slice(0, 400),
     url: route,
     tag: `planifikateur-${event.cardId || event.activityId}`,
   };

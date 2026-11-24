@@ -35,9 +35,15 @@ export default function NotificationsPanel({ notifications, onOpenCard }) {
                 {item.projectName || 'Espace'}
                 <time dateTime={item.date}>{when(item.date)}</time>
               </span>
-              <strong>{item.cardTitle || item.projectName || 'PlaniFiKateur'}</strong>
+              <strong>
+                {item.action === 'system.alert'
+                  ? item.details?.title || 'Alerte'
+                  : item.cardTitle || item.projectName || 'PlaniFiKateur'}
+              </strong>
               <span className="attention-message">
-                {item.actor.name} {activityLabels[item.action] || item.action}
+                {item.action === 'system.alert'
+                  ? item.details?.text
+                  : `${item.actor.name} ${activityLabels[item.action] || item.action}`}
               </span>
               {item.cardId && item.action !== 'card.deleted' && (
                 <span className="attention-open">
