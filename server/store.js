@@ -16,6 +16,7 @@ import { fail } from './http.js';
 import { notificationRecipients } from './recipients.js';
 import { createPushStore } from './store/push.js';
 import { createLicenseStore } from './store/licenses.js';
+import { createGithubDeliveries } from './github-deliveries.js';
 import { pushWanted } from './push.js';
 import { migrateWorkspace, readWorkspace, writeWorkspace } from './workspace-tables.js';
 import { applyChanges, ChangeError } from '../src/lib/workspace-changes.js';
@@ -723,6 +724,7 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
   const licenses = createLicenseStore({ db, transaction, repositoryOf: workflows.githubProject });
   return {
     workflows,
+    githubDeliveries: createGithubDeliveries(db),
     ...push,
     ...licenses,
     // Abonnement aux événements validés ; renvoie la fonction de désabonnement.

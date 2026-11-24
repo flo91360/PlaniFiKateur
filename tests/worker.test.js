@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
-import { access, mkdtemp, mkdir, readFile, stat, writeFile, rm } from 'node:fs/promises';
+import { access, mkdtemp, mkdir, readFile, stat, utimes, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -1940,6 +1940,28 @@ test('a corrupt local state file is set aside without blocking the other tasks',
   assert.equal(await state.get('broken-job'), null);
   assert.equal(await readFile(join(root, 'state', 'broken-job.json.corrupt'), 'utf8'), '{"id":"broken-job","phase":');
   assert.ok(logs.some(line => line.includes('broken-job : état local illisible')));
+});
+
+test('finished local states are purged after a week, while open tasks and recent ones stay', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'planifikateur-state-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const state = createState(root);
+  for (const [id, phase] of [
+    ['old-done', 'done'],
+    ['old-cancelled', 'cancelled'],
+    ['old-merging', 'merging'],
+    ['recent-done', 'done'],
+  ])
+    await state.put({ id, phase });
+  await writeFile(join(root, 'state', 'old-broken.json.corrupt'), '{');
+  const week = 7 * 24 * 3600000,
+    old = new Date(Date.now() - week - 60000);
+  for (const name of ['old-done.json', 'old-cancelled.json', 'old-merging.json', 'old-broken.json.corrupt'])
+    await utimes(join(root, 'state', name), old, old);
+  assert.equal(await state.prune(), 3);
+  assert.deepEqual((await state.all()).map(job => job.id).sort(), ['old-merging', 'recent-done']);
+  await assert.rejects(stat(join(root, 'state', 'old-broken.json.corrupt')), { code: 'ENOENT' });
+  assert.equal(await state.prune({ now: Date.now() + week + 60000 }), 1, 'Une tâche récente part à son tour.');
 });
 
 test('a task interrupted on the site is no longer running locally, so a worker update is not held back', async t => {

@@ -1,4 +1,4 @@
-# PR d’agent : tests puis fusion automatique — v0.1.119
+# PR d’agent : tests puis fusion automatique — v0.1.120
 
 Toutes les nouvelles tâches sont livrées par PR GitHub avec fusion automatique,
 sans sélection du mode de livraison ni validation humaine : l’ancienne option « Validation avant
@@ -160,9 +160,12 @@ sont activés. La fusion n’est pas une confirmation de déploiement réussi.
   à un agent actif autorisé ; renvoie `{ "data": { "eligible": true|false } }`.
 - `POST /api/v1/github/webhook` : signature `X-Hub-Signature-256` calculée sur les
   octets originaux du corps ; aucun cookie ou token d’agent ne remplace celle-ci.
-  GitHub ne signe que le corps : son identifiant de livraison (`X-GitHub-Delivery`)
-  pourrait être changé lors d’un rejeu, et ne sert donc pas de protection. Un corps
-  signé rejoué n’a pas d’effet : chaque traitement est idempotent (contrôles déjà
+  Depuis la v0.1.120, chaque livraison traitée est gardée 24 h par son identifiant
+  (`X-GitHub-Delivery`) et par l’empreinte SHA-256 de son corps signé : un doublon
+  répond `{ "data": { "updated": false, "duplicate": true } }` sans effet. GitHub ne
+  signe que le corps, d’où l’empreinte : un rejeu qui changerait l’identifiant reste
+  reconnu. Une livraison en échec n’est pas gardée, sa redélivraison depuis GitHub
+  reste donc possible. Au-delà de 24 h, chaque traitement reste idempotent (contrôles déjà
   vus ignorés, fusion constatée une seule fois, versions et notes de release
   réécrites à l’identique).
 

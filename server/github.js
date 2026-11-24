@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { fail } from './http.js';
 export async function githubEvent(req, secret) {
   if (!secret) fail(503, 'github_not_configured', 'Le secret du webhook GitHub n’est pas configuré.');
@@ -26,7 +26,16 @@ export async function githubEvent(req, secret) {
   } catch {
     fail(400, 'invalid_json', 'JSON invalide.');
   }
-  return { event: req.headers['x-github-event'], data };
+  const id = req.headers['x-github-delivery'];
+  return {
+    event: req.headers['x-github-event'],
+    data,
+    // Identifiant de la livraison (facultatif) et empreinte du corps signé, pour l’anti-rejeu.
+    delivery: {
+      id: typeof id === 'string' && /^[a-zA-Z0-9-]{1,100}$/.test(id) ? id : null,
+      digest: createHash('sha256').update(raw).digest('hex'),
+    },
+  };
 }
 export function pullRequestLink(data, repository) {
   if (!data || typeof data.url !== 'string' || !/^[a-f0-9]{40}$/.test(data.headSha || ''))

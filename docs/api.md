@@ -18,7 +18,7 @@ La base est conservée dans `.data/planifikateur.sqlite`. À sa création, elle 
 
 ## Accès des agents
 
-Pour un accès réseau, configurer dans les paramètres sécurisés de l’hébergement deux clés longues, aléatoires et différentes :
+Pour un accès réseau, configurer dans les paramètres sécurisés de l’hébergement deux clés longues (au moins 32 caractères, refusées au démarrage sinon depuis la v0.1.120 ; par exemple `openssl rand -hex 32`), aléatoires et différentes :
 
 - `PLANIFIKATEUR_OWNER_TOKEN` : initialisation du premier compte administrateur, utilisée une seule fois dans l’interface.
 - `PLANIFIKATEUR_READ_TOKEN` : accès des agents à l’API, **lecture seule sur tous les projets**.

@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.120 — 2026-11-24
+<!-- planifikateur:audit-10-durcissement -->
+
+- **Clés longues, anti-rejeu du webhook et purge du worker** : Le serveur refuse de démarrer avec une clé PLANIFIKATEUR_OWNER_TOKEN ou PLANIFIKATEUR_READ_TOKEN de moins de 32 caractères, ignore pendant 24 h une livraison du webhook GitHub déjà traitée, et le worker efface les états locaux des tâches terminées depuis plus de 7 jours.
+
 ## 0.1.119 — 2026-11-24
 <!-- planifikateur:audit-9-node24 -->
 

@@ -38,7 +38,7 @@ async function fixture(t, configured = true) {
       headers: { 'Content-Type': 'application/json', ...headers },
       body: JSON.stringify(data),
     });
-  const webhook = (event, data, signingSecret = secret) => {
+  const webhook = (event, data, signingSecret = secret, delivery = null) => {
     const raw = JSON.stringify(data);
     return fetch(base + '/github/webhook', {
       method: 'POST',
@@ -46,6 +46,7 @@ async function fixture(t, configured = true) {
         'Content-Type': 'application/json',
         'X-GitHub-Event': event,
         'X-Hub-Signature-256': 'sha256=' + createHmac('sha256', signingSecret).update(raw).digest('hex'),
+        ...(delivery ? { 'X-GitHub-Delivery': delivery } : {}),
       },
       body: raw,
     });
@@ -763,4 +764,26 @@ test('a reviewRequired list sent by an old worker is ignored and the PR still me
   assert.equal(submitted.state, 'merging');
   assert.equal(submitted.submissions.at(-1).reviewRequired, undefined);
   assert.deepEqual(f.store.workflows.mergeEligible(repository, 7, sha, f.agent), { eligible: true });
+});
+
+test('a webhook delivery is processed once: a replay with the same body or delivery id is ignored for 24 hours', async t => {
+  const f = await fixture(t);
+  f.submit(f.prepare());
+  const id = '72d3162e-cc78-11e3-81ab-4c9367dc0958';
+  const first = await f.webhook('workflow_run', f.check('success'), secret, id);
+  assert.equal(first.status, 200);
+  assert.notEqual((await first.json()).data.duplicate, true);
+  for (const delivery of [id, 'a-different-forged-id', null]) {
+    const replay = await f.webhook('workflow_run', f.check('success'), secret, delivery);
+    assert.equal(replay.status, 200);
+    assert.deepEqual((await replay.json()).data, { updated: false, duplicate: true });
+  }
+  // Un autre corps sous le même identifiant est aussi refusé.
+  const reused = await f.webhook('pull_request', f.merged(), secret, id);
+  assert.deepEqual((await reused.json()).data, { updated: false, duplicate: true });
+  assert.equal(f.store.workflows.list(f.project.id, f.card.id)[0].state, 'merging');
+  // Une livraison refusée (signature fausse) n’est pas gardée : sa redélivraison reste possible.
+  assert.equal((await f.webhook('pull_request', f.merged(), 'wrong', 'redelivered')).status, 401);
+  assert.equal((await f.webhook('pull_request', f.merged(), secret, 'redelivered')).status, 200);
+  assert.equal(f.store.workflows.list(f.project.id, f.card.id)[0].state, 'done');
 });

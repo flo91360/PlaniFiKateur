@@ -24,7 +24,15 @@ export function githubRoutes({ store, config, auth }) {
       path: '/api/v1/github/webhook',
       methods: {
         async POST(ctx) {
-          const { event, data } = await githubEvent(ctx.req, config.githubWebhookSecret);
+          const { event, data, delivery } = await githubEvent(ctx.req, config.githubWebhookSecret);
+          // Livraison déjà traitée dans les dernières 24 h (rejeu ou doublon) : ignorée sans erreur.
+          if (store.githubDeliveries.seen(delivery))
+            return ctx.send(200, { data: { updated: false, duplicate: true } });
+          const send = ctx.send.bind(ctx);
+          ctx.send = (status, body) => {
+            if (status < 300) store.githubDeliveries.record(delivery);
+            return send(status, body);
+          };
           if (event === 'release') return release(ctx, data);
           if (event === 'push') {
             const tag = tagPushVersion(data);

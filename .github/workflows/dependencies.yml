@@ -77,7 +77,7 @@ jobs:
           docker build -f deploy/site.Dockerfile --build-arg PLANIFIKATEUR_COMMIT_SHA="$(git rev-parse HEAD)" -t planifikateur-site:ci "$RUNNER_TEMP/site"
       - name: Démarrer le site et lire la version servie
         run: |
-          docker run -d --name site -e PLANIFIKATEUR_OWNER_TOKEN=ci-owner-key -e PLANIFIKATEUR_READ_TOKEN=ci-read-key planifikateur-site:ci
+          docker run -d --name site -e PLANIFIKATEUR_OWNER_TOKEN=ci-owner-key-0123456789abcdef0123456789 -e PLANIFIKATEUR_READ_TOKEN=ci-read-key-0123456789abcdef01234567890 planifikateur-site:ci
           for attempt in $(seq 1 30); do
             commit=$(docker exec site node -e "fetch('http://127.0.0.1:3000/build-info.json').then(r=>r.json()).then(b=>console.log(b.commit),()=>{})" || true)
             if [ "$commit" = "$(git rev-parse HEAD)" ]; then echo "Site démarré : $commit"; exit 0; fi
