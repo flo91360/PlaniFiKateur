@@ -3465,11 +3465,21 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "X-GitHub-Delivery",
+            "in": "header",
+            "required": false,
+            "description": "Identifiant de la livraison : une livraison déjà traitée dans les 24 h (même identifiant ou même corps signé) est ignorée.",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "Événement traité ou ignoré."
+            "description": "Événement traité ou ignoré ; un doublon des dernières 24 h répond `{ data: { updated: false, duplicate: true } }`."
           },
           "401": {
             "description": "Signature absente ou invalide."

@@ -159,7 +159,17 @@ export function createFollowUp({
 
   // Une erreur sur une tâche (dépôt renommé, PR inaccessible…) ne bloque pas les autres : la tâche
   // est réessayée plus tard, avec un délai croissant, et l’erreur n’est journalisée qu’une fois.
+  let pruned = -Infinity;
   async function reconcile(signal) {
+    // Purge des états terminés, au plus une fois par heure.
+    if (now() - pruned >= 3600000) {
+      pruned = now();
+      const removed = await state.prune({ now: Date.now() }).catch(error => {
+        log(`Purge de l’état local impossible : ${clean(error.message)}.`);
+        return 0;
+      });
+      if (removed) log(`État local : ${removed} tâche(s) terminée(s) depuis plus de 7 jours effacée(s).`);
+    }
     for (const job of await state.all()) {
       if (job.followUp?.retryAfter > Date.now()) continue;
       try {

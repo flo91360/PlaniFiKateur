@@ -162,7 +162,7 @@ test('the off-site backup key only lists, downloads and confirms copies', async 
 });
 
 test('the off-site backup key must be long and distinct from the other keys', () => {
-  const env = { PLANIFIKATEUR_OWNER_TOKEN: 'owner-test', PLANIFIKATEUR_READ_TOKEN: 'reader-test' };
+  const env = { PLANIFIKATEUR_OWNER_TOKEN: 'o'.repeat(32), PLANIFIKATEUR_READ_TOKEN: 'r'.repeat(32) };
   assert.equal(readConfig({ ...env, PLANIFIKATEUR_BACKUP_TOKEN: 'b'.repeat(32) }).backupToken, 'b'.repeat(32));
   assert.equal(readConfig(env).backupToken, '');
   assert.throws(() => readConfig({ ...env, PLANIFIKATEUR_BACKUP_TOKEN: 'court' }), /PLANIFIKATEUR_BACKUP_TOKEN/);

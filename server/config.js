@@ -24,6 +24,12 @@ export function readConfig(env = process.env) {
       'Définissez PLANIFIKATEUR_OWNER_TOKEN et PLANIFIKATEUR_READ_TOKEN avant d’exposer le serveur hors de la machine locale.',
     );
   }
+  for (const [name, value] of [
+    ['PLANIFIKATEUR_OWNER_TOKEN', config.ownerToken],
+    ['PLANIFIKATEUR_READ_TOKEN', config.readToken],
+  ])
+    if (value && value.length < 32)
+      throw new Error(`${name} : clé d’au moins 32 caractères requise (par exemple \`openssl rand -hex 32\`).`);
   if (config.ownerToken && config.ownerToken === config.readToken)
     throw new Error('Les clés propriétaire et lecture doivent être différentes.');
   if (

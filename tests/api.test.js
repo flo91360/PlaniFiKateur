@@ -292,7 +292,11 @@ test('repeated attempts on an account from one address do not lock out its owner
 test('a new production database starts without demo projects', () => {
   assert.equal(readConfig({}).demo, true);
   assert.equal(
-    readConfig({ NODE_ENV: 'production', PLANIFIKATEUR_OWNER_TOKEN: 'a', PLANIFIKATEUR_READ_TOKEN: 'b' }).demo,
+    readConfig({
+      NODE_ENV: 'production',
+      PLANIFIKATEUR_OWNER_TOKEN: 'a'.repeat(32),
+      PLANIFIKATEUR_READ_TOKEN: 'b'.repeat(32),
+    }).demo,
     false,
   );
   assert.equal(readConfig({ PLANIFIKATEUR_DEMO: '0' }).demo, false);
@@ -308,9 +312,15 @@ test('public binding requires separate owner and agent keys', () => {
   assert.throws(() => readConfig({ PLANIFIKATEUR_HOST: '0.0.0.0' }), /clés|TOKEN/);
   assert.throws(() => readConfig({ NODE_ENV: 'production' }), /TOKEN/);
   assert.throws(
-    () => readConfig({ PLANIFIKATEUR_OWNER_TOKEN: 'same', PLANIFIKATEUR_READ_TOKEN: 'same' }),
+    () => readConfig({ PLANIFIKATEUR_OWNER_TOKEN: 's'.repeat(32), PLANIFIKATEUR_READ_TOKEN: 's'.repeat(32) }),
     /différentes/,
   );
+  // Clés trop courtes : refusées au démarrage, même en local.
+  for (const env of [
+    { PLANIFIKATEUR_OWNER_TOKEN: 'o'.repeat(31), PLANIFIKATEUR_READ_TOKEN: 'r'.repeat(32) },
+    { PLANIFIKATEUR_OWNER_TOKEN: 'o'.repeat(32), PLANIFIKATEUR_READ_TOKEN: 'court' },
+  ])
+    assert.throws(() => readConfig(env), /au moins 32 caractères/);
   assert.equal(readConfig({}).host, '127.0.0.1');
 });
 
