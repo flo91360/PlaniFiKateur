@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.125 — 2026-11-24
+<!-- planifikateur:audit-11-fusion-unique -->
+
+- **Un seul chemin de fusion des PR d’agent** : Le worker est désormais le seul à fusionner une PR d’agent ; le workflow complémentaire « Fusion des PR agent » et son script sont retirés. La fusion automatique native de GitHub n’est pas adoptée : elle ignorerait une annulation sur le site et la tolérance des fichiers propres à la branche cible.
+
 ## 0.1.124 — 2026-11-24
 <!-- planifikateur:audit-12-migrations -->
 

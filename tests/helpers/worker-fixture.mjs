@@ -21,7 +21,7 @@ import {
   createGithubClient,
   connectionDiagnostic,
 } from '../../worker/clients.mjs';
-import { mergeAgentPullRequest, requiredJobs } from '../../scripts/merge-agent-pr.mjs';
+import { mergeAgentPullRequest, requiredJobs } from '../../worker/merge.mjs';
 import { installedProfile } from '../../worker/execution-profile.mjs';
 import { BudgetExceededError } from '../../worker/budget.mjs';
 

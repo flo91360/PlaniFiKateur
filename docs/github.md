@@ -1,4 +1,4 @@
-# PR d’agent : tests puis fusion automatique — v0.1.124
+# PR d’agent : tests puis fusion automatique — v0.1.125
 
 Toutes les nouvelles tâches sont livrées par PR GitHub avec fusion automatique,
 sans sélection du mode de livraison ni validation humaine : l’ancienne option « Validation avant
@@ -10,7 +10,7 @@ de la fusion par GitHub.
 Les interventions directes utilisent la même préparation et les mêmes contrôles
 que les cartes : voir [le parcours commun de livraison](livraison.md).
 La carte terminée confirme la fusion ; « Livraison de version » confirme ensuite
-le tag et la version réellement servie par Railway.
+le tag et la version réellement servie par le site (voir [vps.md](vps.md)).
 
 ## Configuration à effectuer une fois
 
@@ -46,13 +46,24 @@ Les règles de branche restent appliquées : un refus GitHub ne sera pas contour
 Après la fusion, il supprime la branche de la PR (jamais la branche cible) ; un
 refus de suppression est seulement journalisé et ne remet pas la fusion en cause.
 
-Le workflow `.github/workflows/agent-merge.yml` reste un mécanisme complémentaire
-optionnel, avec les mêmes vérifications dans `worker/merge.mjs`. Pour l’utiliser,
-installer aussi ce module et `scripts/merge-agent-pr.mjs` dans le dépôt cible,
-autoriser `contents: write` et `pull-requests: write` pour Actions et définir les
-secrets Actions `PLANIFIKATEUR_URL` et `PLANIFIKATEUR_AGENT_TOKEN`. Leur absence
-ne bloque pas la fusion par le worker. Une révocation de l’agent impose de
-remplacer sa clé dans chaque service qui l’utilise.
+### Un seul chemin de fusion (v0.1.125)
+
+Depuis la v0.1.125, le worker est le seul à fusionner une PR d’agent. L’ancien
+workflow complémentaire `.github/workflows/agent-merge.yml` (« Fusion des PR
+agent ») et son script `scripts/merge-agent-pr.mjs` sont retirés : ils refaisaient
+les mêmes vérifications que `worker/merge.mjs` et pouvaient entrer en concurrence
+avec le worker. Les secrets Actions `PLANIFIKATEUR_URL` et
+`PLANIFIKATEUR_AGENT_TOKEN`, s’ils avaient été créés pour lui, ne servent plus et
+peuvent être supprimés. Le parcours reste entièrement automatique : contrôles
+requis réussis, éligibilité confirmée par le site, fusion squash au SHA testé,
+puis webhook signé qui termine la carte.
+
+La fusion automatique native de GitHub n’est pas utilisée : une fois activée, elle
+fusionnerait même si la tâche est annulée sur le site entre-temps, elle ne vérifie
+ni les jobs exacts du profil ni l’éligibilité de la tâche, et elle exige une
+branche strictement à jour, ce qui empêcherait la tolérance des fichiers propres à
+la branche cible (journal de DefilOrdi recopié par sa CI) et relancerait l’agent à
+chaque commit de journal.
 
 La configuration des webhooks et des règles de branche nécessite les droits
 d’administration correspondants. Si l’intégration de l’environnement refuse
@@ -118,9 +129,8 @@ peuvent être rattachées à cette exécution.
 
 ## Conditions de fusion
 
-La fusion est exécutée par le code installé du worker, hors du dépôt modifié
-par Codex. Le workflow complémentaire **Fusion des PR agent** tourne avec le
-code de `main`, jamais avec le code de la PR et ses secrets. Ils vérifient :
+La fusion est exécutée par le code installé du worker (`worker/merge.mjs`), hors
+du dépôt modifié par l’agent, jamais avec le code de la PR. Il vérifie :
 
 - Une exécution terminée et réussie du workflow du profil, pour cette PR.
 - Les jobs requis du profil, présents une seule fois, terminés avec `success`.
@@ -148,8 +158,9 @@ mêmes règles qu’au webhook. La redélivraison depuis GitHub reste possible. 
 fusion est publié en annotation GitHub, consultable automatiquement via l’API,
 et ne clôture pas la carte.
 
-Railway peut ensuite déployer si sa connexion GitHub et le déploiement automatique
-sont activés. La fusion n’est pas une confirmation de déploiement réussi.
+Le VPS déploie ensuite le commit testé de main ; la fusion n’est pas
+une confirmation de déploiement réussi : « Livraison de version » vérifie la version
+servie et, depuis la v0.1.123, un échec alerte les administrateurs.
 
 ## API complémentaire
 

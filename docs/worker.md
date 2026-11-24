@@ -139,7 +139,7 @@ Une carte ne peut pas modifier les fichiers protégés : les contrôles de sa pr
 fusion (workflows GitHub, scripts npm, configuration des tests déclarée par le
 profil dans `protectedPaths`) et, pour PlaniFiKateur, le worker lui-même
 (`worker/**`, redéployé automatiquement depuis main), sa chaîne de livraison
-(`scripts/delivery.mjs`, `merge-agent-pr.mjs`, `publish-version.mjs`,
+(`scripts/delivery.mjs`, `publish-version.mjs`,
 `verify-deployment.mjs`), les consignes `AGENTS.md` et `CLAUDE.md` et les tests du
 worker. L’agent en reçoit la liste avec la demande. Avant les tests, le worker
 compare le dépôt à la branche cible (`worker/protected.mjs`) : un fichier protégé
