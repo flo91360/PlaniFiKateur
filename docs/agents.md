@@ -1,4 +1,4 @@
-# Parcours agent par projet — v0.1.120
+# Parcours agent par projet — v0.1.121
 
 Un seul agent actif, sans délégation. Le site pilote les demandes et confirme la fusion GitHub ;
 l’agent s’exécute dans un service externe. Le [worker Codex](worker.md) fournit ce

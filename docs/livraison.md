@@ -86,15 +86,18 @@ peut être relancée sans recréer le tag ni rappeler le modèle IA. L'URL est l
 variable Actions `PLANIFIKATEUR_URL`, obligatoire depuis la v0.1.119 : sans elle,
 la vérification échoue au lieu de viser l'ancienne adresse Railway.
 
-Le workflow « Dépendances » (`dependencies.yml`) complète ces contrôles sans être
-requis pour la fusion. Chaque lundi, et à chaque PR ou push qui touche un lockfile,
-`worker/` ou `.dockerignore`, il lance `npm audit --audit-level=high` sur le site et
-le worker, puis construit l'image du worker avec la même commande que la mise à
-jour du VPS. Un Dockerfile cassé ou une vulnérabilité élevée apparaît ainsi dans
-Actions, avec l'e-mail d'échec de GitHub, avant le déploiement. Corriger une alerte
-avec `npm audit fix` (sans `--force`), puis livrer une version comme toute
-modification. Les PR Dependabot ne sont pas activées : elles ne porteraient ni
-version ni changelog et échoueraient au contrôle de livraison.
+Depuis la v0.1.121, l'audit des dépendances et la construction des images font partie
+du job requis « Tests serveur » dès qu'une PR ou un push sur main change une dépendance
+(`package.json` ou un lockfile, hors simple numéro de version), `worker/`, `deploy/`,
+`.npmrc` ou `.dockerignore` (`scripts/dependency-changes.mjs`). Le job lance alors
+`npm audit --audit-level=high` sur le site et le worker, construit l'image du worker
+avec la même commande que la mise à jour du VPS, puis construit et démarre l'image du
+site comme `deploy/site.py`. Une vulnérabilité élevée ou un Dockerfile cassé bloque donc
+la fusion, sans aucune validation humaine. Le workflow « Dépendances »
+(`dependencies.yml`) rejoue les mêmes contrôles chaque lundi, pour une alerte publiée
+après coup. Corriger une alerte avec `npm audit fix` (sans `--force`), puis livrer une
+version comme toute modification. Les PR Dependabot ne sont pas activées : elles ne
+porteraient ni version ni changelog et échoueraient au contrôle de livraison.
 
 Une carte terminée confirme actuellement la fusion par webhook ; le résultat
 complet de publication et déploiement est celui du workflow de livraison GitHub.

@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.121 — 2026-11-24
+<!-- planifikateur:audit-6-dependances-requises -->
+
+- **Audit et images requis pour la fusion** : Quand une PR change les dépendances, le worker ou le déploiement, le job requis « Tests serveur » audite les dépendances et construit les images du worker et du site : une vulnérabilité élevée ou un Dockerfile cassé bloque la fusion. Le SDK Claude passe en 0.3.330 et ESLint en 10.15, sans alerte npm audit restante.
+
 ## 0.1.120 — 2026-11-24
 <!-- planifikateur:audit-10-durcissement -->
 
