@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.123 — 2026-11-24
+<!-- planifikateur:audit-8-alertes -->
+
+- **Alertes Web Push de l’administration** : Notification Web Push aux administrateurs quand le worker se tait plus de 15 minutes, qu’une sauvegarde ou la copie hors site échoue, ou que le déploiement d’une version n’est pas vérifié.
+
 ## 0.1.122 — 2026-11-24
 <!-- planifikateur:audit-5-pieces-jointes -->
 

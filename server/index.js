@@ -7,6 +7,7 @@ import { createStore } from './store.js';
 import { readConfig } from './config.js';
 import { createBackups } from './backups.js';
 import { createRetention } from './retention.js';
+import { createAlerts } from './alerts.js';
 import { createGithubSync } from './github-sync.js';
 import { createVersionSync } from './project-versions.js';
 import { createRepositoryContext } from './repository-context.js';
@@ -146,6 +147,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     activityDays: config.activityRetentionDays,
     executionDays: config.executionRetentionDays,
   });
+  const alerts = createAlerts(store, { backups: config.backups });
   const server = createAppServer({ store, config });
   server.listen(config.port, config.host, () =>
     console.log(`PlaniFiKateur : serveur actif sur ${config.host}:${server.address().port}`),
@@ -155,6 +157,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       config.versions.close();
       config.backups.close();
       retention.close();
+      alerts.close();
       githubSync.close();
       store.close();
       process.exit(0);

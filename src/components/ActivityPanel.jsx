@@ -8,6 +8,7 @@ export const activityLabels = {
   'work.merged': 'a confirmé la fusion de la PR',
   'work.approve': 'a approuvé la fusion de la PR',
   'project.access_changed': 'a modifié les droits du projet',
+  'system.alert': 'signale un incident',
   'project.approval_changed': 'a modifié la validation avant fusion',
   'work.checks': 'a signalé le résultat des contrôles GitHub',
   'github.configured': 'a configuré le dépôt GitHub',

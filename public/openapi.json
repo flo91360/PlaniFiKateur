@@ -9895,7 +9895,8 @@
               "work.interrupted",
               "work.cancel",
               "work.reject",
-              "project.access_changed"
+              "project.access_changed",
+              "system.alert"
             ]
           },
           "actor": {

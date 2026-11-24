@@ -116,6 +116,17 @@ Depuis la v0.1.97, **toutes les notifications de la cloche** sont aussi envoyée
 
 Depuis la v0.1.98, les **étapes intermédiaires** d’une carte ne sont plus des notifications : seul son résultat final ou une étape qui attend quelqu’un notifie (question de l’agent, résultat ou PR à valider, carte terminée ou passée « À tester », tests GitHub en échec après les corrections de l’agent, exécution interrompue ou annulée). Une PR proposée qui fusionnera seule, des contrôles GitHub réussis ou relancés pour correction, ou des corrections demandées restent visibles dans l’historique et le bandeau « Exécution IA » de la carte, sans notification ni dans la cloche ni sur le téléphone. Chaque notification de la cloche arrive donc aussi sur le téléphone, et la pastille de l’icône reste égale au nombre de non lues sans ouvrir l’application.
 
+### Alertes de l’administration — v0.1.123
+
+Depuis la v0.1.123, le serveur surveille chaque minute le worker et les sauvegardes, et le webhook GitHub lui transmet le résultat du workflow « Livraison de version ». Chaque administrateur actif reçoit une notification, dans la cloche et sur ses appareils abonnés, au début d’un incident :
+
+- **Worker muet** : l’agent actif vu le plus récemment ne s’est plus manifesté depuis plus de 15 minutes ;
+- **Sauvegarde en échec** : la dernière sauvegarde automatique a échoué ;
+- **Copie hors site en retard** : aucune copie quotidienne confirmée depuis 48 heures (une fois qu’une première copie a été confirmée) ;
+- **Déploiement non vérifié** : le workflow « Livraison de version » du dépôt PlaniFiKateur a échoué (tag ou version servie par le site).
+
+Un incident ne notifie qu’une fois, même après un redémarrage (table `system_alerts`) ; son retour à la normale le referme, et l’incident suivant est de nouveau signalé. Ces alertes ne demandent aucune action pour la fusion ou le déploiement : elles préviennent seulement.
+
 Sur iPhone et iPad, le site doit d’abord être ajouté à l’écran d’accueil (Safari → Partager → Sur l’écran d’accueil), puis ouvert depuis cette icône. Le serveur chiffre chaque message pour l’appareil (RFC 8291) et s’identifie par une clé VAPID créée au premier besoin et gardée dans la base ; seuls les services de notification des navigateurs (Google, Mozilla, Apple, Microsoft) sont acceptés comme destinataires. Un abonnement retiré par le navigateur est oublié au premier refus du service ; un compte garde au plus dix appareils.
 
 **Pastille sur l’icône de l’application.** Le site installé sur l’écran d’accueil affiche en pastille rouge le nombre de notifications non lues du compte (API Badging : iOS/iPadOS 16.4+ avec les notifications autorisées, Android selon le lanceur, ordinateurs Chrome et Edge). Le nombre est mis à jour à chaque nouvelle notification du compte, même application fermée, et dès que l’application ouverte relit ses notifications ; la pastille disparaît quand tout est lu.
