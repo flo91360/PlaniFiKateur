@@ -243,8 +243,10 @@ export function createRuns(
       };
     },
   };
-  // Mise à niveau : les questions déjà posées rejoignent la discussion de leur carte.
-  transaction(() => {
+  // Mise à niveau jouée une seule fois (migration v2 de server/store.js) : les questions déjà posées
+  // rejoignent la discussion de leur carte, les commentaires des agents sont marqués comme tels,
+  // et les anciennes exécutions sont allégées.
+  const upgradeLegacyRuns = () => {
     const projects = readProjects();
     let changed = false;
     const agentIds = new Set(
@@ -283,8 +285,9 @@ export function createRuns(
         db.prepare('UPDATE executions SET data = ? WHERE id = ?').run(JSON.stringify(run), row.id);
       }
     }
-  });
+  };
   return {
+    upgradeLegacyRuns,
     list(projectId, cardId, agent = null) {
       return transaction(() => {
         if (agent) checkAgent(agent, projectId);

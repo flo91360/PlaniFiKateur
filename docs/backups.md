@@ -14,6 +14,10 @@ Jusqu’à la v0.1.24, tout le tableau était un seul document JSON. À partir d
 
 Cette copie n’est pas comptée dans les sauvegardes tournantes et n’est jamais supprimée automatiquement. Pour revenir à une version antérieure à la v0.1.25, restaurer cette copie (voir ci-dessous) **avant** de redémarrer l’ancienne version : une ancienne version ne lit pas les tables. Les sauvegardes des deux formats se restaurent avec la version actuelle.
 
+## Migrations versionnées (v0.1.124)
+
+Depuis la v0.1.124, les mises à niveau des données jouées au démarrage sont numérotées et la base retient la dernière appliquée (`PRAGMA user_version`, liste dans `server/store/migrations.js`). La version 1 est le passage aux tables ci-dessus ; les versions 2 à 5 reprennent les anciennes mises à niveau des exécutions, des listes « Discussion » et « À tester », des droits par projet et des réglages des projets supprimés. Chaque étape est enregistrée avec son numéro dans la même transaction : une étape interrompue ne laisse aucune trace et est rejouée au démarrage suivant, sans jamais effacer la base. Une base déjà à jour ne rejoue rien, et une sauvegarde plus ancienne restaurée reçoit seulement les étapes qui lui manquent.
+
 ## Site sur le VPS (v0.1.93)
 
 Hébergé sur le VPS ([VPS](vps.md)), le site garde ses copies dans `/data/backups` du volume

@@ -16,84 +16,19 @@ import { fail } from './http.js';
 import { notificationRecipients } from './recipients.js';
 import { createPushStore } from './store/push.js';
 import { createAlertStore } from './store/alerts.js';
+import { runMigrations } from './store/migrations.js';
 import { createLicenseStore } from './store/licenses.js';
 import { createGithubDeliveries } from './github-deliveries.js';
 import { pushWanted } from './push.js';
+import { changedProjects, refusal, removedContent, settlePartial } from './store/changes.js';
+import { projectMigrations } from './store/project-migrations.js';
+import { createVersionReader } from './store/versions.js';
+
+export { PARTIAL_ATTEMPTS, removedContent, removesContent, settlePartial } from './store/changes.js';
 import { migrateWorkspace, readWorkspace, writeWorkspace } from './workspace-tables.js';
 import { applyChanges, ChangeError } from '../src/lib/workspace-changes.js';
 import { allows, createAccess, MEMBER_ROLES, requirements, ROLES } from './access.js';
 
-// Projets visés par un lot de modifications, ou null si la liste des projets elle-même change.
-const changedProjects = changes => {
-  if (!Array.isArray(changes)) return null;
-  const ids = new Set();
-  for (const change of changes) {
-    if (['project.create', 'project.delete', 'project.order'].includes(change?.type)) return null;
-    if (typeof change?.projectId === 'string') ids.add(change.projectId);
-  }
-  return [...ids];
-};
-
-// Erreur qui refuse une demande (4xx), par opposition à une panne du serveur.
-const refusal = error => error?.status >= 400 && error.status < 500;
-
-// Tentatives au plus pour isoler les modifications refusées d’un lot `partial` : chacune relit et
-// revalide les projets visés, de façon synchrone. Au-delà, le reste du lot n’est pas tenté.
-export const PARTIAL_ATTEMPTS = 50;
-const NOT_ATTEMPTED = {
-  code: 'not_attempted',
-  message: 'Trop de modifications refusées dans ce lot : celle-ci n’a pas été tentée. Réessayez.',
-};
-
-// Lot `partial` refusé en entier : il est coupé en deux, récursivement, pour isoler les
-// modifications refusées ; les parties acceptées s’appliquent dans l’ordre du lot.
-// `attempt(from, to)` tente changes[from..to[ et renvoie { skipped } ou { error }.
-export function settlePartial(changes, error, attempt, budget = PARTIAL_ATTEMPTS) {
-  const skipped = [],
-    rejected = [];
-  let attempts = 0;
-  const reject = (index, { code, message }) =>
-    rejected.push({ index, type: changes[index]?.type ?? null, code, message });
-  const settle = (from, to, failure) => {
-    if (to - from === 1) return reject(from, failure);
-    const middle = from + Math.floor((to - from) / 2);
-    for (const [start, end] of [
-      [from, middle],
-      [middle, to],
-    ]) {
-      if (attempts >= budget) {
-        for (let index = start; index < end; index++) reject(index, NOT_ATTEMPTED);
-        continue;
-      }
-      attempts++;
-      const outcome = attempt(start, end);
-      if (outcome.error) settle(start, end, outcome.error);
-      else skipped.push(...outcome.skipped.map(item => ({ ...item, index: item.index + start })));
-    }
-  };
-  settle(0, changes.length, error);
-  return { skipped, rejected, attempts };
-}
-
-// Projets, listes et cartes présents avant et absents après.
-export const removedContent = (before, after) => {
-  const ids = (projects, of) => new Set(projects.flatMap(of));
-  const gone = of => {
-    const kept = ids(after, of);
-    return [...ids(before, of)].filter(id => !kept.has(id));
-  };
-  return {
-    projectIds: gone(project => [project.id]),
-    listIds: gone(project => project.lists.map(list => list.id)),
-    cardIds: gone(project => project.cards.map(card => card.id)),
-  };
-};
-// Un projet, une liste ou une carte présent avant et absent après ?
-export const removesContent = (before, after) =>
-  Object.values(removedContent(before, after)).some(ids => ids.length > 0);
-
-// Actions qui notifient leurs destinataires (recipientIds : participants et abonnés de la carte,
-// sans l’auteur de l’action). Les messages de l’agent sont déjà annoncés par leur action work.*.
 export const NOTIFIED = [
   'comment.created',
   'card.status_changed',
@@ -424,54 +359,8 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
     recipients,
     emit,
   });
-  const versionFor = projectId => {
-    const repository = workflows.githubProject(projectId);
-    if (!repository) return { tag: 'Aucun tag disponible', date: '' };
-    const row = db.prepare('SELECT data FROM github_versions WHERE repository=?').get(repository.toLowerCase());
-    const version = row ? JSON.parse(row.data) : { tag: 'Version en cours de récupération', date: '' };
-    const downloads = db
-      .prepare('SELECT data FROM github_downloads WHERE repository=? AND tag=?')
-      .get(repository.toLowerCase(), version.tag);
-    const changelog = db
-      .prepare('SELECT data FROM github_changelog WHERE repository=?')
-      .all(repository.toLowerCase())
-      .map(row => JSON.parse(row.data))
-      .sort((a, b) => Date.parse(b.date) - Date.parse(a.date) || b.tag.localeCompare(a.tag));
-    // Exécutables de la Release GitHub de la version affichée, téléchargés depuis GitHub.
-    const files = changelog.find(entry => entry.tag === version.tag)?.files;
-    return {
-      ...version,
-      repository,
-      changelog,
-      ...(downloads ? { downloads: JSON.parse(downloads.data) } : {}),
-      ...(files?.length ? { release: { repository, tag: version.tag, files } } : {}),
-    };
-  };
+  const versionFor = createVersionReader({ db, workflows });
   transaction(synchronizeInfos);
-  // Projets antérieurs aux listes « Discussion » et « À tester » : elles sont ajoutées au démarrage
-  // (l’ancienne liste « Terminées » renommée), les tâches livrées rangées et les cartes de discussion retirées de la file de l’agent.
-  transaction(() => {
-    const previous = readProjects();
-    const projects = previous.map(withProjectLists);
-    if (projects.some((project, index) => project !== previous[index])) {
-      const clean = validateWorkspace(projects, { attachmentData: false });
-      workflows.withdrawDiscussion(clean, null);
-      writeProjects(clean, undefined, { previous });
-    }
-  });
-  // Projets antérieurs aux droits par projet : règle par défaut, et leur créateur (d’après
-  // l’historique) en devient responsable.
-  transaction(() => {
-    for (const project of readProjects())
-      if (!access.hasPolicy(project.id)) {
-        const creator = db
-          .prepare(
-            "SELECT actor_id FROM activity WHERE action = 'project.created' AND project_id = ? ORDER BY id LIMIT 1",
-          )
-          .get(project.id)?.actor_id;
-        access.adopt(project.id, creator ? userById(creator) : null);
-      }
-  });
   // Projet supprimé : droits, dépôt, réglages et accès des agents sont effacés, et son
   // identifiant reste réservé.
   const forgetProject = projectId => {
@@ -509,32 +398,21 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
         );
     }
   };
-  // Projets supprimés avant la 0.1.31 : leurs réglages restaient en place. Ils sont effacés, et
-  // les identifiants de projets supprimés d’après l’historique sont réservés.
-  transaction(() => {
-    const current = new Set(readProjects().map(project => project.id));
-    const leftovers = new Set(
-      [
-        ...PROJECT_SETTINGS.flatMap(table =>
-          db
-            .prepare(`SELECT DISTINCT project_id FROM ${table}`)
-            .all()
-            .map(row => row.project_id),
-        ),
-        ...db
-          .prepare(
-            "SELECT DISTINCT project_id FROM activity WHERE action = 'project.deleted' AND project_id IS NOT NULL",
-          )
-          .all()
-          .map(row => row.project_id),
-        ...db
-          .prepare('SELECT projects FROM agents')
-          .all()
-          .flatMap(row => JSON.parse(row.projects)),
-      ].filter(id => !current.has(id)),
-    );
-    for (const projectId of leftovers) forgetProject(projectId);
-  });
+  // Migrations jouées une seule fois (server/store/migrations.js), dans l’ordre de leur version.
+  runMigrations(db, transaction, [
+    // v2 — exécutions et commentaires antérieurs (server/workflows/runs.js).
+    { version: 2, run: () => workflows.upgradeLegacyRuns() },
+    ...projectMigrations({
+      db,
+      access,
+      workflows,
+      settings: PROJECT_SETTINGS,
+      readProjects,
+      writeProjects,
+      userById,
+      forgetProject,
+    }),
+  ]);
   // Champs que seul le serveur renseigne (cartes Infos : téléchargements, README, changelog).
   const withoutSystemFields = card => {
     if (!card || typeof card !== 'object') return card;

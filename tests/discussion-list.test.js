@@ -106,6 +106,8 @@ test('a discussion card is never prepared for the agent and a moved card loses i
         cards: item.cards.filter(entry => entry.listId !== discussionListId(item.id)),
       })),
     );
+    // Base antérieure aux migrations versionnées.
+    db.exec('PRAGMA user_version = 1');
     db.close();
     store = createStore(file);
     const migrated = store.read().projects.find(project => project.id === projectId);

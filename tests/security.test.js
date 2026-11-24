@@ -91,6 +91,8 @@ test('settings left by projects deleted before this version are cleared at start
   const db = new DatabaseSync(file);
   db.exec("INSERT INTO github_projects VALUES ('website', 'o/old-repo'); DELETE FROM deleted_projects");
   db.prepare('UPDATE agents SET projects = \'["website"]\'').run();
+  // Base antérieure aux migrations versionnées.
+  db.exec('PRAGMA user_version = 1');
   db.close();
   store = createStore(file);
   t.after(() => store.close());

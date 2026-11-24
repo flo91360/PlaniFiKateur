@@ -452,6 +452,8 @@ test('upgrading backfills existing agent questions once and a comment can resume
     delete comment.authorKind;
   });
   writeWorkspace(db, snapshot.projects);
+  // Base antérieure aux migrations versionnées.
+  db.exec('PRAGMA user_version = 1');
   db.close();
   const upgraded = createStore(f.file);
   t.after(() => upgraded.close());
