@@ -222,18 +222,21 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
     touched = new Set();
   const snapshots = new WeakMap();
   // `projectIds` : seulement ces projets, à écrire ensuite avec `scope` (writeProjects).
-  const readProjects = (projectIds = null) => {
-    const projects = readWorkspace(db, { projectIds });
+  // Les pièces jointes n’ont que leurs métadonnées, sauf `attachmentData` : leur contenu ne change
+  // jamais sous le même identifiant, il n’est ni relu ni comparé à chaque modification
+  // (writeWorkspace garde le contenu enregistré d’une pièce jointe sans `data`).
+  const readProjects = (projectIds = null, { attachmentData = false } = {}) => {
+    const projects = readWorkspace(db, { projectIds, attachmentData });
     snapshots.set(projects, writes);
     return projects;
   };
   // Seulement ces projets, avec la révision : une modification limitée à quelques projets ne lit
   // ni n’écrit le reste du tableau (ses pièces jointes en particulier).
-  const readScope = projectIds => {
-    const projects = readWorkspace(db, { projectIds });
-    snapshots.set(projects, writes);
-    return { projects, ...db.prepare('SELECT revision, updated_at AS updatedAt FROM workspace WHERE id = 1').get() };
-  };
+  // Sans `projectIds`, tout le tableau. Pièces jointes sans contenu, comme readProjects.
+  const readScope = (projectIds = null) => ({
+    projects: readProjects(projectIds),
+    ...db.prepare('SELECT revision, updated_at AS updatedAt FROM workspace WHERE id = 1').get(),
+  });
   // Identifiants créés dans les projets lus qui existent déjà ailleurs : validateWorkspace ne les
   // voit pas quand seuls ces projets sont lus, alors qu’ils doivent rester uniques dans le tableau.
   const checkNewIds = (before, clean, scope) => {
@@ -313,7 +316,8 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
     const projects = previous.map(project => withInfos(project, versionFor(project.id)));
     // Comment migrations may reorder properties without changing their values.
     // Only an actual Infos change should increment the workspace revision.
-    if (!isDeepStrictEqual(projects, previous)) writeProjects(validateWorkspace(projects), undefined, { previous });
+    if (!isDeepStrictEqual(projects, previous))
+      writeProjects(validateWorkspace(projects, { attachmentData: false }), undefined, { previous });
   };
   const audit = (actor, action, payload = {}, revision = null) => {
     // Les destinataires d’une action notifiée la voient arriver aussitôt dans leur boîte. Les étapes
@@ -365,8 +369,9 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
   };
   const userById = id => db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   const projectName = projectId => db.prepare('SELECT name FROM projects WHERE id = ?').get(projectId)?.name;
-  const findCard = (projectId, cardId) => {
-    const [project] = readWorkspace(db, { projectIds: [projectId] });
+  // `attachmentData` : avec le contenu des pièces jointes (copie de la carte confiée à l’agent).
+  const findCard = (projectId, cardId, { attachmentData = false } = {}) => {
+    const [project] = readWorkspace(db, { projectIds: [projectId], attachmentData });
     const card = project?.cards.find(c => c.id === cardId);
     if (!card) fail(404, 'card_not_found', 'Carte inexistante dans ce projet.');
     return { project, card };
@@ -447,7 +452,7 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
     const previous = readProjects();
     const projects = previous.map(withProjectLists);
     if (projects.some((project, index) => project !== previous[index])) {
-      const clean = validateWorkspace(projects);
+      const clean = validateWorkspace(projects, { attachmentData: false });
       workflows.withdrawDiscussion(clean, null);
       writeProjects(clean, undefined, { previous });
     }
@@ -534,35 +539,48 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
     const { downloads, release, readme, changelog, ...rest } = card;
     return rest;
   };
-  // Le navigateur reçoit les pièces jointes sans leur contenu : une pièce jointe déjà connue
-  // (même identifiant) qu’il renvoie sans `data` retrouve le contenu enregistré.
-  const withData = (attachments, stored) =>
-    Array.isArray(attachments)
-      ? attachments.map(file =>
-          file && typeof file === 'object' && file.data === undefined && stored().has(file.id)
-            ? { ...file, data: stored().get(file.id) }
-            : file,
-        )
-      : attachments;
-  const withCardData = (card, stored) =>
-    card && typeof card === 'object' && 'attachments' in card
-      ? { ...card, attachments: withData(card.attachments, stored) }
-      : card;
-  const sanitize = (change, stored) => {
-    if (change?.type === 'card.create')
-      return { ...change, card: withCardData(withoutSystemFields(change.card), stored) };
+  // Le navigateur reçoit les pièces jointes sans leur contenu : une pièce jointe déjà connue (même
+  // identifiant) qu’il renvoie sans `data` garde le contenu enregistré (writeWorkspace). Une pièce
+  // jointe nouvelle doit apporter son contenu.
+  // Le contenu d’une pièce jointe ne change pas sous le même identifiant (l’empreinte d’une demande
+  // confiée à l’agent n’en garde que les métadonnées) : remplacer un fichier, c’est en joindre un
+  // nouveau. Comparé par SQLite, sans relire les contenus enregistrés.
+  const sameContent = db.prepare('SELECT 1 FROM attachments WHERE id = ? AND data IS NOT ?');
+  const replacedContent = (before, clean) => {
+    const known = new Map(
+      before.flatMap(project => project.cards.flatMap(card => card.attachments.map(a => [a.id, a]))),
+    );
+    for (const project of clean)
+      for (const card of project.cards)
+        for (const file of card.attachments) {
+          const old = known.get(file.id);
+          if (
+            old &&
+            file.data !== undefined &&
+            (old.data !== undefined ? old.data !== file.data : sameContent.get(file.id, file.data))
+          )
+            fail(
+              400,
+              'invalid_workspace',
+              'Le contenu d’une pièce jointe ne change pas : joignez le nouveau fichier comme une nouvelle pièce jointe.',
+            );
+        }
+  };
+  const missingContent = (before, clean) => {
+    const known = new Set(before.flatMap(project => project.cards.flatMap(card => card.attachments.map(a => a.id))));
+    for (const project of clean)
+      for (const card of project.cards)
+        for (const file of card.attachments)
+          if (file.data === undefined && !known.has(file.id))
+            fail(400, 'invalid_workspace', 'attachment.data : contenu de la pièce jointe requis.');
+  };
+  const sanitize = change => {
+    if (change?.type === 'card.create') return { ...change, card: withoutSystemFields(change.card) };
     if (change?.type === 'project.create' && Array.isArray(change.project?.cards))
       return {
         ...change,
-        project: {
-          ...change.project,
-          cards: change.project.cards.map(card => withCardData(withoutSystemFields(card), stored)),
-        },
+        project: { ...change.project, cards: change.project.cards.map(withoutSystemFields) },
       };
-    if (change?.type === 'card.update' && change.fields && typeof change.fields === 'object')
-      return { ...change, fields: withCardData(change.fields, stored) };
-    if (change?.type === 'attachment.create')
-      return { ...change, attachment: withData([change.attachment], stored)[0] };
     return change;
   };
   // Contrôle des droits puis application d’un lot de modifications sur `before`.
@@ -579,14 +597,7 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
     const lookup = { cardStatus: (projectId, cardId) => cardOf(projectId, cardId)?.status ?? null };
     const allowed = [],
       hidden = [];
-    let stored = null;
-    const attachmentData = () =>
-      (stored ??= new Map(
-        before.projects.flatMap(project =>
-          project.cards.flatMap(card => (card.attachments || []).map(file => [file.id, file.data])),
-        ),
-      ));
-    changes = changes.map(change => sanitize(change, attachmentData));
+    changes = changes.map(sanitize);
     changes.forEach((change, index) => {
       if (change?.type === 'project.create' && access.isDeleted(change.project?.id))
         fail(
@@ -653,7 +664,9 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
       );
     try {
       // Une tâche passée au statut « À tester » rejoint la liste « À tester ».
-      return { clean: validateWorkspace(result.projects.map(withProjectLists)), skipped };
+      const clean = validateWorkspace(result.projects.map(withProjectLists), { attachmentData: false });
+      missingContent(before.projects, clean);
+      return { clean, skipped };
     } catch (error) {
       fail(400, 'invalid_workspace', error.message);
     }
@@ -682,7 +695,10 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
   // `scope` : seuls ces projets ont été lus (before) et sont écrits (clean), les autres restent intacts.
   const commit = (before, clean, actor, { restore = false, settings = null, scope = null } = {}) => {
     const date = new Date().toISOString();
-    if (!restore) checkCards(before.projects, clean);
+    if (!restore) {
+      checkCards(before.projects, clean);
+      replacedContent(before.projects, clean);
+    }
     workflows.reconcile(before.projects, clean, actor, restore, scope);
     // before.projects vient de readWorkspace : il est déjà sous forme canonique.
     const events = restore ? [{ action: 'workspace.restored' }] : attributeChanges(before.projects, clean, actor, date);
@@ -806,7 +822,11 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
     },
     read() {
       const row = db.prepare('SELECT revision, updated_at FROM workspace WHERE id = 1').get();
-      return { projects: readProjects(), revision: row.revision, updatedAt: row.updated_at };
+      return {
+        projects: readProjects(null, { attachmentData: true }),
+        revision: row.revision,
+        updatedAt: row.updated_at,
+      };
     },
     // Tableau complet sans le contenu des pièces jointes (consultation, clés de lecture et d’agent).
     readLight() {
@@ -959,7 +979,7 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
           !!limited?.length &&
           limited.every(id => db.prepare('SELECT 1 FROM projects WHERE id = ?').get(id)) &&
           limited;
-        const state = () => (local ? readScope(local) : this.read());
+        const state = () => readScope(local || null);
         const before = state();
         const targets = scope === 'changed' ? limited : null;
         const save = (from, clean) => {

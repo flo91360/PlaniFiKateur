@@ -109,13 +109,20 @@ export function createAgentActions(
     card.attachments = [...(card.attachments || []).filter(file => !files.some(next => next.id === file.id)), ...files];
     let clean;
     try {
-      clean = validateWorkspace(projects);
+      clean = validateWorkspace(projects, { attachmentData: false });
     } catch (error) {
       fail(400, 'invalid_files', error.message);
     }
     const delivered = clean.find(project => project.id === run.projectId).cards.find(card => card.id === run.cardId);
     run.source = source(delivered);
-    run.cardSnapshot = { ...run.cardSnapshot, attachments: delivered.attachments };
+    // La copie de la carte garde le contenu déjà remis au worker et reçoit celui des fichiers générés.
+    const previous = new Map((run.cardSnapshot.attachments || []).map(file => [file.id, file]));
+    run.cardSnapshot = {
+      ...run.cardSnapshot,
+      attachments: delivered.attachments.map(file =>
+        file.data === undefined && previous.get(file.id)?.data !== undefined ? previous.get(file.id) : file,
+      ),
+    };
     // Ni révision ni date ici : save() les met à jour juste après avec le statut de la carte.
     writeProjects(clean, undefined, { revision: false, scope: [run.projectId] });
     audit(

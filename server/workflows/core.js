@@ -19,15 +19,28 @@ export const text = (value, name, max = 20000) => {
 };
 
 // Empreinte de la demande : une exécution est annulée si la carte change depuis sa préparation.
+// Les pièces jointes y figurent par leurs métadonnées : leur contenu ne change pas sous le même
+// identifiant, et il n’est pas relu à chaque contrôle.
+const attachmentMeta = ({ data, ...file }) => file;
 export const source = card =>
   JSON.stringify([
     card.title,
     card.description,
     card.tags,
     card.checklist.map(c => c.text),
-    ...((card.attachments || []).length ? [card.attachments] : []),
+    ...((card.attachments || []).length ? [card.attachments.map(attachmentMeta)] : []),
     ...(card.aiEffort ? [{ aiEffort: card.aiEffort }] : []),
   ]);
+
+// Empreinte d’une exécution antérieure à la 0.1.122, calculée avec le contenu des pièces jointes :
+// la même sans ce contenu, ou null si elle n’en a pas.
+export function legacySource(value) {
+  if (typeof value !== 'string' || !value.includes('"data":')) return null;
+  const parts = JSON.parse(value);
+  if (!Array.isArray(parts[4])) return null;
+  parts[4] = parts[4].map(file => (file && typeof file === 'object' ? attachmentMeta(file) : file));
+  return JSON.stringify(parts);
+}
 
 export function createSchema(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS project_worker_status (project_id TEXT NOT NULL, agent_id TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(project_id,agent_id));

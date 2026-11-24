@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { fail } from '../http.js';
 import { CARD_STATUS, canTransition, isTerminal, legacyPublicationQuestion, transition } from '../execution-states.js';
-import { OPEN, source, text } from './core.js';
+import { OPEN, legacySource, source, text } from './core.js';
 import { usageSummary } from './usage.js';
 import { isDiscussionCard, restartList } from '../../src/lib/discussion-list.js';
 import { isSystemCard } from '../../src/lib/infos.js';
@@ -35,7 +35,8 @@ export function createRuns(
   { githubProject, executionProfile, projectAi },
 ) {
   const prepare = (projectId, cardId, data, actor) => {
-    const { project, card } = findCard(projectId, cardId);
+    // La copie de la carte remise au worker inclut le contenu de ses pièces jointes.
+    const { project, card } = findCard(projectId, cardId, { attachmentData: true });
     if (card.archived)
       fail(409, 'archived_card', 'Cette carte est archivée : restaurez-la avant de la confier à l’agent.');
     if (isDiscussionCard(project, card))
@@ -201,7 +202,7 @@ export function createRuns(
         .map(row => row.trigger);
       if (handled.includes(pending.trigger) || (!handled.length && pending.answeredAfter)) continue;
       // La copie de la carte remise au worker inclut le contenu de ses pièces jointes.
-      prepareDiscussion(project, findCard(projectId, card.id).card, pending, pending.author);
+      prepareDiscussion(project, findCard(projectId, card.id, { attachmentData: true }).card, pending, pending.author);
     }
   };
   // Carte placée dans la liste « Discussion » : son exécution en cours est annulée, l’agent n’y
@@ -271,6 +272,16 @@ export function createRuns(
         snapshot = run.cardSnapshot;
       if (compact(run).cardSnapshot !== snapshot)
         db.prepare('UPDATE executions SET data = ? WHERE id = ?').run(JSON.stringify(run), row.id);
+    }
+    // Exécutions en cours préparées avant la 0.1.122 : leur empreinte ne garde que les métadonnées
+    // des pièces jointes, comme source() désormais.
+    for (const row of rows(`${OPEN} AND json_extract(data, '$.source') LIKE '%"data":%'`)) {
+      const run = JSON.parse(row.data),
+        migrated = legacySource(run.source);
+      if (migrated) {
+        run.source = migrated;
+        db.prepare('UPDATE executions SET data = ? WHERE id = ?').run(JSON.stringify(run), row.id);
+      }
     }
   });
   return {
