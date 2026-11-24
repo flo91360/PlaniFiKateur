@@ -21,7 +21,8 @@ comptes, sauvegardes, multi-projets, hébergement VPS).
   et par `server/index.js` en production. `api.js` assemble la table de routes
   (`router.js`) décrite par domaine dans `server/routes/` ; `auth.js` gère
   sessions, clés et limites. Stockage SQLite via `node:sqlite` (`store.js`,
-  avec comptes, historique et versions publiées dans `server/store/`),
+  avec comptes, historique, alertes, versions publiées et migrations
+  numérotées `PRAGMA user_version` dans `server/store/`),
   parcours agent dans `workflows.js`, assemblé depuis `server/workflows/`
   (socle, réglages, agents, exécutions, actions du worker, GitHub).
 - `worker/` : worker IA séparé (Codex ou Claude Agent SDK), avec **son propre
@@ -32,7 +33,8 @@ comptes, sauvegardes, multi-projets, hébergement VPS).
 - `deploy/` : site sur le VPS (image Docker, Caddy, mise à jour `site.py`) ; voir `docs/vps.md`.
 - `scripts/` : client agent de référence, sauvegarde/restauration, export HTML.
 - `public/openapi.json` : spécification de l’API, servie à `/openapi.json`.
-- `tests/*.test.js` : tests `node:test` (serveur et worker) ;
+- `tests/*.test.js` : tests `node:test` (serveur et worker, `tests/worker-*.test.js`
+  avec leur banc commun `tests/helpers/worker-fixture.mjs`) ;
   `tests/browser/` : Playwright, un fichier par domaine, serveur de test et
   aides communs dans `support.js` ; le projet mobile ne rejoue que les tests
   marqués `@mobile`.

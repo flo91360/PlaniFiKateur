@@ -212,6 +212,8 @@ test('existing projects keep their creator as manager after the upgrade', async 
   const id = created.body.data.id;
   const db = new DatabaseSync(file);
   db.exec('DELETE FROM project_policies; DELETE FROM project_members;');
+  // Base antérieure aux migrations versionnées.
+  db.exec('PRAGMA user_version = 1');
   db.close();
   const upgraded = createStore(file);
   t.after(() => upgraded.close());

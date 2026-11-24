@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.124 — 2026-11-24
+<!-- planifikateur:audit-12-migrations -->
+
+- **Migrations versionnées et découpage du stockage** : Les mises à niveau des données jouées au démarrage sont numérotées (PRAGMA user_version) et ne sont rejouées qu’une fois ; store.js et les tests du worker sont découpés en modules plus petits.
+
 ## 0.1.123 — 2026-11-24
 <!-- planifikateur:audit-8-alertes -->
 

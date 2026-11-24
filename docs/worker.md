@@ -502,7 +502,7 @@ les tests. Ce réglage s’applique au prochain lancement des tests depuis le d�
 mis à jour ; il ne change pas les processus Chromium déjà démarrés.
 
 ```sh
-node --test tests/worker.test.js
+node --test tests/worker-*.test.js
 ```
 
 Ce test utilise la vraie API HTTP, SQLite, un dépôt Git temporaire, un fichier

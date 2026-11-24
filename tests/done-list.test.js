@@ -112,6 +112,8 @@ test('a card set to done is moved by the server, and finished cards are filed on
         .cards.find(item => item.id === 'c7').listId,
       'bugs',
     );
+    // Base antérieure aux migrations versionnées.
+    db.exec('PRAGMA user_version = 1');
     db.close();
     store = createStore(file);
     const migrated = store.read().projects.find(item => item.id === 'planifikateur');
@@ -130,6 +132,7 @@ test('a card set to done is moved by the server, and finished cards are filed on
       lists: item.lists.map(list => (list.id === doneListId(item.id) ? { ...list, name: 'Terminées' } : list)),
     }));
     writeWorkspace(old, named);
+    old.exec('PRAGMA user_version = 1');
     old.close();
     store = createStore(file);
     for (const item of store.read().projects)

@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { SCHEMA_VERSION } from '../server/store/migrations.js';
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -58,7 +59,7 @@ test('an existing JSON board is copied, converted to tables once and read back i
   assert.match(copies[0], /^planifikateur-avant-tables-.*\.sqlite$/);
   assert.deepEqual(inspectBackup(join(backups, copies[0])).projects, legacy.projects);
   const db = new DatabaseSync(file, { readOnly: true });
-  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 1);
+  assert.equal(db.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION);
   assert.equal(db.prepare('SELECT projects FROM workspace').get().projects, '[]');
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM cards').get().n, legacy.projects.flatMap(p => p.cards).length);
   db.close();
@@ -89,7 +90,7 @@ test('a new database starts in tables without any copy', t => {
   store.close();
   assert.equal(existsSync(join(dir, 'backups')), false);
   const db = new DatabaseSync(file, { readOnly: true });
-  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 1);
+  assert.equal(db.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION);
   assert.ok(db.prepare('SELECT COUNT(*) AS n FROM projects').get().n > 0);
   db.close();
 });
