@@ -81,7 +81,7 @@ n’est pas disponible dans la copie HTML hors ligne. Voir
 
 ## Démarrer le site avec l’API
 
-Prérequis : **Node.js 24** et npm. SQLite utilise le module intégré à Node, sans service à installer.
+Prérequis : **Node.js 24** (`.nvmrc` ; `npm ci` refuse une autre version) et npm. SQLite utilise le module intégré à Node, sans service à installer.
 
 ```sh
 cd /workspace/PlaniFiKateur
@@ -130,7 +130,7 @@ Conserver également des copies hors du volume Railway.
 npm run export:preview
 ```
 
-`dist/PlaniFiKateur-apercu-v0.1.118.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
+`dist/PlaniFiKateur-apercu-v0.1.119.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 

@@ -50,6 +50,6 @@ jobs:
       - name: Attendre la version et le commit livrés sur le site
         run: node scripts/verify-deployment.mjs
         env:
-          PLANIFIKATEUR_URL: ${{ vars.PLANIFIKATEUR_URL || 'https://planifikateur-production.up.railway.app' }}
+          PLANIFIKATEUR_URL: ${{ vars.PLANIFIKATEUR_URL }}
           DELIVERY_SHA: ${{ github.event.workflow_run.head_sha }}
           DELIVERY_VERSION: ${{ needs.publish.outputs.version }}

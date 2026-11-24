@@ -78,13 +78,13 @@ Il crée le tag annoté `v<version>` sur ce commit, avec les notes de livraison.
 Un tag existant sur un autre commit fait échouer la publication ; aucun tag n'est
 déplacé. Une relance pour le même commit est possible sans nouvelle version.
 
-Railway reste connecté à main et déclenche son déploiement automatiquement après
-la fusion. Ce démarrage peut précéder la fin des tests de main : GitHub vérifie
-ensuite, après le tag, que le site sert bien la version **et le SHA complet**
+Le VPS déploie le commit testé de main (voir [l'hébergement VPS](vps.md)). GitHub
+vérifie ensuite, après le tag, que le site sert bien la version **et le SHA complet**
 attendus dans `/build-info.json`, sans cache. L'étape « Vérifier le déploiement
-Railway » échoue explicitement si la version ne devient pas accessible. Elle
+du site » échoue explicitement si la version ne devient pas accessible. Elle
 peut être relancée sans recréer le tag ni rappeler le modèle IA. L'URL est la
-variable Actions `PLANIFIKATEUR_URL`, avec l'URL actuelle du site par défaut.
+variable Actions `PLANIFIKATEUR_URL`, obligatoire depuis la v0.1.119 : sans elle,
+la vérification échoue au lieu de viser l'ancienne adresse Railway.
 
 Le workflow « Dépendances » (`dependencies.yml`) complète ces contrôles sans être
 requis pour la fusion. Chaque lundi, et à chaque PR ou push qui touche un lockfile,
