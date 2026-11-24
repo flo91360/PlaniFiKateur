@@ -28,13 +28,13 @@ export function createFollowUp({
   }
 
   // Quota GitHub : la PR d’une exécution n’est relue qu’après `githubPollMs`, sauf si l’exécution a
-  // changé sur le site entre-temps (contrôles reçus par webhook, validation, exigence de validation…).
+  // changé sur le site entre-temps (contrôles reçus par webhook, nouvelle soumission…).
   const githubChecks = new Map();
   function githubDue(job, run) {
     const previous = githubChecks.get(job.id),
       time = now(),
-      key = JSON.stringify([run.version, run.approvalRequired]);
-    if (previous?.key === key && time < previous.next) return false;
+      key = run.version;
+    if (previous && previous.key === key && time < previous.next) return false;
     githubChecks.set(job.id, { key, next: time + githubPollMs });
     return true;
   }
@@ -127,16 +127,6 @@ export function createFollowUp({
     if (await github.behindMain(run.repository, pr.head.sha, signal, profile.branch, targetOnlyPaths(profile)))
       return run;
     if (!pr.labels.some(l => l.name === 'planifikateur-agent')) await github.label(run.repository, pr.number, signal);
-    // Validation humaine attendue pour ce commit : aucune fusion n’est possible, inutile d’interroger
-    // les contrôles GitHub. Le site garde la décision finale au moment de fusionner (merge-eligibility).
-    if (run.approvalRequired === true && run.approval?.headSha !== submission.headSha) {
-      await note(
-        job,
-        'approval_required',
-        `Exécution ${run.id} : fusion en attente de la validation de la PR sur le site.`,
-      );
-      return null;
-    }
     let merged;
     try {
       merged = await github.mergeWhenReady(

@@ -41,7 +41,6 @@ test('a deleted project loses its repository, settings and agent access, and its
   store.workflows.configureGithub('website', 'o/secret-repo', admin);
   store.workflows.configureAi('website', { engine: 'claude-code', model: 'sonnet' }, admin);
   store.configureProjectAccess('website', { memberRole: 'none' }, admin);
-  store.configureMergeApproval('website', { required: true }, admin);
   const { agent } = store.workflows.configureAgent({ name: 'Agent', projectIds: ['planifikateur', 'website'] }, admin);
   const saved = backups.create();
   const project = structuredClone(store.read().projects.find(item => item.id === 'website'));
@@ -49,7 +48,6 @@ test('a deleted project loses its repository, settings and agent access, and its
   store.change([{ type: 'project.delete', projectId: 'website' }], admin, { strict: true });
   assert.equal(store.workflows.githubProject('website'), null);
   assert.deepEqual(store.workflows.agents().find(item => item.id === agent.id).projectIds, ['planifikateur']);
-  assert.equal(store.mergeApproval('website'), false);
   assert.equal(store.workflows.projectAi('website').engine, 'codex');
 
   // Recréer le projet sous le même identifiant (avec une carte prête) est refusé à tous.
@@ -68,7 +66,6 @@ test('a deleted project loses its repository, settings and agent access, and its
   restoreBackup(store, join(dir, 'backups', saved.name), () => {});
   assert.equal(store.workflows.githubProject('website'), 'o/secret-repo');
   assert.equal(store.workflows.projectAi('website').engine, 'claude-code');
-  assert.equal(store.mergeApproval('website'), true);
   assert.equal(store.projectRole(eve, 'website'), null, 'Le projet reste masqué aux autres membres.');
   assert.deepEqual(
     store.workflows

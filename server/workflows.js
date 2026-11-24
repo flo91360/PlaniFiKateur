@@ -26,7 +26,6 @@ export function createWorkflows(
     recipients,
     emit = () => {},
     canLaunch = () => true,
-    requiresApproval = () => false,
   },
 ) {
   createSchema(db);
@@ -40,7 +39,6 @@ export function createWorkflows(
     recipients,
     emit,
     canLaunch,
-    requiresApproval,
   };
   const core = createCore(db, deps);
   const settings = createSettings(db, deps, core);

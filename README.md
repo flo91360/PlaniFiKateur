@@ -13,7 +13,7 @@ Un tableau de projets inspiré de Trello, conçu pour préparer des demandes con
 - Dictée de la description au micro et reformulation de la demande par l’IA (« Reformuler avec l’IA »).
 - Recherche, filtres, affichage mobile et navigation au clavier.
 - Panneau « Exécution IA » dans le détail de carte : étapes, PR et contrôles GitHub, boutons pour confier la carte à l’agent, annuler, demander des corrections ou relancer.
-- Badge sur chaque carte du tableau où l’agent travaille : en attente, au travail, question, résultat à valider, PR à approuver, tests GitHub en cours ou en échec.
+- Badge sur chaque carte du tableau où l’agent travaille : en attente, au travail, question, résultat à valider, tests GitHub en cours ou en échec.
 - Adresse propre à chaque projet et à chaque carte ouverte (`#/projets/…/cartes/…`) : partageable, conservée au rechargement, refermée par « Précédent ».
 - Paramètres du projet en onglets (Accès, Agent IA, Dépôt), chacun résumant son état.
 - Consommation de chaque exécution IA dans le détail de la carte : tentatives, durée, tokens et coût estimé (Claude Code), avec un plafond par exécution (10 $ ou 20 millions de tokens par défaut) au-delà duquel l’agent demande l’accord sur la carte.
@@ -27,10 +27,9 @@ Un tableau de projets inspiré de Trello, conçu pour préparer des demandes con
 - Actualisation par projet : un changement ne fait relire que le projet concerné, et l’enregistrement ne renvoie que les projets modifiés.
 - Comptes individuels par e-mail et mot de passe, invitations, déconnexion et gestion des membres par l’administrateur.
 - Droits par projet : lecture, contribution ou responsable, projet masqué aux autres membres ; seuls les responsables confient une carte à l’agent.
-- Validation avant fusion, en option par projet : la PR de l’agent attend l’approbation d’un responsable.
 - Worker isolé : installation et tests du projet dans bubblewrap, sans accès aux clés ni à l’état du worker  ; une carte ne peut modifier ni les contrôles de sa propre fusion (workflows, scripts npm, configuration des tests), ni le worker et sa chaîne de livraison : le worker rétablit ces fichiers protégés, sans demander de validation à personne.
 - Notifications en direct (commentaires, statuts, étapes de l’agent) sur les cartes que l’on a créées, commentées ou que l’on suit.
-- Notifications sur l’appareil (Web Push, sans service tiers) quand l’agent attend une réponse, une validation ou une approbation.
+- Notifications sur l’appareil (Web Push, sans service tiers) quand l’agent attend une réponse ou une validation.
 - Créateur des cartes et auteur des commentaires attribués par le serveur ; historique des actions pour préparer les notifications.
 - Accès agent en lecture seule avec une clé dédiée.
 - Consultation des cartes avec projet obligatoire, pour éviter de mélanger des titres identiques entre projets.
@@ -131,7 +130,7 @@ Conserver également des copies hors du volume Railway.
 npm run export:preview
 ```
 
-`dist/PlaniFiKateur-apercu-v0.1.117.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
+`dist/PlaniFiKateur-apercu-v0.1.118.html` contient l’interface, les scripts et les polices. Cette copie fonctionne hors ligne et conserve ses données dans le navigateur. **Elle n’héberge pas l’API.** Pour rendre ses projets consultables par les agents, les exporter en JSON puis les importer dans le site connecté au serveur via le bouton d’information.
 
 Une copie déjà téléchargée ne reçoit pas les corrections du serveur. Le stockage d’une ancienne copie peut être isolé par le navigateur ; il ne sera pas transféré automatiquement. La version est affichée dans le menu des projets.
 
@@ -235,7 +234,7 @@ Les **Paramètres du projet** rassemblent le dépôt GitHub et les autorisations
 
 L’administrateur peut supprimer un membre depuis « Mon compte », après confirmation. L’accès est révoqué immédiatement et les contributions restent attribuées à leur auteur.
 
-Toutes les nouvelles livraisons suivent **tests GitHub → fusion automatique → carte terminée** ; un projet peut exiger en plus l’approbation d’un responsable avant la fusion. Configurer les accès du worker, le webhook et les contrôles requis selon [le guide GitHub](docs/github.md).
+Toutes les nouvelles livraisons suivent **tests GitHub → fusion automatique → carte terminée** ; aucune approbation humaine n’est demandée. Configurer les accès du worker, le webhook et les contrôles requis selon [le guide GitHub](docs/github.md).
 
 La description suffit à préparer une tâche IA. L’agent en déduit le résultat attendu et les vérifications à réaliser ; aucun critère d’acceptation séparé n’est demandé.
 

@@ -40,7 +40,8 @@ export function createAccess(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS project_policies (project_id TEXT PRIMARY KEY, member_role TEXT NOT NULL CHECK(member_role IN ('none','viewer','editor','manager')));
     CREATE TABLE IF NOT EXISTS project_members (project_id TEXT NOT NULL, user_id TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('viewer','editor','manager')), PRIMARY KEY(project_id,user_id));
     CREATE TABLE IF NOT EXISTS deleted_projects (project_id TEXT PRIMARY KEY, deleted_at TEXT NOT NULL);`);
-  // v0.1.28 : validation humaine avant la fusion des PR de l’agent, désactivée par défaut.
+  // v0.1.28 : colonne de l’ancienne validation humaine avant fusion, retirée en 0.1.118 ; gardée
+  // pour les bases existantes, elle n’est plus lue.
   if (
     !db
       .prepare('PRAGMA table_info(project_policies)')
@@ -124,15 +125,6 @@ export function createAccess(db) {
             'INSERT INTO project_members VALUES (?, ?, ?) ON CONFLICT(project_id,user_id) DO UPDATE SET role = excluded.role',
           ).run(projectId, userId, role);
       }
-    },
-    // Les PR de l’agent attendent-elles l’approbation d’un responsable avant la fusion ?
-    mergeApproval: projectId =>
-      !!db.prepare('SELECT merge_approval FROM project_policies WHERE project_id = ?').get(projectId)?.merge_approval,
-    setMergeApproval(projectId, required) {
-      db.prepare(
-        `INSERT INTO project_policies(project_id, member_role, merge_approval) VALUES (?, ?, ?)
-         ON CONFLICT(project_id) DO UPDATE SET merge_approval = excluded.merge_approval`,
-      ).run(projectId, DEFAULT_MEMBER_ROLE, required ? 1 : 0);
     },
     forgetProject(projectId) {
       db.prepare('DELETE FROM project_policies WHERE project_id = ?').run(projectId);

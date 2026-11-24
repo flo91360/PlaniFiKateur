@@ -1,7 +1,7 @@
 import React from 'react';
 import { ArrowRight } from 'lucide-react';
 
-const kinds = { waiting: 'Question de l’agent', review: 'Résultat à valider', merging: 'Fusion à approuver' };
+const kinds = { waiting: 'Question de l’agent', review: 'Résultat à valider' };
 const when = date =>
   date && Number.isFinite(Date.parse(date))
     ? new Date(date).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
@@ -19,7 +19,7 @@ export default function AttentionPanel({ items, onOpenCard }) {
     <div className="attention-panel">
       <p>
         Ouvrez la carte pour répondre à l’agent dans sa discussion (la tâche reprend dès que votre commentaire est
-        enregistré), valider son résultat ou approuver la fusion de sa PR.
+        enregistré) ou valider son résultat.
       </p>
       <ul aria-label="Cartes à traiter">
         {items.map(item => (

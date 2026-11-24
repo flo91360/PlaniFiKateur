@@ -1,11 +1,8 @@
-# PR d’agent : tests puis fusion automatique — v0.1.117
+# PR d’agent : tests puis fusion automatique — v0.1.118
 
 Toutes les nouvelles tâches sont livrées par PR GitHub avec fusion automatique,
-sans sélection du mode de livraison. Depuis la v0.1.28, un responsable peut exiger
-dans **Paramètres du projet → Validation avant fusion** que chaque PR soit en plus
-approuvée depuis la carte (**Approuver la fusion**) : `merge-eligibility` répond
-alors `approval_required` tant que le commit testé n’est pas approuvé, et une
-correction de l’agent demande une nouvelle approbation. Les anciennes exécutions sans PR restent
+sans sélection du mode de livraison ni validation humaine : l’ancienne option « Validation avant
+fusion » (v0.1.28) est retirée depuis la v0.1.118. Les anciennes exécutions sans PR restent
 consultables et peuvent terminer leur parcours précédent. Une PR est fusionnée seulement après la
 réussite des contrôles requis ; la carte est terminée après confirmation signée
 de la fusion par GitHub.

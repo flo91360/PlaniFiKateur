@@ -104,7 +104,6 @@ export const NOTIFIED = [
   'work.interrupted',
   'work.cancel',
   'work.reject',
-  'work.approve',
   'project.access_changed',
 ];
 // Réglages rattachés à un projet, effacés avec lui et rétablis par une restauration.
@@ -322,7 +321,7 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
     const notified =
       NOTIFIED.includes(action) &&
       !(action === 'comment.created' && payload.executionId) &&
-      pushWanted({ action, state: payload.state, approvalRequired: payload.approvalRequired }) &&
+      pushWanted({ action, state: payload.state }) &&
       payload.recipientIds?.length;
     if (notified) emit({ type: 'notifications', userIds: payload.recipientIds });
     const inserted = db
@@ -352,10 +351,7 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
         action,
         actorName: actor?.name || 'Administration',
         ...Object.fromEntries(
-          ['projectId', 'cardId', 'projectName', 'cardTitle', 'state', 'approvalRequired'].map(key => [
-            key,
-            payload[key],
-          ]),
+          ['projectId', 'cardId', 'projectName', 'cardTitle', 'state'].map(key => [key, payload[key]]),
         ),
       });
     return inserted;
@@ -412,7 +408,6 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
     canLaunch,
     // Projets sans le contenu des pièces jointes : lecture seule (file de l’agent, « À traiter »).
     readLight: projectIds => readWorkspace(db, { projectIds, attachmentData: false }),
-    requiresApproval: projectId => access.mergeApproval(projectId),
     transaction,
     audit,
     findCard,
@@ -857,24 +852,6 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
           .all()
           .map(row => row.id),
       );
-    },
-    mergeApproval: projectId => access.mergeApproval(projectId),
-    configureMergeApproval(projectId, data, actor) {
-      return transaction(() => {
-        this.requireProject(actor, projectId, 'manager');
-        if (!data || typeof data.required !== 'boolean' || Object.keys(data).length !== 1)
-          fail(400, 'invalid_approval', 'Envoyez { "required": true } ou { "required": false }.');
-        access.setMergeApproval(projectId, data.required);
-        audit(actor, 'project.approval_changed', {
-          projectId,
-          projectName: projectName(projectId),
-          details: { required: data.required },
-          recipientIds: [],
-        });
-        // Les exécutions en cours de fusion affichent ou retirent l’attente de validation.
-        emit({ type: 'work', projectId });
-        return { required: data.required };
-      });
     },
     // Exige un rôle minimal sur un projet ; un projet masqué est signalé comme inexistant.
     requireProject(user, projectId, role = 'viewer') {

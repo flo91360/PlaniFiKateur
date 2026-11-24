@@ -391,39 +391,6 @@ test('worker spaces GitHub checks of a waiting PR and resumes them as soon as it
   assert.ok(f.logs.some(line => line.includes('PR fusionnée, confirmation du site attendue')));
 });
 
-test('a PR awaiting approval keeps following main but skips its merge checks until a manager approves it', async t => {
-  const f = await fixture(t);
-  f.store.configureMergeApproval(f.project.id, { required: true }, f.user);
-  let mergeChecks = 0,
-    mainChecks = 0;
-  const github = {
-    ...f.github,
-    async behindMain(...args) {
-      mainChecks++;
-      return f.github.behindMain(...args);
-    },
-    mergeWhenReady(...args) {
-      mergeChecks++;
-      return f.github.mergeWhenReady(...args);
-    },
-  };
-  const worker = createWorker(f.config, { ...f.dependencies, github });
-  f.prepare();
-  assert.equal((await worker.tick()).status, 'merging');
-  f.setTestsReady(true);
-  await worker.tick();
-  await worker.tick();
-  assert.equal(mainChecks, 2);
-  assert.equal(mergeChecks, 0);
-  assert.equal(f.merges, 0);
-  assert.equal(f.logs.filter(line => line.includes('en attente de la validation de la PR sur le site')).length, 1);
-  const run = f.current();
-  f.store.workflows.human(f.project.id, f.card.id, run.id, 'approve', { version: run.version }, f.user);
-  await worker.tick();
-  assert.equal(mergeChecks, 1);
-  assert.equal(f.merges, 1);
-});
-
 test('project diagnostics query GitHub every 15 minutes but are reported to the site every minute', async t => {
   const f = await fixture(t, { auto: true });
   let clock = Date.now(),
@@ -560,7 +527,6 @@ test('a card cannot change the worker or the merge controls: they are restored a
   assert.equal(f.modelCalls.length, 2);
   assert.match(f.modelCalls[1].feedback, /\.github\/workflows\/ci\.yml, worker\/isolation\.mjs/);
   const submission = f.current().submissions.at(-1);
-  assert.equal(submission.reviewRequired, undefined);
   const delivered = (await f.git(['ls-tree', '-r', '--name-only', submission.pullRequest.headSha], f.bare)).split('\n');
   assert.ok(delivered.includes('greet.mjs'));
   assert.ok(!delivered.some(path => path.startsWith('.github/') || path.startsWith('worker/')));

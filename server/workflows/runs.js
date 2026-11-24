@@ -30,27 +30,10 @@ export const discussionAi = ai =>
 // vues (carte, badges du tableau, « À traiter ») et cohérence avec les modifications du tableau.
 export function createRuns(
   db,
-  { transaction, findCard, readProjects, readLight, writeProjects, canLaunch, requiresApproval },
-  {
-    rows,
-    unpack,
-    compact,
-    questionComments,
-    save,
-    expire,
-    scoped,
-    checkVersion,
-    checkAgent,
-    checkSource,
-    approvalNeeded,
-  },
+  { transaction, findCard, readProjects, readLight, writeProjects, canLaunch },
+  { rows, unpack, compact, questionComments, save, expire, scoped, checkVersion, checkAgent, checkSource },
   { githubProject, executionProfile, projectAi },
 ) {
-  // PR en cours de fusion qui attend encore l’approbation d’un responsable.
-  const awaitingApproval = (run, required) =>
-    run.state === 'merging' &&
-    approvalNeeded(run, required) &&
-    run.approval?.headSha !== run.submissions.at(-1)?.pullRequest?.headSha;
   const prepare = (projectId, cardId, data, actor) => {
     const { project, card } = findCard(projectId, cardId);
     if (card.archived)
@@ -250,12 +233,6 @@ export function createRuns(
       checkSource(run);
       run.submissions.at(-1).decision = { accepted: true, actor: decidedBy, date: new Date().toISOString() };
     },
-    approve(run, data, decidedBy) {
-      const headSha = run.submissions.at(-1)?.pullRequest?.headSha;
-      if (!headSha) fail(409, 'invalid_transition', 'Aucune PR à approuver.');
-      checkSource(run);
-      run.approval = { headSha, actor: decidedBy, date: new Date().toISOString() };
-    },
     reject(run, data, decidedBy) {
       run.submissions.at(-1).decision = {
         accepted: false,
@@ -302,38 +279,34 @@ export function createRuns(
         if (agent) checkAgent(agent, projectId);
         findCard(projectId, cardId);
         expire();
-        const approvalRequired = requiresApproval(projectId);
         return rows('project_id = ? AND card_id = ?', projectId, cardId)
           .map(unpack)
-          .map(run => ({ ...run, approvalRequired: approvalNeeded(run, approvalRequired), usage: usageSummary(run) }));
+          .map(run => ({ ...run, usage: usageSummary(run) }));
       });
     },
     // État de l’agent pour chaque carte d’un projet ayant une exécution en cours, affiché en badge
-    // sur le tableau : { cardId: { state, awaitingApproval, checks } }.
+    // sur le tableau : { cardId: { state, checks } }.
     projectStatus(projectId) {
-      const required = requiresApproval(projectId);
       const status = {};
       for (const run of rows(`project_id = ? AND ${OPEN}`, projectId).map(unpack)) {
         if (status[run.cardId] || legacyPublicationQuestion(run)) continue;
         status[run.cardId] = {
           state: run.state,
-          awaitingApproval: awaitingApproval(run, required),
           checks: run.githubChecks?.conclusion || null,
         };
       }
       return status;
     },
-    // Exécutions qui attendent une personne : question de l’agent, résultat sans PR à valider, ou
-    // PR à approuver. La question technique d’un ancien worker se résout seule et n’est pas listée.
+    // Exécutions qui attendent une personne : question de l’agent ou résultat sans PR à valider.
+    // Une PR fusionne seule. La question technique d’un ancien worker se résout seule et n’est pas listée.
     attention() {
-      const runs = rows("state IN ('waiting','review','merging')").map(unpack);
+      const runs = rows("state IN ('waiting','review')").map(unpack);
       // Noms des projets et titres des cartes : seuls les projets concernés, sans pièces jointes.
       const projects = runs.length ? readLight([...new Set(runs.map(run => run.projectId))]) : [];
       return runs.flatMap(run => {
         const project = projects.find(p => p.id === run.projectId);
         const card = project?.cards.find(c => c.id === run.cardId);
         if (!card || legacyPublicationQuestion(run)) return [];
-        if (run.state === 'merging' && !awaitingApproval(run)) return [];
         const message = run.state === 'waiting' ? run.exchanges.at(-1)?.question : run.submissions.at(-1)?.summary;
         return [
           {

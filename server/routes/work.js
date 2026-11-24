@@ -1,8 +1,8 @@
 import { httpError } from '../http.js';
 
-const humanActions = ['answer', 'accept', 'reject', 'cancel', 'approve'];
-// Valider, approuver la fusion ou faire corriger le travail de l’agent : réservé aux responsables.
-const managerActions = ['accept', 'reject', 'approve'];
+const humanActions = ['answer', 'accept', 'reject', 'cancel'];
+// Valider ou faire corriger le travail de l’agent : réservé aux responsables.
+const managerActions = ['accept', 'reject'];
 const agentActions = ['claim', 'revise', 'heartbeat', 'progress', 'question', 'submit', 'interrupt'];
 
 // Identité de l’agent (administration et worker) et parcours de travail des cartes.
