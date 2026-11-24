@@ -532,50 +532,23 @@ test('automatic discovery does not create executions while the webhook secret is
   assert.equal(f.store.workflows.list(f.project.id, f.card.id).length, 0);
 });
 
-test('a project that requires approval merges only the PR commit a manager approved', async t => {
+test('an agent PR never waits for a person: no approval route nor action, and the merge stays automatic', async t => {
   const f = await fixture(t);
-  const path = run => `/projects/${f.project.id}/cards/${f.card.id}/work/${run.id}`;
-  assert.equal(
-    (await f.post(`/projects/${f.project.id}/approval`, { required: 'oui' }, { Cookie: f.cookie })).status,
-    405,
-    'Le réglage se modifie par PUT.',
-  );
-  f.store.configureMergeApproval(f.project.id, { required: true }, f.user);
   const submitted = f.submit(f.prepare());
-  assert.deepEqual(f.store.workflows.mergeEligible(repository, 7, sha, f.agent), {
-    eligible: false,
-    reason: 'approval_required',
-  });
-  let [listed] = f.store.workflows.list(f.project.id, f.card.id);
-  assert.equal(listed.approvalRequired, true);
-  assert.ok(f.store.workflows.attention().some(item => item.executionId === submitted.id && item.state === 'merging'));
-  const approved = await f.post(`${path(submitted)}/approve`, { version: listed.version });
-  assert.equal(approved.status, 200);
-  const run = (await approved.json()).data;
-  assert.equal(run.state, 'merging');
-  assert.equal(run.approval.headSha, sha);
-  assert.equal(f.store.workflows.mergeEligible(repository, 7, sha, f.agent).eligible, true);
+  assert.deepEqual(f.store.workflows.mergeEligible(repository, 7, sha, f.agent), { eligible: true });
   assert.equal(
     f.store.workflows.attention().some(item => item.executionId === submitted.id),
     false,
   );
-  assert.ok(f.store.activity({ cardId: f.card.id }).some(event => event.action === 'work.approve'));
-  // Une correction de l’agent change le commit : il faut une nouvelle approbation.
-  const revised = f.store.workflows.agentAction(
-    f.project.id,
-    f.card.id,
-    run.id,
-    'revise',
-    { version: run.version },
-    f.agent,
-  );
-  f.submit(revised, nextSha);
-  assert.equal(f.store.workflows.mergeEligible(repository, 7, nextSha, f.agent).eligible, false);
-  // Sans exigence, la fusion automatique reprend.
-  f.store.configureMergeApproval(f.project.id, { required: false }, f.user);
-  assert.equal(f.store.workflows.mergeEligible(repository, 7, nextSha, f.agent).eligible, true);
-  [listed] = f.store.workflows.list(f.project.id, f.card.id);
-  assert.equal(listed.approvalRequired, false);
+  const [listed] = f.store.workflows.list(f.project.id, f.card.id);
+  assert.equal('approvalRequired' in listed, false);
+  assert.deepEqual(f.store.workflows.projectStatus(f.project.id)[f.card.id], { state: 'merging', checks: null });
+  const approve = await f.post(`/projects/${f.project.id}/cards/${f.card.id}/work/${submitted.id}/approve`, {
+    version: listed.version,
+  });
+  assert.ok([404, 405].includes(approve.status), `statut ${approve.status}`);
+  const setting = await fetch(`${f.base}/projects/${f.project.id}/approval`, { headers: { Cookie: f.cookie } });
+  assert.equal(setting.status, 404);
 });
 
 test('three consecutive CI failures ask a person, and checks without a verdict never go back to the model', async t => {
@@ -768,41 +741,26 @@ test('the worker reads failed job logs from the temporary link without sending i
   assert.equal(calls.find(call => call.url.startsWith('https://logs.example.test')).authorization, undefined);
 });
 
-test('a PR that changes its own merge controls waits for a manager to approve its exact commit', async t => {
+test('a reviewRequired list sent by an old worker is ignored and the PR still merges on green checks', async t => {
   const f = await fixture(t),
     run = f.prepare();
-  const submit = reviewRequired =>
-    f.store.workflows.agentAction(
-      f.project.id,
-      f.card.id,
-      run.id,
-      'submit',
-      {
-        version: run.version,
-        leaseToken: run.leaseToken,
-        summary: 'Tests allégés',
-        checks: 'Tests lancés',
-        links: [],
-        pullRequest: { url: `https://github.com/${repository}/pull/7`, headSha: sha },
-        reviewRequired,
-      },
-      f.agent,
-    );
-  for (const invalid of ['.github', [''], [42], Array(51).fill('a')])
-    assert.throws(
-      () => submit(invalid),
-      error => error.status === 400 && error.code === 'invalid_review',
-    );
-  const submitted = submit(['.github/workflows/ci.yml', 'package.json (scripts)']);
-  assert.deepEqual(submitted.submissions.at(-1).reviewRequired, ['.github/workflows/ci.yml', 'package.json (scripts)']);
-  assert.deepEqual(f.store.workflows.mergeEligible(repository, 7, sha, f.agent), {
-    eligible: false,
-    reason: 'approval_required',
-  });
-  const [listed] = f.store.workflows.list(f.project.id, f.card.id);
-  assert.equal(listed.approvalRequired, true, 'Le projet n’exige pas d’approbation : la PR, si.');
-  assert.equal(f.store.workflows.projectStatus(f.project.id)[f.card.id].awaitingApproval, true);
-  assert.ok(f.store.workflows.attention().some(item => item.executionId === run.id));
-  f.store.workflows.human(f.project.id, f.card.id, run.id, 'approve', { version: listed.version }, f.user);
-  assert.equal(f.store.workflows.mergeEligible(repository, 7, sha, f.agent).eligible, true);
+  const submitted = f.store.workflows.agentAction(
+    f.project.id,
+    f.card.id,
+    run.id,
+    'submit',
+    {
+      version: run.version,
+      leaseToken: run.leaseToken,
+      summary: 'Tests allégés',
+      checks: 'Tests lancés',
+      links: [],
+      pullRequest: { url: `https://github.com/${repository}/pull/7`, headSha: sha },
+      reviewRequired: ['.github/workflows/ci.yml'],
+    },
+    f.agent,
+  );
+  assert.equal(submitted.state, 'merging');
+  assert.equal(submitted.submissions.at(-1).reviewRequired, undefined);
+  assert.deepEqual(f.store.workflows.mergeEligible(repository, 7, sha, f.agent), { eligible: true });
 });

@@ -320,10 +320,6 @@ textarea::placeholder {
   width: 15px;
   height: 15px;
 }
-.checked {
-  text-decoration: line-through;
-  color: var(--text-faint);
-}
 
 .comment {
   display: flex;

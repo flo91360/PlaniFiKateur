@@ -11,16 +11,15 @@ import { createCipheriv, createECDH, createPrivateKey, hkdfSync, randomBytes, si
 // Notification ou étape intermédiaire d’une exécution ? Les étapes intermédiaires restent dans
 // l’historique et le bandeau « Exécution IA » de la carte, sans notification (cloche ni téléphone) :
 // le résultat final (carte « À tester », résultat à valider, échec, interruption) suivra.
-// - work.submit vers « merging » sans approbation : la PR attend les tests puis fusionne seule ;
+// - work.submit vers « merging » : la PR attend les tests puis fusionne seule ;
 // - work.checks hors « waiting » : contrôles réussis, ou correction relancée automatiquement ;
-// - work.approve et work.reject : décision d’une personne, l’agent ou GitHub poursuit.
+// - work.reject : décision d’une personne, l’agent poursuit.
 export function pushWanted(event) {
   switch (event.action) {
     case 'work.submit':
-      return event.state !== 'merging' || Boolean(event.approvalRequired);
+      return event.state !== 'merging';
     case 'work.checks':
       return event.state === 'waiting';
-    case 'work.approve':
     case 'work.reject':
       return false;
     default:
@@ -35,19 +34,12 @@ export function pushMessage(event) {
   const titles = {
     'work.question': 'Question de l’agent',
     'work.submit':
-      event.state === 'review'
-        ? 'Résultat à valider'
-        : event.state === 'merging' && event.approvalRequired
-          ? 'PR à approuver'
-          : event.state === 'done'
-            ? 'Carte terminée'
-            : 'Résultat proposé',
+      event.state === 'review' ? 'Résultat à valider' : event.state === 'done' ? 'Carte terminée' : 'Résultat proposé',
     'work.checks': event.state === 'waiting' ? 'Tests GitHub en échec' : 'Contrôles GitHub',
     'work.merged': 'Carte à tester',
     'work.interrupted': 'Exécution interrompue',
     'work.cancel': 'Exécution annulée',
     'work.reject': 'Corrections demandées',
-    'work.approve': 'Fusion approuvée',
     'comment.created': 'Nouveau commentaire',
     'card.status_changed': 'Statut modifié',
     'card.deleted': 'Carte supprimée',
@@ -57,7 +49,7 @@ export function pushMessage(event) {
   const details = {
     'work.question': 'L’agent attend votre réponse dans la discussion de la carte.',
     'work.submit':
-      event.state === 'review' || event.approvalRequired
+      event.state === 'review'
         ? 'Ouvrez la carte pour vérifier le travail de l’agent.'
         : event.state === 'done'
           ? 'L’agent a terminé la carte.'
@@ -70,7 +62,6 @@ export function pushMessage(event) {
     'work.interrupted': 'Ouvrez la carte pour relancer ou préciser la demande.',
     'work.cancel': `${actor} a annulé l’exécution.`,
     'work.reject': `${actor} a demandé des corrections.`,
-    'work.approve': `${actor} a approuvé la fusion de la PR.`,
     'comment.created': `${actor} a ajouté un commentaire.`,
     'card.status_changed': `${actor} a changé le statut.`,
     'card.deleted': `${actor} a supprimé la carte.`,

@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.118 — 2026-11-24
+<!-- planifikateur:audit-7-validation-fusion -->
+
+- **Validation avant fusion retirée** : L’option « Validation avant fusion », le bouton « Approuver la fusion » et le champ reviewRequired disparaissent : une PR d’agent fusionne toujours seule dès que les contrôles GitHub réussissent, sans attendre personne.
+
 ## 0.1.117 — 2026-11-20
 <!-- planifikateur:version-infos-10-min -->
 

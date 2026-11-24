@@ -1564,7 +1564,7 @@
     "/api/v1/projects/{projectId}/work-status": {
       "get": {
         "summary": "État de l’agent sur les cartes d’un projet",
-        "description": "Pour chaque carte ayant une exécution en cours : `state`, `awaitingApproval` (PR qui attend l’approbation d’un responsable) et `checks` (dernier résultat des tests GitHub, ou null). Alimente les badges du tableau.",
+        "description": "Pour chaque carte ayant une exécution en cours : `state` et `checks` (dernier résultat des tests GitHub, ou null). Alimente les badges du tableau.",
         "security": [
           {
             "ownerSession": []
@@ -1598,7 +1598,6 @@
                         "type": "object",
                         "required": [
                           "state",
-                          "awaitingApproval",
                           "checks"
                         ],
                         "properties": {
@@ -1612,9 +1611,6 @@
                               "merging",
                               "interrupted"
                             ]
-                          },
-                          "awaitingApproval": {
-                            "type": "boolean"
                           },
                           "checks": {
                             "type": [
@@ -2367,16 +2363,6 @@
                   },
                   "usage": {
                     "$ref": "#/components/schemas/ExecutionUsage"
-                  },
-                  "reviewRequired": {
-                    "type": "array",
-                    "maxItems": 50,
-                    "description": "Contrôles de la fusion modifiés par la PR (workflows GitHub, scripts ou configuration des tests), relevés par le worker : un responsable doit approuver ce commit avant la fusion automatique.",
-                    "items": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 300
-                    }
                   }
                 },
                 "required": [
@@ -7539,281 +7525,6 @@
         }
       }
     },
-    "/api/v1/projects/{projectId}/cards/{cardId}/work/{executionId}/approve": {
-      "post": {
-        "summary": "Approuver la fusion de la PR",
-        "security": [
-          {
-            "ownerSession": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "projectId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
-            }
-          },
-          {
-            "name": "cardId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
-            }
-          },
-          {
-            "name": "executionId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Action réussie.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": {
-                      "$ref": "#/components/schemas/Execution"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Corps invalide."
-          },
-          "401": {
-            "description": "Identité requise."
-          },
-          "403": {
-            "description": "Projet ou action non autorisé."
-          },
-          "404": {
-            "description": "Projet, carte ou exécution absent."
-          },
-          "409": {
-            "description": "Version périmée, réservation invalide ou transition interdite."
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "version": {
-                    "type": "integer",
-                    "minimum": 1
-                  }
-                },
-                "required": [
-                  "version"
-                ]
-              }
-            }
-          }
-        },
-        "description": "Réservé aux responsables du projet, quand il exige une validation avant fusion. L’approbation vaut pour le commit actuel de la PR : une correction de l’agent en demande une nouvelle."
-      }
-    },
-    "/api/v1/projects/{projectId}/approval": {
-      "get": {
-        "summary": "Validation humaine avant fusion",
-        "security": [
-          {
-            "ownerSession": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "projectId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "required : les PR de l’agent attendent l’approbation d’un responsable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "data"
-                  ],
-                  "properties": {
-                    "data": {
-                      "type": "object",
-                      "required": [
-                        "required"
-                      ],
-                      "properties": {
-                        "required": {
-                          "type": "boolean"
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Session requise.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Origine de la requête non autorisée.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Projet inexistant ou masqué.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "summary": "Exiger ou non une validation avant fusion",
-        "description": "Réservé aux responsables du projet.",
-        "security": [
-          {
-            "ownerSession": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "projectId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": [
-                  "required"
-                ],
-                "properties": {
-                  "required": {
-                    "type": "boolean"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Réglage enregistré.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "data"
-                  ],
-                  "properties": {
-                    "data": {
-                      "type": "object",
-                      "required": [
-                        "required"
-                      ],
-                      "properties": {
-                        "required": {
-                          "type": "boolean"
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Corps invalide (invalid_approval).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Session requise.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Réservé aux responsables du projet (project_forbidden).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Projet inexistant ou masqué.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/notifications": {
       "get": {
         "summary": "Notifications du compte connecté",
@@ -9184,29 +8895,6 @@
             ],
             "description": "Présent pour les nouvelles exécutions dont la demande vient de la carte. Les exécutions historiques peuvent ne pas avoir ce champ."
           },
-          "approvalRequired": {
-            "type": "boolean",
-            "description": "Le projet exige une approbation avant la fusion (historique d’une carte)."
-          },
-          "approval": {
-            "type": [
-              "object",
-              "null"
-            ],
-            "description": "Approbation de la fusion par un responsable, pour un commit précis.",
-            "properties": {
-              "headSha": {
-                "type": "string"
-              },
-              "actor": {
-                "$ref": "#/components/schemas/Author"
-              },
-              "date": {
-                "type": "string",
-                "format": "date-time"
-              }
-            }
-          },
           "attempts": {
             "type": "array",
             "description": "Tentatives de l’agent (50 dernières) : début, fin et consommation rapportée par le worker.",
@@ -10197,7 +9885,6 @@
               "work.interrupted",
               "work.cancel",
               "work.reject",
-              "work.approve",
               "project.access_changed"
             ]
           },

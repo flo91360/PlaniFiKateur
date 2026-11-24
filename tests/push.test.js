@@ -86,10 +86,6 @@ test('every account notification becomes a device notification with a link to th
     tag: 'planifikateur-c1',
   });
   assert.equal(pushMessage({ ...base, action: 'work.submit', state: 'merging' }).title, 'Résultat proposé');
-  assert.equal(
-    pushMessage({ ...base, action: 'work.submit', state: 'merging', approvalRequired: true }).title,
-    'PR à approuver',
-  );
   assert.equal(pushMessage({ ...base, action: 'work.checks', state: 'ready' }).title, 'Contrôles GitHub');
   assert.equal(pushMessage({ ...base, action: 'work.checks', state: 'waiting' }).title, 'Tests GitHub en échec');
   assert.equal(pushMessage({ ...base, action: 'work.merged', state: 'done' }).title, 'Carte à tester');
@@ -114,7 +110,6 @@ test('only the final result of a card reaches the devices, not the intermediate 
   assert.equal(sent({ action: 'work.question', state: 'waiting' }), true);
   assert.equal(sent({ action: 'work.submit', state: 'review' }), true);
   assert.equal(sent({ action: 'work.submit', state: 'done' }), true);
-  assert.equal(sent({ action: 'work.submit', state: 'merging', approvalRequired: true }), true);
   assert.equal(sent({ action: 'work.checks', state: 'waiting' }), true);
   assert.equal(sent({ action: 'work.merged', state: 'done' }), true);
   assert.equal(sent({ action: 'work.interrupted', state: 'interrupted' }), true);
@@ -123,10 +118,8 @@ test('only the final result of a card reaches the devices, not the intermediate 
   assert.equal(sent({ action: 'card.status_changed' }), true);
   // Étapes intermédiaires : la PR fusionnera seule, la correction est relancée, l’agent poursuit.
   assert.equal(sent({ action: 'work.submit', state: 'merging' }), false);
-  assert.equal(sent({ action: 'work.submit', state: 'merging', approvalRequired: false }), false);
   assert.equal(sent({ action: 'work.checks', state: 'merging' }), false);
   assert.equal(sent({ action: 'work.checks', state: 'ready' }), false);
-  assert.equal(sent({ action: 'work.approve', state: 'merging' }), false);
   assert.equal(sent({ action: 'work.reject', state: 'ready' }), false);
   assert.equal(pushMessage({ action: 'work.submit', state: 'done', cardTitle: 'Menu' }).title, 'Carte terminée');
 });

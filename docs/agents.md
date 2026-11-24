@@ -1,4 +1,4 @@
-# Parcours agent par projet — v0.1.117
+# Parcours agent par projet — v0.1.118
 
 Un seul agent actif, sans délégation. Le site pilote les demandes et confirme la fusion GitHub ;
 l’agent s’exécute dans un service externe. Le [worker Codex](worker.md) fournit ce
@@ -132,16 +132,15 @@ Les actions d’agent :
 | `heartbeat` | `{leaseToken}` | Prolonger la réservation sans changer la version |
 | `progress` | `{version, leaseToken, message}` | Enregistrer une mise à jour importante et prolonger la réservation |
 | `question` | `{version, leaseToken, message}` | Attendre une réponse humaine, sans délai d’expiration |
-| `submit` | `{version, leaseToken, summary, checks, links: [], pullRequest: {url, headSha}, reviewRequired?}` | Soumettre une PR pour fusion automatique |
+| `submit` | `{version, leaseToken, summary, checks, links: [], pullRequest: {url, headSha}}` | Soumettre une PR pour fusion automatique |
 | `interrupt` | `{version, leaseToken, message}` | Signaler un problème et rendre la tâche reprenable |
 
 Depuis la v0.1.44, `progress`, `question`, `submit` et `interrupt` acceptent aussi `usage` : la consommation cumulée du modèle depuis la réservation (`inputTokens`, dont `cachedInputTokens`, `outputTokens`, `costUsd` si le moteur le fournit, `durationMs`). Chaque réservation ouvre une tentative dans `attempts` (début, fin, consommation) ; la lecture des exécutions d’une carte ajoute `usage`, leur total (tentatives, tokens, coût connu, durée).
 
-`reviewRequired` (facultatif) liste les contrôles de la fusion que la PR modifie : la PR attend alors
-qu’un responsable approuve son commit (`approve`). Le worker installé ne l’envoie plus : une carte ne
-peut pas modifier ces fichiers protégés (workflows GitHub, scripts npm, configuration des tests,
-worker et livraison), que le worker rétablit avant de livrer (voir
-[le worker](worker.md#isolation-du-code-exécuté)). Le site l’accepte encore d’un ancien worker.
+Une carte ne peut pas modifier les contrôles de sa propre fusion (workflows GitHub, scripts npm,
+configuration des tests, worker et livraison) : le worker rétablit ces fichiers protégés avant de
+livrer (voir [le worker](worker.md#isolation-du-code-exécuté)). Depuis la v0.1.118, le champ
+`reviewRequired` d’un ancien worker est ignoré : aucune PR n’attend de validation humaine.
 
 Les actions humaines exigent une session personnelle :
 
@@ -149,10 +148,10 @@ Les actions humaines exigent une session personnelle :
 - `accept` : `{version}` ; uniquement pour les anciennes exécutions sans PR.
 - `reject` : `{version, message}` ; conserve le refus et remet le travail en file.
 - `cancel` : `{version, message}` ; annule l’exécution et conserve son historique.
-- `approve` : `{version}` ; approuve la fusion de la PR au commit actuel, quand le projet exige une
-  validation avant fusion (`GET/PUT /api/v1/projects/{projectId}/approval`, `{ required }`, réglé par un
-  responsable). Les exécutions renvoient alors `approvalRequired` et `approval`, et la boîte « À traiter »
-  liste les PR à approuver. Réservé aux responsables, comme `accept` et `reject`.
+
+`accept` et `reject` sont réservés aux responsables. L’ancienne action `approve` et la route
+`/api/v1/projects/{projectId}/approval` (validation avant fusion) sont retirées depuis la v0.1.118 :
+une PR d’agent fusionne seule dès que les contrôles requis réussissent.
 
 Une transition réussie renvoie l’exécution avec sa nouvelle `version` : utiliser
 celle-ci pour l’action suivante. Chaque question, réponse, progression ou résultat

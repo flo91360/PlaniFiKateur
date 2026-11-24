@@ -706,7 +706,7 @@ test.describe('project task execution', () => {
     await expect(page.getByText('Rien à traiter', { exact: false })).toBeVisible();
   });
 
-  test('a project that requires approval waits for a manager before merging the agent PR', async ({
+  test('an agent PR merges on its own: no approval setting, no approval button, nothing to handle', async ({
     page,
     request,
     appServer,
@@ -714,85 +714,32 @@ test.describe('project task execution', () => {
     await login(page, appServer);
     const project = seed[0],
       card = project.cards[0];
-    const headers = await agentFor(page, appServer, project, 'Agent relu');
+    const headers = await agentFor(page, appServer, project, 'Agent autonome');
     await page.getByRole('button', { name: 'Paramètres du projet', exact: true }).click();
     await page.getByRole('tab', { name: /^Accès/ }).click();
-    await page.getByText('Validation avant fusion', { exact: true }).click();
-    await page.getByLabel('Approuver chaque PR avant sa fusion', { exact: true }).check();
-    await page.getByRole('button', { name: 'Enregistrer la validation', exact: true }).click();
-    await expect(page.getByText('Chaque PR de l’agent attendra désormais', { exact: false })).toBeVisible();
+    await expect(page.getByText('Validation avant fusion', { exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: 'Fermer', exact: true }).click();
     const base = `${appServer}/api/v1/projects/${project.id}/cards/${card.id}/work`;
     let run = (await (await page.request.post(base, { data: {} })).json()).data;
     run = (await (await request.post(`${base}/${run.id}/claim`, { headers, data: { version: run.version } })).json())
       .data;
-    const headSha = 'b'.repeat(40);
     const submitted = await request.post(`${base}/${run.id}/submit`, {
       headers,
       data: {
         version: run.version,
         leaseToken: run.leaseToken,
-        summary: 'PR à relire.',
+        summary: 'PR prête.',
         checks: 'Tests lancés.',
         links: [],
-        pullRequest: { url: 'https://github.com/flo91360/PlaniFiKateur/pull/9', headSha },
+        pullRequest: { url: 'https://github.com/flo91360/PlaniFiKateur/pull/9', headSha: 'b'.repeat(40) },
       },
     });
     expect(submitted.status()).toBe(200);
-    const eligible = async () =>
-      (
-        await (
-          await request.get(
-            `${appServer}/api/v1/github/merge-eligibility?repository=flo91360/PlaniFiKateur&number=9&sha=${headSha}`,
-            { headers },
-          )
-        ).json()
-      ).data.eligible;
-    expect(await eligible()).toBe(false);
-    await page.getByRole('button', { name: 'À traiter (1)', exact: true }).click();
-    await expect(page.getByRole('list', { name: 'Cartes à traiter', exact: true })).toContainText('Fusion à approuver');
-    await page.getByRole('list', { name: 'Cartes à traiter', exact: true }).getByRole('button').first().click();
-    const panel = page.getByRole('region', { name: 'Exécution IA', exact: true });
-    await expect(panel).toContainText('elle attend l’approbation d’un responsable avant la fusion');
-    await panel.getByRole('button', { name: 'Approuver la fusion', exact: true }).click();
-    await expect(panel).toContainText('PR approuvée par Alice : fusion après les tests GitHub.');
-    expect(await eligible()).toBe(true);
-  });
-
-  test('a PR that changes its own checks waits for a manager even without project approval', async ({
-    page,
-    request,
-    appServer,
-  }) => {
-    await login(page, appServer);
-    const project = seed[0],
-      card = project.cards[0];
-    const headers = await agentFor(page, appServer, project, 'Agent contrôlé');
-    const base = `${appServer}/api/v1/projects/${project.id}/cards/${card.id}/work`;
-    let run = (await (await page.request.post(base, { data: {} })).json()).data;
-    run = (await (await request.post(`${base}/${run.id}/claim`, { headers, data: { version: run.version } })).json())
-      .data;
-    const submitted = await request.post(`${base}/${run.id}/submit`, {
-      headers,
-      data: {
-        version: run.version,
-        leaseToken: run.leaseToken,
-        summary: 'Tests réorganisés.',
-        checks: 'Tests lancés.',
-        links: [],
-        pullRequest: { url: 'https://github.com/flo91360/PlaniFiKateur/pull/11', headSha: 'c'.repeat(40) },
-        reviewRequired: ['.github/workflows/ci.yml', 'package.json (scripts)'],
-      },
-    });
-    expect(submitted.status()).toBe(200);
+    await expect(page.getByRole('button', { name: 'À traiter', exact: true })).toBeVisible();
     await page.getByRole('heading', { name: card.title, exact: true }).click();
     const panel = page.getByRole('region', { name: 'Exécution IA', exact: true });
-    await expect(panel).toContainText('elle attend l’approbation d’un responsable avant la fusion');
-    await expect(panel.getByRole('list', { name: 'Contrôles modifiés', exact: true })).toHaveText(
-      '.github/workflows/ci.ymlpackage.json (scripts)',
-    );
-    await panel.getByRole('button', { name: 'Approuver la fusion', exact: true }).click();
-    await expect(panel).toContainText('PR approuvée par Alice : fusion après les tests GitHub.');
+    await expect(panel).toContainText('PR ouverte : fusion automatique après les tests GitHub.');
+    await expect(panel.getByRole('button', { name: 'Approuver la fusion', exact: true })).toHaveCount(0);
   });
 
   test('the event stream delivers board and agent changes without waiting for a refresh', async ({

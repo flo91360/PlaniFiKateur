@@ -5,7 +5,6 @@ import { useApiResource } from '../lib/use-api.js';
 import AiSettings from './AiSettings.jsx';
 import ExecutionSettings from './ExecutionSettings.jsx';
 import ProjectMembers, { roleLabels } from './ProjectMembers.jsx';
-import MergeApproval from './MergeApproval.jsx';
 import Licenses from './Licenses.jsx';
 import { useProjectAccess } from '../lib/project-access.js';
 
@@ -20,20 +19,14 @@ export default function ProjectAutomation({ project, user, onAiConfigured, onAcc
     setConfiguration = github.setData,
     error = github.error;
   const [tab, setTab] = useState('access'),
-    [ai, setAi] = useState(null),
-    [approval, setApproval] = useState(null);
+    [ai, setAi] = useState(null);
   const id = useId(),
     tabs = useRef({});
   const sections = [
     {
       key: 'access',
       label: 'Accès',
-      state: [
-        `votre rôle : ${(roleLabels[role] || 'Lecture').toLowerCase()}`,
-        approval === null ? '' : approval ? 'PR approuvées avant fusion' : 'fusion sans approbation',
-      ]
-        .filter(Boolean)
-        .join(' · '),
+      state: `votre rôle : ${(roleLabels[role] || 'Lecture').toLowerCase()}`,
     },
     {
       key: 'ai',
@@ -88,13 +81,7 @@ export default function ProjectAutomation({ project, user, onAiConfigured, onAcc
               </button>
             ))}
           </div>
-          {panel(
-            'access',
-            <>
-              <ProjectMembers projectId={project.id} canManage={canManage} onChanged={onAccessChanged} />
-              <MergeApproval projectId={project.id} canManage={canManage} onState={setApproval} />
-            </>,
-          )}
+          {panel('access', <ProjectMembers projectId={project.id} canManage={canManage} onChanged={onAccessChanged} />)}
           {panel(
             'ai',
             <>
