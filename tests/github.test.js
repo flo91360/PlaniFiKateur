@@ -4,7 +4,7 @@ import { createHmac } from 'node:crypto';
 import { createStore } from '../server/store.js';
 import { createAppServer } from '../server/index.js';
 import { seedAccount, loginRequest } from './helpers/accounts.mjs';
-import { mergeAgentPullRequest, requiredJobs } from '../scripts/merge-agent-pr.mjs';
+import { mergeAgentPullRequest, requiredJobs } from '../worker/merge.mjs';
 import { createGithubClient } from '../worker/clients.mjs';
 import { doneListId } from '../src/lib/done-list.js';
 

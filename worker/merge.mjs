@@ -1,5 +1,5 @@
 import { defaultExecutionProfile, installedProfile, targetOnlyPaths } from './execution-profile.mjs';
-// Trusted worker code shared with the GitHub Actions merger.
+// Seul chemin de fusion des PR d’agent : code installé du worker, jamais celui de la PR.
 export const requiredJobs = ['Tests serveur', 'Tests navigateur'];
 
 // La PR contient-elle la branche cible ? Les commits de la branche cible qui ne touchent que des

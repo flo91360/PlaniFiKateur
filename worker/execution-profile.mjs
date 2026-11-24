@@ -38,7 +38,6 @@ export const executionPresets = {
       'worker/**',
       '.dockerignore',
       'scripts/delivery.mjs',
-      'scripts/merge-agent-pr.mjs',
       'scripts/publish-version.mjs',
       'scripts/verify-deployment.mjs',
       'AGENTS.md',
