@@ -244,9 +244,14 @@ export function writeWorkspace(db, projects, previous = null, { scope = null } =
     comments: [`WHERE card_id ${among}`, scopedCards],
     attachments: [`WHERE card_id ${among}`, scopedCards],
   };
+  // Le contenu des pièces jointes n’est jamais relu : une ligne de pièce jointe se compare sur ses
+  // métadonnées (colonnes avant `data`). Une pièce jointe sans `data` garde le contenu enregistré ;
+  // un contenu fourni pour une pièce jointe existante est comparé par SQLite, sans le relire.
+  const compared = table => (table === 'attachments' ? COLUMNS.attachments.slice(0, -1) : COLUMNS[table]);
   const stored = Object.fromEntries(
-    Object.entries(COLUMNS).map(([table, columns]) => {
-      if (known) return [table, new Map(known[table].map(row => [row[0], row]))];
+    Object.keys(COLUMNS).map(table => {
+      const columns = compared(table);
+      if (known) return [table, new Map(known[table].map(row => [row[0], row.slice(0, columns.length)]))];
       const [where, parameter] = scope ? filters[table] : ['', null];
       return [
         table,
@@ -259,8 +264,17 @@ export function writeWorkspace(db, projects, previous = null, { scope = null } =
       ];
     }),
   );
+  const contentChanged = db.prepare('SELECT 1 FROM attachments WHERE id = ? AND data IS NOT ?');
+  const storedElsewhere = db.prepare('SELECT 1 FROM attachments WHERE id = ?');
+  const updateMeta = db.prepare(
+    `UPDATE attachments SET ${COLUMNS.attachments
+      .slice(1, -1)
+      .map(column => `${column} = ?`)
+      .join(', ')} WHERE id = ?`,
+  );
   for (const [table, columns] of Object.entries(COLUMNS)) {
     const existing = stored[table];
+    const width = compared(table).length;
     const upsert = db.prepare(
       `INSERT OR REPLACE INTO ${table}(${columns.join(',')}) VALUES(${columns.map(() => '?').join(',')})`,
     );
@@ -269,8 +283,18 @@ export function writeWorkspace(db, projects, previous = null, { scope = null } =
     for (const row of wanted[table]) {
       ids.add(row[0]);
       const current = existing.get(row[0]);
-      if (!current || current.length !== row.length || current.some((value, i) => value !== row[i])) {
-        upsert.run(...row);
+      const meta = row.slice(0, width);
+      const keep = table === 'attachments' && row.at(-1) === undefined;
+      if (keep && !current && !storedElsewhere.get(row[0]))
+        throw new Error(`Pièce jointe ${row[0]} sans contenu enregistré.`);
+      const changed =
+        !current ||
+        current.length !== meta.length ||
+        current.some((value, i) => value !== meta[i]) ||
+        (table === 'attachments' && !keep && !!contentChanged.get(row[0], row.at(-1)));
+      if (changed) {
+        if (keep) updateMeta.run(...meta.slice(1), row[0]);
+        else upsert.run(...row);
         written++;
         projectIds.add(projectOf(table, row));
         if (current) projectIds.add(projectOf(table, current));

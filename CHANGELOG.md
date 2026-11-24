@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.122 — 2026-11-24
+<!-- planifikateur:audit-5-pieces-jointes -->
+
+- **Pièces jointes lues à la demande** : Une modification de carte ne relit et ne compare plus le contenu des pièces jointes du projet : dans un projet de 20 Mo de pièces jointes, renommer une carte passe d’environ 400 ms à 4 ms, et les messages du worker deviennent aussi légers. Le contenu d’une pièce jointe ne change plus sous le même identifiant : remplacer un fichier revient à en joindre un nouveau.
+
 ## 0.1.121 — 2026-11-24
 <!-- planifikateur:audit-6-dependances-requises -->
 

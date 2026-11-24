@@ -130,11 +130,96 @@ test('execution snapshots include attachments and changing a file cancels the ob
     store.workflows.configureGithub(project.id, 'owner/repository', actor);
     const run = store.workflows.prepare(project.id, card.id, {}, actor);
     assert.deepEqual(run.cardSnapshot.attachments, [attachment()]);
+    // Le contenu d’une pièce jointe ne change pas sous le même identifiant.
     const next = store.read();
-    next.projects[0].cards[0].attachments[0].data = 'bmV3';
+    next.projects[0].cards[0].attachments[0] = { ...next.projects[0].cards[0].attachments[0], data: 'bmV3', size: 3 };
+    assert.throws(
+      () => store.write(next.projects, next.revision, actor),
+      error => error.status === 400 && /nouvelle pièce jointe/.test(error.message),
+    );
+    assert.equal(store.workflows.list(project.id, card.id)[0].state, 'ready');
+    // Remplacer le fichier (nouvel identifiant) annule la demande devenue obsolète.
+    next.projects[0].cards[0].attachments[0].id = 'replaced-file';
     store.write(next.projects, next.revision, actor);
     assert.equal(store.workflows.list(project.id, card.id)[0].state, 'cancelled');
     assert.equal(store.read().projects[0].cards[0].status, 'draft');
+  } finally {
+    store.close();
+  }
+});
+
+test('renaming a card in a project with 20 MB of attachments neither reads nor rewrites their content', () => {
+  const store = createStore(':memory:');
+  const actor = { id: 'author', name: 'Auteur' };
+  try {
+    const snapshot = store.read(),
+      project = snapshot.projects[0];
+    const megabyte = Buffer.alloc(1000000, 7).toString('base64');
+    project.cards = Array.from({ length: 20 }, (_, index) => ({
+      ...project.cards[0],
+      id: `heavy-${index}`,
+      title: `Carte ${index}`,
+      comments: [],
+      checklist: [],
+      attachments: [
+        {
+          id: `heavy-file-${index}`,
+          name: 'gros.bin',
+          type: 'application/octet-stream',
+          size: 1000000,
+          data: megabyte,
+        },
+      ],
+    }));
+    store.write(snapshot.projects, snapshot.revision, actor);
+    const durations = [];
+    for (let round = 0; round < 5; round++) {
+      const started = performance.now();
+      store.change(
+        [{ type: 'card.update', projectId: project.id, cardId: 'heavy-3', fields: { title: `Renommée ${round}` } }],
+        actor,
+        { strict: true, attachmentData: false, scope: 'changed' },
+      );
+      durations.push(performance.now() - started);
+    }
+    durations.sort((a, b) => a - b);
+    assert.ok(durations[2] < 150, `Renommage en ${durations[2].toFixed(1)} ms`);
+    // Le contenu reste intact, et une pièce jointe déjà connue renvoyée sans contenu le garde.
+    store.change(
+      [
+        {
+          type: 'card.update',
+          projectId: project.id,
+          cardId: 'heavy-3',
+          fields: {
+            attachments: [{ id: 'heavy-file-3', name: 'renommé.bin', type: 'application/octet-stream', size: 1000000 }],
+          },
+        },
+      ],
+      actor,
+      { strict: true },
+    );
+    const card = store.read().projects[0].cards.find(item => item.id === 'heavy-3');
+    assert.equal(card.title, 'Renommée 4');
+    assert.equal(card.attachments[0].name, 'renommé.bin');
+    assert.equal(card.attachments[0].data, megabyte);
+    // Une nouvelle pièce jointe sans contenu est refusée.
+    assert.throws(
+      () =>
+        store.change(
+          [
+            {
+              type: 'attachment.create',
+              projectId: project.id,
+              cardId: 'heavy-4',
+              attachment: { id: 'without-data', name: 'vide.txt', type: 'text/plain', size: 3 },
+            },
+          ],
+          actor,
+          { strict: true },
+        ),
+      error => error.status === 400 && /attachment\.data/.test(error.message),
+    );
   } finally {
     store.close();
   }
