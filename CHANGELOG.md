@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.119 — 2026-11-24
+<!-- planifikateur:audit-9-node24 -->
+
+- **Node 24 imposé, repli Railway retiré** : npm ci et npm test refusent une autre version que Node 24 (.nvmrc, engine-strict) au lieu de donner des échecs trompeurs, et la vérification du déploiement exige la variable PLANIFIKATEUR_URL au lieu de viser l’ancienne adresse Railway.
+
 ## 0.1.118 — 2026-11-24
 <!-- planifikateur:audit-7-validation-fusion -->
 

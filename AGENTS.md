@@ -15,7 +15,7 @@ confirmation supplémentaire du propriétaire :
    automatiquement sur main. Aucune revue humaine supplémentaire n'est demandée.
 6. Vérifier le tag immuable v<version>, créé par GitHub après les tests de main.
 7. Vérifier la version et le commit réellement déployés. Un push ou une fusion
-   seuls ne prouvent pas que Railway a déployé la livraison.
+   seuls ne prouvent pas que le site a déployé la livraison.
 
 Le guide unique est [docs/livraison.md](docs/livraison.md). Le push direct sur main
 ne remplace pas ces étapes. Pour une intervention directe, utiliser une branche

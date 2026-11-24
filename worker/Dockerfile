@@ -16,7 +16,7 @@ RUN python3 /tmp/install-godot.py --version 4.4.1 --destination /opt/godot/4.4.1
     && ln -s /opt/godot/4.4.1/godot /usr/local/bin/godot \
     && rm /tmp/install-godot.py
 # Le code du worker appartient à root : ni l'agent ni les tests du projet ne peuvent le modifier.
-COPY worker/package.json worker/package-lock.json ./
+COPY worker/package.json worker/package-lock.json worker/.npmrc ./
 RUN npm ci --omit=dev --no-audit --no-fund
 COPY worker/ ./
 # Windows checkouts may contain CRLF even before .gitattributes is applied.

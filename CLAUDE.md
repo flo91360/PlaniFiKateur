@@ -39,7 +39,8 @@ comptes, sauvegardes, multi-projets, hébergement VPS).
 
 ## Commandes
 
-Node.js 24 est requis (`engines`).
+Node.js 24 est requis : `.nvmrc`, `engines` imposé par `engine-strict` (`.npmrc`), et
+`npm test` refuse une autre version.
 
 ```sh
 npm ci && npm ci --prefix worker   # les tests importent aussi le code du worker

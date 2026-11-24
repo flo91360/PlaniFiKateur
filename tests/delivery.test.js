@@ -289,3 +289,18 @@ test('CI checks delivery before tests and the publication workflow waits for mai
   assert.equal(release.jobs.deploy.needs, 'publish');
   assert.match(release.jobs.publish.steps[0].with.ref, /head_sha/);
 });
+
+test('deployment verification requires the site URL instead of falling back to an old host', async () => {
+  for (const url of [undefined, ''])
+    await assert.rejects(
+      verifyDeployment({ url, sha: 'a'.repeat(40), version: '1.2.4', timeoutMs: 10 }),
+      /PLANIFIKATEUR_URL absente/,
+    );
+});
+
+test('Node.js 24 is enforced by npm and by the test command', async () => {
+  for (const file of ['.npmrc', 'worker/.npmrc']) assert.match(await readFile(file, 'utf8'), /^engine-strict=true$/m);
+  assert.equal((await readFile('.nvmrc', 'utf8')).trim(), '24');
+  const workflow = await readFile('.github/workflows/tag-version.yml', 'utf8');
+  assert.doesNotMatch(workflow, /railway\.app/);
+});

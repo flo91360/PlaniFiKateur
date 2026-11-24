@@ -5,6 +5,10 @@ export async function verifyDeployment(
   { url, sha, version, timeoutMs = 25 * 60000 },
   { transport = fetch, wait = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now } = {},
 ) {
+  if (!url)
+    throw new Error(
+      'Variable Actions PLANIFIKATEUR_URL absente : indiquez l’adresse du site à vérifier (Settings → Secrets and variables → Actions → Variables).',
+    );
   const origin = new URL(url);
   if (
     origin.protocol !== 'https:' ||

@@ -3,7 +3,7 @@
 # le commit est donc transmis en argument, pour /build-info.json et la vérification du déploiement.
 FROM node:24-bookworm-slim AS build
 WORKDIR /app
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json .npmrc ./
 RUN npm ci --no-audit --no-fund
 COPY . .
 ARG PLANIFIKATEUR_COMMIT_SHA=
