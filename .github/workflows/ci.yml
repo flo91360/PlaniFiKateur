@@ -14,7 +14,7 @@ jobs:
   server:
     name: Tests serveur
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -33,6 +33,22 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq bubblewrap
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      # Dépendances, worker ou déploiement modifiés : audit et construction des deux images, dans
+      # ce job requis pour la fusion. Un lockfile vulnérable ou un Dockerfile cassé bloque la PR.
+      - name: Détecter les dépendances et images modifiées
+        id: deps
+        run: scripts/dependency-checks.sh changed "$BASE" >> "$GITHUB_OUTPUT"
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+      - name: Audit des dépendances (site et worker)
+        if: steps.deps.outputs.changed == 'true'
+        run: scripts/dependency-checks.sh audit
+      - name: Construire l’image du worker
+        if: steps.deps.outputs.changed == 'true'
+        run: scripts/dependency-checks.sh worker-image
+      - name: Construire et démarrer l’image du site
+        if: steps.deps.outputs.changed == 'true'
+        run: scripts/dependency-checks.sh site-image
       - name: Vérifier la version et le changelog de la livraison
         run: npm run delivery:check
         env:

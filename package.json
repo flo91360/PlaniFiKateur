@@ -1,7 +1,7 @@
 {
   "name": "planifikateur",
   "private": true,
-  "version": "0.1.120",
+  "version": "0.1.121",
   "type": "module",
   "scripts": {
     "delivery:prepare": "node scripts/delivery.mjs prepare",
@@ -23,7 +23,7 @@
     "worker:once": "node worker/index.mjs --once"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.3.296",
+    "@anthropic-ai/claude-agent-sdk": "0.3.330",
     "@fontsource/dm-sans": "^5.3.0",
     "@fontsource/manrope": "^5.3.0",
     "lucide-react": "^1.60.0",
@@ -33,7 +33,7 @@
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@playwright/test": "^1.64.1",
-    "eslint": "10.11.0",
+    "eslint": "10.15.0",
     "eslint-plugin-react-hooks": "7.1.1",
     "globals": "17.12.0",
     "prettier": "3.9.8",
