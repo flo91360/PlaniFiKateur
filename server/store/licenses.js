@@ -42,6 +42,27 @@ const expiry = value => {
     fail(400, 'invalid_license', 'Date de fin invalide (AAAA-MM-JJ).');
   return value;
 };
+// Formule vendue : elle décide de ce que le logiciel ouvre (DefilOrdi : espace parents pour
+// « famille »). null = licence d’avant les formules, traitée par le logiciel comme complète.
+export const OFFERS = ['famille', 'cabinet', 'etablissement'];
+const offer = value => {
+  if (value === null || value === '') return null;
+  if (!OFFERS.includes(value)) fail(400, 'invalid_license', `Formule : ${OFFERS.join(', ')} ou vide.`);
+  return value;
+};
+// Nombre d’enfants (profils) autorisés par le logiciel ; null = sans limite.
+const profiles = value => {
+  if (value === null || value === '') return null;
+  if (!Number.isInteger(value) || value < 1 || value > 100)
+    fail(400, 'invalid_license', 'Nombre d’enfants : de 1 à 100, ou vide pour sans limite.');
+  return value;
+};
+// Cabinet qui suit la famille (texte libre), pour savoir qui l’accompagne.
+const cabinet = value => {
+  if (value === null || value === '') return null;
+  return text(value, 'Cabinet rattaché', 80);
+};
+const PROFILES_BY_OFFER = { famille: 3 };
 const endOf = date => (date ? Date.parse(`${date}T23:59:59.999Z`) : Infinity);
 
 export function createLicenseStore({ db, transaction, repositoryOf }) {
@@ -49,6 +70,19 @@ export function createLicenseStore({ db, transaction, repositoryOf }) {
     CREATE TABLE IF NOT EXISTS licenses (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, name TEXT NOT NULL, key_hash TEXT NOT NULL UNIQUE, key_hint TEXT NOT NULL, max_machines INTEGER NOT NULL, expires_on TEXT, revoked_at TEXT, created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS license_machines (license_id TEXT NOT NULL, machine TEXT NOT NULL, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, PRIMARY KEY(license_id, machine));
     CREATE INDEX IF NOT EXISTS licenses_project ON licenses(project_id);`);
+  // Colonnes ajoutées après coup : formule, nombre d’enfants et cabinet rattaché.
+  const columns = new Set(
+    db
+      .prepare('PRAGMA table_info(licenses)')
+      .all()
+      .map(column => column.name),
+  );
+  for (const [name, type] of [
+    ['offer', 'TEXT'],
+    ['max_profiles', 'INTEGER'],
+    ['cabinet', 'TEXT'],
+  ])
+    if (!columns.has(name)) db.exec(`ALTER TABLE licenses ADD COLUMN ${name} ${type}`);
   const privateKey = () => {
     let row = db.prepare('SELECT private_pem FROM license_keys WHERE id = 1').get();
     if (!row) {
@@ -71,6 +105,9 @@ export function createLicenseStore({ db, transaction, repositoryOf }) {
       keyHint: row.key_hint,
       maxMachines: row.max_machines,
       expiresOn: row.expires_on,
+      offer: row.offer ?? null,
+      maxProfiles: row.max_profiles ?? null,
+      cabinet: row.cabinet ?? null,
       revoked: !!row.revoked_at,
       machines: seen.count,
       lastSeen: seen.last,
@@ -94,10 +131,17 @@ export function createLicenseStore({ db, transaction, repositoryOf }) {
     createLicense(projectId, data) {
       const name = text(data?.name, 'Nom', 80),
         max = data?.maxMachines === undefined ? 2 : machines(data.maxMachines),
-        expiresOn = data?.expiresOn === undefined ? null : expiry(data.expiresOn);
+        expiresOn = data?.expiresOn === undefined ? null : expiry(data.expiresOn),
+        chosen = data?.offer === undefined ? null : offer(data.offer),
+        maxProfiles =
+          data?.maxProfiles === undefined ? (PROFILES_BY_OFFER[chosen] ?? null) : profiles(data.maxProfiles),
+        follower = data?.cabinet === undefined ? null : cabinet(data.cabinet);
       const key = newKey(),
         id = `lic-${randomBytes(8).toString('hex')}`;
-      db.prepare('INSERT INTO licenses VALUES (?,?,?,?,?,?,?,NULL,?)').run(
+      db.prepare(
+        `INSERT INTO licenses (id, project_id, name, key_hash, key_hint, max_machines, expires_on, revoked_at, created_at, offer, max_profiles, cabinet)
+         VALUES (?,?,?,?,?,?,?,NULL,?,?,?,?)`,
+      ).run(
         id,
         projectId,
         name,
@@ -106,22 +150,40 @@ export function createLicenseStore({ db, transaction, repositoryOf }) {
         max,
         expiresOn,
         new Date().toISOString(),
+        chosen,
+        maxProfiles,
+        follower,
       );
       return { ...view(find(projectId, id)), key };
     },
-    // Nom, postes, date de fin, révocation (ou réactivation) et remise à zéro des postes.
+    // Nom, postes, date de fin, formule, enfants, cabinet, révocation (ou réactivation) et remise à
+    // zéro des postes.
     updateLicense(projectId, id, data) {
       return transaction(() => {
         const row = find(projectId, id);
-        const allowed = ['name', 'maxMachines', 'expiresOn', 'revoked', 'resetMachines'];
+        const allowed = [
+          'name',
+          'maxMachines',
+          'expiresOn',
+          'offer',
+          'maxProfiles',
+          'cabinet',
+          'revoked',
+          'resetMachines',
+        ];
         if (!data || typeof data !== 'object' || Object.keys(data).some(key => !allowed.includes(key)))
           fail(400, 'invalid_license', `Champs acceptés : ${allowed.join(', ')}.`);
         if ('revoked' in data && typeof data.revoked !== 'boolean')
           fail(400, 'invalid_license', 'revoked doit être un booléen.');
-        db.prepare('UPDATE licenses SET name=?, max_machines=?, expires_on=?, revoked_at=? WHERE id=?').run(
+        db.prepare(
+          'UPDATE licenses SET name=?, max_machines=?, expires_on=?, offer=?, max_profiles=?, cabinet=?, revoked_at=? WHERE id=?',
+        ).run(
           'name' in data ? text(data.name, 'Nom', 80) : row.name,
           'maxMachines' in data ? machines(data.maxMachines) : row.max_machines,
           'expiresOn' in data ? expiry(data.expiresOn) : row.expires_on,
+          'offer' in data ? offer(data.offer) : (row.offer ?? null),
+          'maxProfiles' in data ? profiles(data.maxProfiles) : (row.max_profiles ?? null),
+          'cabinet' in data ? cabinet(data.cabinet) : (row.cabinet ?? null),
           'revoked' in data ? (data.revoked ? row.revoked_at || new Date().toISOString() : null) : row.revoked_at,
           id,
         );
@@ -176,6 +238,9 @@ export function createLicenseStore({ db, transaction, repositoryOf }) {
           iat: now,
           exp: Math.min(now + LEASE_DAYS * DAY, endOf(row.expires_on)),
           expiresOn: row.expires_on,
+          offer: row.offer ?? null,
+          maxProfiles: row.max_profiles ?? null,
+          cabinet: row.cabinet ?? null,
         };
         const body = b64(JSON.stringify(payload));
         return { token: `${body}.${b64(sign(null, Buffer.from(body), privateKey()))}`, ...payload };

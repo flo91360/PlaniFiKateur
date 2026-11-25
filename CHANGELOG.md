@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.126 — 2026-11-26
+<!-- planifikateur:licences-formule -->
+
+- **Licences : formule, enfants et cabinet rattaché** : Chaque licence porte sa formule (famille, cabinet, établissement), son nombre d'enfants et le cabinet qui suit la famille ; ces informations sont inscrites dans le jeton signé et modifiables depuis la liste des licences.
+
 ## 0.1.125 — 2026-11-24
 <!-- planifikateur:audit-11-fusion-unique -->
 

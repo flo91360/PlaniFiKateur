@@ -185,10 +185,10 @@ fin) au plus tard 30 jours après le dernier renouvellement.
 | Route | Rôle |
 | --- | --- |
 | `GET /api/v1/projects/{projectId}/licenses` | Licences du projet (responsables) : nom, 4 derniers caractères de la clé, postes utilisés et autorisés, date de fin, état |
-| `POST /api/v1/projects/{projectId}/licenses` | `{ name, maxMachines?, expiresOn? }` (2 postes et aucune fin par défaut) ; réponse 201 avec `key`, affichée une seule fois : seule son empreinte est gardée |
-| `PATCH /api/v1/projects/{projectId}/licenses/{licenseId}` | `{ name?, maxMachines?, expiresOn?, revoked?, resetMachines? }` : désactiver ou réactiver, prolonger un abonnement, libérer les postes |
+| `POST /api/v1/projects/{projectId}/licenses` | `{ name, maxMachines?, offer?, maxProfiles?, cabinet?, expiresOn? }` (2 postes, formule complète, enfants sans limite et aucune fin par défaut ; `offer` vaut `famille`, `cabinet` ou `etablissement`, `maxProfiles` de 1 à 100) ; réponse 201 avec `key`, affichée une seule fois : seule son empreinte est gardée |
+| `PATCH /api/v1/projects/{projectId}/licenses/{licenseId}` | `{ name?, maxMachines?, offer?, maxProfiles?, cabinet?, expiresOn?, revoked?, resetMachines? }` : désactiver ou réactiver, prolonger un abonnement, libérer les postes |
 | `DELETE /api/v1/projects/{projectId}/licenses/{licenseId}` | Supprime la licence et ses postes |
-| `POST /api/v1/licenses/activate` | Public, 30 essais par minute et par adresse. `{ key, product, machine }` : `product` est le dépôt GitHub du projet, `machine` l’empreinte SHA-256 (64 caractères hexadécimaux) du poste. Réponse `{ token, product, license, name, machine, iat, exp, expiresOn }` ; erreurs `license_invalid` (404), `license_revoked` ou `license_expired` (403), `license_machines` (409) |
+| `POST /api/v1/licenses/activate` | Public, 30 essais par minute et par adresse. `{ key, product, machine }` : `product` est le dépôt GitHub du projet, `machine` l’empreinte SHA-256 (64 caractères hexadécimaux) du poste. Réponse `{ token, product, license, name, offer, maxProfiles, cabinet, machine, iat, exp, expiresOn }` (formule, nombre d’enfants et cabinet aussi inscrits dans le jeton signé) ; erreurs `license_invalid` (404), `license_revoked` ou `license_expired` (403), `license_machines` (409) |
 | `GET /api/v1/licenses/public-key` | Public. `{ algorithm: "Ed25519", publicKey }` (SPKI PEM) à intégrer au logiciel |
 
 Le jeton vaut `base64url(JSON).base64url(signature Ed25519 du premier segment)`. `exp` (ms) est

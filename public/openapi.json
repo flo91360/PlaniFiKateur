@@ -8020,6 +8020,36 @@
                     "minimum": 1,
                     "maximum": 20
                   },
+                  "offer": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      "famille",
+                      "cabinet",
+                      "etablissement",
+                      null
+                    ],
+                    "description": "Formule : famille, cabinet ou établissement (null = complète)."
+                  },
+                  "maxProfiles": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 1,
+                    "maximum": 100,
+                    "description": "Nombre d'enfants au plus (null = sans limite)."
+                  },
+                  "cabinet": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 80,
+                    "description": "Cabinet qui suit la famille."
+                  },
                   "expiresOn": {
                     "type": [
                       "string",
@@ -8150,6 +8180,36 @@
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 20
+                  },
+                  "offer": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      "famille",
+                      "cabinet",
+                      "etablissement",
+                      null
+                    ],
+                    "description": "Formule : famille, cabinet ou établissement (null = complète)."
+                  },
+                  "maxProfiles": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 1,
+                    "maximum": 100,
+                    "description": "Nombre d'enfants au plus (null = sans limite)."
+                  },
+                  "cabinet": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 80,
+                    "description": "Cabinet qui suit la famille."
                   },
                   "expiresOn": {
                     "type": [
@@ -8368,6 +8428,36 @@
                             "string",
                             "null"
                           ]
+                        },
+                        "offer": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "famille",
+                            "cabinet",
+                            "etablissement",
+                            null
+                          ],
+                          "description": "Formule : famille, cabinet ou établissement (null = complète)."
+                        },
+                        "maxProfiles": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ],
+                          "minimum": 1,
+                          "maximum": 100,
+                          "description": "Nombre d'enfants au plus (null = sans limite)."
+                        },
+                        "cabinet": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "maxLength": 80,
+                          "description": "Cabinet qui suit la famille."
                         }
                       },
                       "required": [
@@ -10076,6 +10166,36 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 20
+          },
+          "offer": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "famille",
+              "cabinet",
+              "etablissement",
+              null
+            ],
+            "description": "Formule : famille, cabinet ou établissement (null = complète)."
+          },
+          "maxProfiles": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 100,
+            "description": "Nombre d'enfants au plus (null = sans limite)."
+          },
+          "cabinet": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 80,
+            "description": "Cabinet qui suit la famille."
           },
           "expiresOn": {
             "type": [
