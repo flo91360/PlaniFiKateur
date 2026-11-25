@@ -107,3 +107,43 @@ test('a revoked or expired licence no longer renews, and an end date caps the of
   assert.equal((await call('DELETE', `/projects/${project.id}/licenses/${id}`)).status, 200);
   assert.equal((await activate()).status, 404);
 });
+
+test('a licence carries its offer, its number of children and its cabinet into the signed token', async t => {
+  const { store, project, call } = await fixture(t);
+  const created = await call('POST', `/projects/${project.id}/licenses`, {
+    name: 'Famille Martin',
+    maxMachines: 1,
+    offer: 'famille',
+    cabinet: 'Cabinet Dupont',
+  });
+  assert.equal(created.status, 201);
+  const { key, id } = created.body.data;
+  // Formule famille : 3 enfants par défaut.
+  assert.deepEqual(
+    [created.body.data.offer, created.body.data.maxProfiles, created.body.data.cabinet],
+    ['famille', 3, 'Cabinet Dupont'],
+  );
+  const lease = store.activateLicense({ key, machine, product });
+  assert.deepEqual([lease.offer, lease.maxProfiles, lease.cabinet], ['famille', 3, 'Cabinet Dupont']);
+
+  const updated = await call('PATCH', `/projects/${project.id}/licenses/${id}`, {
+    offer: 'cabinet',
+    maxProfiles: null,
+    cabinet: '',
+  });
+  assert.deepEqual(
+    [updated.body.data.offer, updated.body.data.maxProfiles, updated.body.data.cabinet],
+    ['cabinet', null, null],
+  );
+  assert.equal(
+    (await call('PATCH', `/projects/${project.id}/licenses/${id}`, { offer: 'gratuit' })).body.error.code,
+    'invalid_license',
+  );
+  assert.equal(
+    (await call('PATCH', `/projects/${project.id}/licenses/${id}`, { maxProfiles: 0 })).body.error.code,
+    'invalid_license',
+  );
+  // Licence d’avant les formules : aucune formule, sans limite d’enfants.
+  const old = (await call('POST', `/projects/${project.id}/licenses`, { name: 'Ancienne' })).body.data;
+  assert.deepEqual([old.offer, old.maxProfiles, old.cabinet], [null, null, null]);
+});
