@@ -9,7 +9,34 @@ const dateFormat = new Intl.DateTimeFormat('fr-FR', {
   timeZone: 'Europe/Paris',
 });
 
-const KINDS = { bug: 'Problème', idea: 'Idée', opinion: 'Avis' };
+const KINDS = { bug: 'Problème', idea: 'Idée', opinion: 'Avis', survey: 'Questionnaire' };
+
+// Moyenne des notes de chaque question des questionnaires reçus (réponses notées `score`).
+function SurveySummary({ reports }) {
+  const surveys = reports.filter(report => report.kind === 'survey' && report.answers);
+  if (!surveys.length) return null;
+  const scores = new Map();
+  for (const survey of surveys)
+    for (const item of survey.answers)
+      if (item.score !== undefined) scores.set(item.question, [...(scores.get(item.question) || []), item.score]);
+  return (
+    <div className="survey-summary">
+      <strong>
+        {surveys.length} questionnaire{surveys.length > 1 ? 's' : ''} reçu{surveys.length > 1 ? 's' : ''}
+      </strong>
+      {scores.size > 0 && (
+        <ul aria-label="Moyenne des notes">
+          {[...scores].map(([question, values]) => (
+            <li key={question}>
+              {question} : <strong>{(values.reduce((a, b) => a + b, 0) / values.length).toFixed(1)}</strong> (
+              {values.length} réponse{values.length > 1 ? 's' : ''})
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 // Retours envoyés depuis le logiciel livré par le projet (bouton « bug » de DefilOrdi : problème,
 // idée ou avis, et problème proposé après un plantage), envoyés avec
@@ -51,11 +78,13 @@ export default function BugReports({ projectId, onCount }) {
     <details className="agent-setup" open>
       <summary>Retours envoyés depuis le logiciel</summary>
       <p>
-        Le bouton « bug » du logiciel envoie ici un problème, une idée ou un avis : le texte écrit par l’adulte, la
-        version, l’écran en cours, le journal technique et, si elle a été choisie, une capture d’écran. Après un
-        plantage, le logiciel propose aussi de le signaler. Rien sur les enfants n’est envoyé. Un retour fait hors
-        connexion arrive au prochain lancement connecté. Chaque nouveau retour est notifié aux responsables du projet.
+        Le bouton « bug » du logiciel envoie ici un problème, une idée ou un avis, et l’Espace parents le questionnaire
+        de fin d’essai : le texte écrit par l’adulte, la version, l’écran en cours, le journal technique et, si elle a
+        été choisie, une capture d’écran. Après un plantage, le logiciel propose aussi de le signaler. Rien sur les
+        enfants n’est envoyé. Un retour fait hors connexion arrive au prochain lancement connecté. Chaque nouveau retour
+        est notifié aux responsables du projet.
       </p>
+      <SurveySummary reports={reports} />
       <label className="bug-reports-filter">
         <input type="checkbox" checked={showHandled} onChange={event => setShowHandled(event.target.checked)} />
         Afficher aussi les retours traités ({reports.length - open.length})
@@ -81,7 +110,18 @@ export default function BugReports({ projectId, onCount }) {
                 {report.screen && <> · écran : {report.screen}</>}
                 {report.handled && <> · traité</>}
               </p>
-              <p className="bug-report-description">{report.description}</p>
+              {report.answers ? (
+                <dl className="survey-answers">
+                  {report.answers.map((item, index) => (
+                    <React.Fragment key={index}>
+                      <dt>{item.question}</dt>
+                      <dd>{item.answer || '—'}</dd>
+                    </React.Fragment>
+                  ))}
+                </dl>
+              ) : (
+                <p className="bug-report-description">{report.description}</p>
+              )}
               {(report.journal || report.system) && (
                 <details>
                   <summary>Journal technique</summary>

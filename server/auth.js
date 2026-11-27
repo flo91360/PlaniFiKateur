@@ -79,6 +79,8 @@ export function createAuth(
   const licenseLimit = createLimiter(30, 'too_many_attempts', 'Trop de tentatives. Réessayez dans une minute.');
   // Signalements de bugs du logiciel : quelques-uns par minute suffisent, file d’attente comprise.
   const bugReportLimit = createLimiter(20, 'too_many_reports', 'Trop de signalements. Réessayez dans une minute.');
+  // Chiffres d’utilisation : un relevé par semaine et par poste, renvoyé au plus quelques fois.
+  const usageLimit = createLimiter(20, 'too_many_reports', 'Trop de relevés. Réessayez dans une minute.');
   const loginLimit = createLimiter(20, 'too_many_attempts', 'Trop de tentatives. Réessayez dans une minute.');
   // Tentatives sur un compte, comptées par adresse : un tiers ne peut pas bloquer la connexion
   // de son titulaire depuis une autre adresse.
@@ -146,6 +148,7 @@ export function createAuth(
     // Activation des licences, publique : limite par adresse contre l’essai de clés au hasard.
     licenseLimit: req => licenseLimit(clientAddress(req, trustProxy)),
     bugReportLimit: req => bugReportLimit(clientAddress(req, trustProxy)),
+    usageLimit: req => usageLimit(clientAddress(req, trustProxy)),
     // Chaque reformulation consomme le quota de l’abonnement Claude : limite par compte.
     refineLimit: createLimiter(
       10,
