@@ -7,6 +7,7 @@ import ExecutionSettings from './ExecutionSettings.jsx';
 import ProjectMembers, { roleLabels } from './ProjectMembers.jsx';
 import Licenses from './Licenses.jsx';
 import BugReports from './BugReports.jsx';
+import UsageMetrics from './UsageMetrics.jsx';
 import { useProjectAccess } from '../lib/project-access.js';
 
 const engineLabels = { codex: 'Codex', 'claude-code': 'Claude Code' };
@@ -44,6 +45,7 @@ export default function ProjectAutomation({ project, user, onAiConfigured, onAcc
             label: 'Retours du logiciel',
             state: bugs === null ? 'depuis le logiciel' : bugs ? `${bugs} à traiter` : 'aucun à traiter',
           },
+          { key: 'usage', label: 'Utilisation', state: 'chiffres des familles' },
         ]
       : []),
   ];
@@ -121,6 +123,7 @@ export default function ProjectAutomation({ project, user, onAiConfigured, onAcc
           )}
           {canManage && panel('licenses', <Licenses projectId={project.id} repository={configuration.repository} />)}
           {canManage && panel('bugs', <BugReports projectId={project.id} onCount={setBugs} />)}
+          {canManage && panel('usage', <UsageMetrics projectId={project.id} />)}
         </>
       )}
     </div>

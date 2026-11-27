@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.129 — 2026-11-27
+<!-- planifikateur:livraison-questionnaire-metriques -->
+
+- **Questionnaire de fin d’essai et chiffres d’utilisation** : Les questionnaires de fin d’essai remplis dans le logiciel arrivent dans Retours du logiciel, avec la moyenne des notes ; les chiffres d’utilisation hebdomadaires des familles qui l’ont accepté se lisent dans Paramètres du projet → Utilisation.
+
 ## 0.1.128 — 2026-11-27
 <!-- planifikateur:livraison-retours-familles -->
 

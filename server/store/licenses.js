@@ -145,7 +145,12 @@ export function createLicenseStore({ db, transaction, repositoryOf }) {
         const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
         const row = db.prepare('SELECT * FROM licenses WHERE id = ?').get(String(payload.license));
         if (!row || repositoryOf(row.project_id)?.toLowerCase() !== payload.product) return null;
-        return { projectId: row.project_id, licenseId: row.id, name: row.name };
+        return {
+          projectId: row.project_id,
+          licenseId: row.id,
+          name: row.name,
+          machine: typeof payload.machine === 'string' ? payload.machine : '',
+        };
       } catch {
         return null;
       }

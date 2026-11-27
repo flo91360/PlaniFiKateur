@@ -356,6 +356,49 @@
 .bug-report-idea {
   background: light-dark(#e4f1ec, #22362f);
 }
+.survey-summary {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--warning-surface);
+  font-size: 12px;
+}
+.survey-summary ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+.survey-answers {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  font-size: 13px;
+}
+.survey-answers dt {
+  margin-top: 6px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.survey-answers dd {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.usage-license h4 {
+  margin: 12px 0 6px;
+}
+.usage-table {
+  overflow-x: auto;
+}
+.usage-table table {
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.usage-table th,
+.usage-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
 .bug-report-description {
   font-size: 13px;
   white-space: pre-wrap;

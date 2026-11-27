@@ -9,9 +9,37 @@ import { fail } from '../http.js';
 // journal technique et, si l’adulte l’a choisie, une capture d’écran.
 export const MAX_REPORTS = 500; // par projet : les plus anciens partent au-delà
 const MAX_SCREENSHOT = 1500000; // caractères de l’URL data: (≈ 1,1 Mo d’image)
-export const REPORT_KINDS = ['bug', 'idea', 'opinion'];
+export const REPORT_KINDS = ['bug', 'idea', 'opinion', 'survey'];
 // Titre de la notification envoyée aux responsables du projet.
-export const KIND_TITLES = { bug: 'Nouveau bug signalé', idea: 'Nouvelle idée', opinion: 'Nouvel avis' };
+export const KIND_TITLES = {
+  bug: 'Nouveau bug signalé',
+  idea: 'Nouvelle idée',
+  opinion: 'Nouvel avis',
+  survey: 'Questionnaire rempli',
+};
+// Réponses d’un questionnaire (`survey`) : question et réponse en clair, dans l’ordre du logiciel.
+const answers = value => {
+  if (value === undefined || value === null) return null;
+  if (
+    !Array.isArray(value) ||
+    value.length > 40 ||
+    value.some(
+      item =>
+        !item ||
+        typeof item.question !== 'string' ||
+        typeof item.answer !== 'string' ||
+        item.question.length > 300 ||
+        item.answer.length > 4000 ||
+        (item.score !== undefined && (!Number.isInteger(item.score) || item.score < 1 || item.score > 10)),
+    )
+  )
+    fail(400, 'invalid_bug_report', 'Réponses : 40 au plus, { question, answer, score? }.');
+  return value.map(item => ({
+    question: item.question.trim(),
+    answer: item.answer.trim(),
+    ...(item.score !== undefined ? { score: item.score } : {}),
+  }));
+};
 
 const text = (value, label, max, required = false) => {
   if (value === undefined || value === null || value === '') {
@@ -52,6 +80,7 @@ export function createBugReportStore({ db, transaction, licenseFromToken, notify
   );
   if (!columns.has('kind')) db.exec("ALTER TABLE bug_reports ADD COLUMN kind TEXT NOT NULL DEFAULT 'bug'");
   if (!columns.has('crash')) db.exec('ALTER TABLE bug_reports ADD COLUMN crash INTEGER NOT NULL DEFAULT 0');
+  if (!columns.has('answers')) db.exec('ALTER TABLE bug_reports ADD COLUMN answers TEXT');
   const view = row => ({
     id: row.id,
     kind: row.kind || 'bug',
@@ -68,6 +97,7 @@ export function createBugReportStore({ db, transaction, licenseFromToken, notify
     receivedAt: row.received_at,
     handled: !!row.handled_at,
     handledAt: row.handled_at,
+    answers: row.answers ? JSON.parse(row.answers) : null,
   });
   const find = (projectId, id) => {
     const row = db.prepare('SELECT * FROM bug_reports WHERE id = ? AND project_id = ?').get(id, projectId);
@@ -92,6 +122,7 @@ export function createBugReportStore({ db, transaction, licenseFromToken, notify
         reportedAt: date(data.reportedAt),
         kind: data.kind === undefined || data.kind === null ? 'bug' : data.kind,
         crash: data.crash === true,
+        answers: answers(data.answers),
       };
       if (!REPORT_KINDS.includes(report.kind))
         fail(400, 'invalid_bug_report', `Sorte de retour : ${REPORT_KINDS.join(', ')}.`);
@@ -104,7 +135,8 @@ export function createBugReportStore({ db, transaction, licenseFromToken, notify
         const id = `bug-${randomBytes(8).toString('hex')}`;
         db.prepare(
           `INSERT INTO bug_reports (id, project_id, license_id, license_name, client_id, version, screen, system, description,
-             journal, screenshot, reported_at, received_at, handled_at, kind, crash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?)`,
+             journal, screenshot, reported_at, received_at, handled_at, kind, crash, answers)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?)`,
         ).run(
           id,
           license.projectId,
@@ -121,6 +153,7 @@ export function createBugReportStore({ db, transaction, licenseFromToken, notify
           new Date(now).toISOString(),
           report.kind,
           report.crash ? 1 : 0,
+          report.answers ? JSON.stringify(report.answers) : null,
         );
         db.prepare(
           `DELETE FROM bug_reports WHERE project_id = ? AND id NOT IN

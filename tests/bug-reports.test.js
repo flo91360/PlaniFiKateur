@@ -129,3 +129,47 @@ test('an idea or an opinion is kept with its kind and every new report notifies 
   assert.match(idea.details.text, /^Cabinet Dupont : Le jeu se fige/);
   assert.equal(idea.projectId, project.id);
 });
+
+test('a filled-in survey keeps its answers and the managers read the average of the scores', async t => {
+  const { store, project, call, token } = await fixture(t);
+  const answers = [
+    { question: 'Satisfaction générale', answer: '4 / 5', score: 4 },
+    { question: 'Ce qui vous a plu', answer: 'Les jeux de souris.' },
+  ];
+  const sent = await call(
+    'POST',
+    '/bug-reports',
+    report(token, { id: 'questionnaire', kind: 'survey', description: 'Questionnaire de fin d’essai', answers }),
+    '',
+  );
+  assert.equal(sent.status, 201);
+  assert.deepEqual(store.bugReports(project.id)[0].answers, answers);
+  const bad = report(token, {
+    id: 'questionnaire-2',
+    kind: 'survey',
+    answers: [{ question: 'Note', answer: '9', score: 11 }],
+  });
+  assert.equal((await call('POST', '/bug-reports', bad, '')).status, 400);
+});
+
+test('the software sends weekly usage totals, kept once per licence, machine and week', async t => {
+  const { store, project, second, call, token } = await fixture(t);
+  const week = (data, period = '2026-W48') => call('POST', '/usage-metrics', { token, period, data }, '');
+  assert.equal((await week({ enfants: 1, parties: 3 })).status, 200);
+  assert.equal((await week({ enfants: 1, parties: 5 })).status, 200);
+  assert.equal((await week({ enfants: 1, parties: 2 }, '2026-W49')).status, 200);
+  assert.equal((await week({ parties: 1 }, '2026-48')).status, 400);
+  assert.equal((await week([1, 2])).status, 400);
+  assert.equal((await call('POST', '/usage-metrics', { token: 'faux', period: '2026-W48', data: {} }, '')).status, 401);
+
+  const rows = (await call('GET', `/projects/${project.id}/usage-metrics`)).body.data;
+  assert.deepEqual(
+    rows.map(row => [row.period, row.data.parties, row.licenseName, row.machine]),
+    [
+      ['2026-W49', 2, 'Cabinet Dupont', 'aaaaaaaa'],
+      ['2026-W48', 5, 'Cabinet Dupont', 'aaaaaaaa'],
+    ],
+  );
+  assert.deepEqual(store.usageMetrics(second.id), []);
+  assert.equal((await call('GET', `/projects/${project.id}/usage-metrics`, undefined, '')).status, 401);
+});

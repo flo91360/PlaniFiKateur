@@ -158,6 +158,23 @@ export function licenseRoutes({ store, auth, guards }) {
           ctx.send(200, { data: { screenshot: store.bugReportScreenshot(ctx.params.projectId, ctx.params.reportId) } }),
       },
     },
+    // Chiffres d’utilisation hebdomadaires du logiciel (familles de test qui l’ont accepté).
+    {
+      path: '/api/v1/usage-metrics',
+      methods: {
+        async POST(ctx) {
+          auth.usageLimit(ctx.req);
+          ctx.send(200, { data: store.receiveUsage(await ctx.body()) });
+        },
+      },
+    },
+    {
+      path: '/api/v1/projects/:projectId/usage-metrics',
+      guard: manager,
+      methods: {
+        GET: ctx => ctx.send(200, { data: store.usageMetrics(ctx.params.projectId) }),
+      },
+    },
     {
       path: '/api/v1/licenses/public-key',
       methods: {
