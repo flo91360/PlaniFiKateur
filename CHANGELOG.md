@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.127 — 2026-11-27
+<!-- planifikateur:livraison-bugs-signales -->
+
+- **Bugs signalés depuis le logiciel** : Le bouton « bug » de DefilOrdi envoie ses signalements à PlaniFiKateur ; les responsables du projet les lisent dans Paramètres du projet → Bugs signalés (description, version, écran, journal, capture facultative), les marquent comme traités ou les suppriment.
+
 ## 0.1.126 — 2026-11-26
 <!-- planifikateur:licences-formule -->
 

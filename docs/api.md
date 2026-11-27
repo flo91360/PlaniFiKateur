@@ -190,6 +190,15 @@ fin) au plus tard 30 jours après le dernier renouvellement.
 | `DELETE /api/v1/projects/{projectId}/licenses/{licenseId}` | Supprime la licence et ses postes |
 | `POST /api/v1/licenses/activate` | Public, 30 essais par minute et par adresse. `{ key, product, machine }` : `product` est le dépôt GitHub du projet, `machine` l’empreinte SHA-256 (64 caractères hexadécimaux) du poste. Réponse `{ token, product, license, name, offer, maxProfiles, cabinet, machine, iat, exp, expiresOn }` (formule, nombre d’enfants et cabinet aussi inscrits dans le jeton signé) ; erreurs `license_invalid` (404), `license_revoked` ou `license_expired` (403), `license_machines` (409) |
 | `GET /api/v1/licenses/public-key` | Public. `{ algorithm: "Ed25519", publicKey }` (SPKI PEM) à intégrer au logiciel |
+| `POST /api/v1/bug-reports` | Public, 20 envois par minute et par adresse. `{ token, id, description, version?, screen?, system?, journal?, screenshot?, reportedAt? }` envoyé par le bouton « bug » du logiciel : `token` est le jeton de licence du poste (même expiré, la licence doit exister), `id` l’identifiant choisi par le logiciel (un renvoi de sa file d’attente répond 200 sans doublon), `screenshot` une URL `data:` PNG ou JPEG d’1 Mo au plus. Réponse 201 `{ id, duplicate }` ; erreurs `invalid_bug_report` (400), `bug_report_unauthorized` (401) |
+| `GET /api/v1/projects/{projectId}/bug-reports` | Bugs signalés (responsables), les plus récents d’abord, sans les captures : titulaire de la licence, version, écran, système, description, journal, `hasScreenshot`, `handled`. 500 au plus par projet, les plus anciens partent |
+| `PATCH /api/v1/projects/{projectId}/bug-reports/{reportId}` | `{ handled }` : marquer comme traité ou rouvrir |
+| `DELETE /api/v1/projects/{projectId}/bug-reports/{reportId}` | Supprime le signalement |
+| `GET /api/v1/projects/{projectId}/bug-reports/{reportId}/screenshot` | `{ screenshot }` (URL `data:`) ; `screenshot_missing` (404) sans capture |
+
+Les bugs signalés se lisent dans **Paramètres du projet → Bugs signalés**. Ils ne contiennent rien
+sur les enfants (ni prénom, ni résultats) : seulement ce que l’adulte écrit, l’écran en cours, la
+version, le journal technique et, si l’adulte l’a choisie, une capture d’écran.
 
 Le jeton vaut `base64url(JSON).base64url(signature Ed25519 du premier segment)`. `exp` (ms) est
 la fin du bail hors ligne : 30 jours, ou la date de fin de la licence si elle est plus proche. La
