@@ -4,6 +4,26 @@ import FormStatus from './FormStatus.jsx';
 
 const number = value => (Number.isFinite(value) ? value : 0);
 
+const gamesText = games =>
+  Object.entries(games || {})
+    .sort((a, b) => number(b[1]?.parties) - number(a[1]?.parties))
+    .map(([game, value]) => `${game} : ${number(value?.parties)} (${number(value?.minutes)} min)`)
+    .join(', ') || '—';
+
+// Détail d’un enfant (« Enfant 1 »… dans l’ordre de création des profils, sans prénom).
+const childText = child =>
+  [
+    child.classe,
+    Number.isFinite(child.age) ? `${child.age} ans` : null,
+    `niveau ${number(child.niveau)}`,
+    `médailles ${number(child.medailles)}`,
+    `badges ${number(child.badgesKlavicoeur)}`,
+    `trophées ${number(child.tropheesSourvie)}`,
+    `Klavicoeur niveau ${number(child.niveauKlavicoeur)}`,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
 // Chiffres d’utilisation envoyés chaque semaine par le logiciel (familles de test qui l’ont
 // accepté) : un tableau par licence, les semaines les plus récentes d’abord.
 export default function UsageMetrics({ projectId }) {
@@ -16,7 +36,8 @@ export default function UsageMetrics({ projectId }) {
       <summary>Utilisation du logiciel</summary>
       <p>
         Chaque semaine, les postes dont les parents ont accepté l’envoi transmettent des totaux : nombre d’enfants,
-        jours d’utilisation, parties et minutes par jeu. Jamais de prénom ni de résultat d’enfant.
+        jours d’utilisation, parties et minutes par jeu, puis le détail de chaque enfant (« Enfant 1 »… avec sa classe,
+        son âge, son niveau et ses récompenses). Jamais de prénom ni de résultat d’enfant.
       </p>
       {list.loaded && rows.length === 0 && <p className="muted">Aucun relevé reçu pour le moment.</p>}
       {[...byLicense].map(([licenseId, weeks]) => (
@@ -38,23 +59,30 @@ export default function UsageMetrics({ projectId }) {
               </thead>
               <tbody>
                 {weeks.map(week => (
-                  <tr key={`${week.period}-${week.machine}`}>
-                    <td>{week.period}</td>
-                    <td>
-                      <code>{week.machine}</code>
-                    </td>
-                    <td>{number(week.data.enfants)}</td>
-                    <td>{number(week.data.joursActifs)}</td>
-                    <td>{number(week.data.parties)}</td>
-                    <td>{number(week.data.minutes)}</td>
-                    <td>
-                      {Object.entries(week.data.jeux || {})
-                        .sort((a, b) => number(b[1]?.parties) - number(a[1]?.parties))
-                        .map(([game, value]) => `${game} : ${number(value?.parties)} (${number(value?.minutes)} min)`)
-                        .join(', ') || '—'}
-                    </td>
-                    <td>{week.data.version || '—'}</td>
-                  </tr>
+                  <React.Fragment key={`${week.period}-${week.machine}`}>
+                    <tr>
+                      <td>{week.period}</td>
+                      <td>
+                        <code>{week.machine}</code>
+                      </td>
+                      <td>{number(week.data.enfants)}</td>
+                      <td>{number(week.data.joursActifs)}</td>
+                      <td>{number(week.data.parties)}</td>
+                      <td>{number(week.data.minutes)}</td>
+                      <td>{gamesText(week.data.jeux)}</td>
+                      <td>{week.data.version || '—'}</td>
+                    </tr>
+                    {(Array.isArray(week.data.parEnfant) ? week.data.parEnfant : []).map(child => (
+                      <tr key={child.enfant} className="usage-child">
+                        <td colSpan={2}>{child.enfant}</td>
+                        <td>{childText(child)}</td>
+                        <td>{number(child.joursActifs)}</td>
+                        <td>{number(child.parties)}</td>
+                        <td>{number(child.minutes)}</td>
+                        <td colSpan={2}>{gamesText(child.jeux)}</td>
+                      </tr>
+                    ))}
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>
