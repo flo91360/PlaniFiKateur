@@ -19,7 +19,6 @@ import { createAlertStore } from './store/alerts.js';
 import { runMigrations } from './store/migrations.js';
 import { createLicenseStore } from './store/licenses.js';
 import { createBugReportStore } from './store/bug-reports.js';
-import { createUsageStore } from './store/usage.js';
 import { createGithubDeliveries } from './github-deliveries.js';
 import { pushWanted } from './push.js';
 import { changedProjects, refusal, removedContent, settlePartial } from './store/changes.js';
@@ -641,7 +640,6 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
         recipientIds: projectManagers(projectId),
       }),
   });
-  const usage = createUsageStore({ db, licenseFromToken: licenses.licenseFromToken });
   return {
     workflows,
     githubDeliveries: createGithubDeliveries(db),
@@ -649,7 +647,6 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
     ...alerts,
     ...licenses,
     ...bugReports,
-    ...usage,
     // Abonnement aux événements validés ; renvoie la fonction de désabonnement.
     subscribe(listener) {
       listeners.add(listener);

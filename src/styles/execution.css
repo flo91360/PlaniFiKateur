@@ -382,23 +382,6 @@
   margin: 0;
   white-space: pre-wrap;
 }
-.usage-license h4 {
-  margin: 12px 0 6px;
-}
-.usage-table {
-  overflow-x: auto;
-}
-.usage-table table {
-  border-collapse: collapse;
-  font-size: 12px;
-}
-.usage-table th,
-.usage-table td {
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--border);
-  text-align: left;
-  vertical-align: top;
-}
 .bug-report-description {
   font-size: 13px;
   white-space: pre-wrap;
@@ -556,13 +539,4 @@
   .worker-label {
     display: none;
   }
-}
-
-.usage-child td {
-  color: var(--muted);
-  font-size: 0.92em;
-}
-
-.usage-child td:first-child {
-  padding-left: 18px;
 }

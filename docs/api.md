@@ -195,10 +195,8 @@ fin) au plus tard 30 jours après le dernier renouvellement.
 | `PATCH /api/v1/projects/{projectId}/bug-reports/{reportId}` | `{ handled }` : marquer comme traité ou rouvrir |
 | `DELETE /api/v1/projects/{projectId}/bug-reports/{reportId}` | Supprime le signalement |
 | `GET /api/v1/projects/{projectId}/bug-reports/{reportId}/screenshot` | `{ screenshot }` (URL `data:`) ; `screenshot_missing` (404) sans capture |
-| `POST /api/v1/usage-metrics` | Public, 20 envois par minute et par adresse. `{ token, period, data }` : chiffres d’utilisation de la semaine ISO `period` (`AAAA-Wss`) d’un poste dont les parents ont accepté l’envoi (`data` : `enfants`, `joursActifs`, `parties`, `minutes`, `jeux { nom: { parties, minutes } }`, `version`…, 20 000 caractères au plus). Un relevé par licence, poste et semaine, remplacé s’il est renvoyé ; erreurs `invalid_usage` (400), `usage_unauthorized` (401) |
-| `GET /api/v1/projects/{projectId}/usage-metrics` | Relevés d’utilisation (responsables), semaines les plus récentes d’abord : `licenseName`, `machine` (8 premiers caractères de l’empreinte), `period`, `data`. 5000 au plus par projet |
 
-Les retours (problèmes, idées, avis, questionnaires) se lisent dans **Paramètres du projet → Retours du logiciel**, avec la moyenne des notes des questionnaires, et les chiffres d’utilisation dans **Paramètres du projet → Utilisation**. Ils ne contiennent rien
+Les retours (problèmes, idées, avis, questionnaires) se lisent dans **Paramètres du projet → Retours du logiciel**, avec la moyenne des notes des questionnaires. Ils ne contiennent rien
 sur les enfants (ni prénom, ni résultats) : seulement ce que l’adulte écrit, l’écran en cours, la
 version, le journal technique et, si l’adulte l’a choisie, une capture d’écran.
 
