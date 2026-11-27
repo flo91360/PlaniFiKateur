@@ -1,4 +1,4 @@
-# PR d’agent : tests puis fusion automatique — v0.1.127
+# PR d’agent : tests puis fusion automatique — v0.1.128
 
 Toutes les nouvelles tâches sont livrées par PR GitHub avec fusion automatique,
 sans sélection du mode de livraison ni validation humaine : l’ancienne option « Validation avant
@@ -46,7 +46,7 @@ Les règles de branche restent appliquées : un refus GitHub ne sera pas contour
 Après la fusion, il supprime la branche de la PR (jamais la branche cible) ; un
 refus de suppression est seulement journalisé et ne remet pas la fusion en cause.
 
-### Un seul chemin de fusion (v0.1.127)
+### Un seul chemin de fusion (v0.1.128)
 
 Depuis la v0.1.125, le worker est le seul à fusionner une PR d’agent. L’ancien
 workflow complémentaire `.github/workflows/agent-merge.yml` (« Fusion des PR

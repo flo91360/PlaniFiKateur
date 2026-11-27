@@ -8529,7 +8529,7 @@
     "/api/v1/bug-reports": {
       "post": {
         "summary": "Signaler un bug depuis le logiciel",
-        "description": "Appel public du logiciel livré par un projet, limité à 20 par minute et par adresse. Le jeton de licence du poste (remis par /licenses/activate, même expiré) désigne la licence et le projet. Rien sur les enfants n’est envoyé. Un même identifiant renvoyé (file d’attente hors ligne) n’est gardé qu’une fois. 500 signalements au plus par projet.",
+        "description": "Appel public du logiciel livré par un projet, limité à 20 par minute et par adresse. Le jeton de licence du poste (remis par /licenses/activate, même expiré) désigne la licence et le projet. Rien sur les enfants n’est envoyé. Un même identifiant renvoyé (file d’attente hors ligne) n’est gardé qu’une fois. 500 signalements au plus par projet. Chaque nouveau retour est notifié aux responsables du projet (bug_report.received).",
         "security": [],
         "requestBody": {
           "required": true,
@@ -8579,6 +8579,19 @@
                   "reportedAt": {
                     "type": "string",
                     "format": "date-time"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "bug",
+                      "idea",
+                      "opinion"
+                    ],
+                    "description": "Problème (défaut), idée ou avis."
+                  },
+                  "crash": {
+                    "type": "boolean",
+                    "description": "Retour proposé par le logiciel après un plantage."
                   }
                 },
                 "required": [
@@ -8691,7 +8704,7 @@
         }
       ],
       "get": {
-        "summary": "Bugs signalés depuis le logiciel",
+        "summary": "Retours envoyés depuis le logiciel",
         "description": "Responsables du projet. Les plus récents d’abord, sans les captures d’écran.",
         "security": [
           {
@@ -8755,6 +8768,17 @@
                               "string",
                               "null"
                             ]
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "bug",
+                              "idea",
+                              "opinion"
+                            ]
+                          },
+                          "crash": {
+                            "type": "boolean"
                           }
                         }
                       }
@@ -8886,6 +8910,17 @@
                             "string",
                             "null"
                           ]
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "bug",
+                            "idea",
+                            "opinion"
+                          ]
+                        },
+                        "crash": {
+                          "type": "boolean"
                         }
                       }
                     }

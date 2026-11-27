@@ -1,13 +1,17 @@
 import { randomBytes } from 'node:crypto';
 import { fail } from '../http.js';
 
-// Bugs signalés par le logiciel livré par un projet (bouton « bug » de DefilOrdi). Le logiciel
+// Retours envoyés par le logiciel livré par un projet (bouton « bug » de DefilOrdi) : problème,
+// idée ou avis (`kind`), et problème proposé après un plantage (`crash`). Le logiciel
 // présente son jeton de licence : seul un poste sous licence peut écrire, et le rapport est rangé
 // dans le projet de la licence. Les responsables du projet les lisent dans Paramètres du projet →
-// Bugs signalés. Le rapport ne contient rien sur les enfants : description, version, écran,
+// Retours du logiciel. Le rapport ne contient rien sur les enfants : description, version, écran,
 // journal technique et, si l’adulte l’a choisie, une capture d’écran.
 export const MAX_REPORTS = 500; // par projet : les plus anciens partent au-delà
 const MAX_SCREENSHOT = 1500000; // caractères de l’URL data: (≈ 1,1 Mo d’image)
+export const REPORT_KINDS = ['bug', 'idea', 'opinion'];
+// Titre de la notification envoyée aux responsables du projet.
+export const KIND_TITLES = { bug: 'Nouveau bug signalé', idea: 'Nouvelle idée', opinion: 'Nouvel avis' };
 
 const text = (value, label, max, required = false) => {
   if (value === undefined || value === null || value === '') {
@@ -33,14 +37,25 @@ const date = value => {
   return Number.isFinite(time) ? new Date(time).toISOString() : null;
 };
 
-export function createBugReportStore({ db, transaction, licenseFromToken }) {
+export function createBugReportStore({ db, transaction, licenseFromToken, notify = () => {} }) {
   db.exec(`CREATE TABLE IF NOT EXISTS bug_reports (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, license_id TEXT NOT NULL,
       license_name TEXT NOT NULL, client_id TEXT NOT NULL, version TEXT NOT NULL, screen TEXT NOT NULL, system TEXT NOT NULL,
       description TEXT NOT NULL, journal TEXT NOT NULL, screenshot TEXT, reported_at TEXT, received_at TEXT NOT NULL,
       handled_at TEXT, UNIQUE(license_id, client_id));
     CREATE INDEX IF NOT EXISTS bug_reports_project ON bug_reports(project_id, received_at);`);
+  // Colonnes ajoutées après coup : sorte de retour et plantage à l’origine du signalement.
+  const columns = new Set(
+    db
+      .prepare('PRAGMA table_info(bug_reports)')
+      .all()
+      .map(column => column.name),
+  );
+  if (!columns.has('kind')) db.exec("ALTER TABLE bug_reports ADD COLUMN kind TEXT NOT NULL DEFAULT 'bug'");
+  if (!columns.has('crash')) db.exec('ALTER TABLE bug_reports ADD COLUMN crash INTEGER NOT NULL DEFAULT 0');
   const view = row => ({
     id: row.id,
+    kind: row.kind || 'bug',
+    crash: !!row.crash,
     licenseId: row.license_id,
     licenseName: row.license_name,
     version: row.version,
@@ -75,7 +90,11 @@ export function createBugReportStore({ db, transaction, licenseFromToken }) {
         journal: text(data.journal, 'Journal', 20000),
         screenshot: screenshot(data.screenshot),
         reportedAt: date(data.reportedAt),
+        kind: data.kind === undefined || data.kind === null ? 'bug' : data.kind,
+        crash: data.crash === true,
       };
+      if (!REPORT_KINDS.includes(report.kind))
+        fail(400, 'invalid_bug_report', `Sorte de retour : ${REPORT_KINDS.join(', ')}.`);
       if (!report.description) fail(400, 'invalid_bug_report', 'Description manquante.');
       return transaction(() => {
         const known = db
@@ -85,7 +104,7 @@ export function createBugReportStore({ db, transaction, licenseFromToken }) {
         const id = `bug-${randomBytes(8).toString('hex')}`;
         db.prepare(
           `INSERT INTO bug_reports (id, project_id, license_id, license_name, client_id, version, screen, system, description,
-             journal, screenshot, reported_at, received_at, handled_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)`,
+             journal, screenshot, reported_at, received_at, handled_at, kind, crash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?)`,
         ).run(
           id,
           license.projectId,
@@ -100,11 +119,19 @@ export function createBugReportStore({ db, transaction, licenseFromToken }) {
           report.screenshot,
           report.reportedAt,
           new Date(now).toISOString(),
+          report.kind,
+          report.crash ? 1 : 0,
         );
         db.prepare(
           `DELETE FROM bug_reports WHERE project_id = ? AND id NOT IN
              (SELECT id FROM bug_reports WHERE project_id = ? ORDER BY received_at DESC, id DESC LIMIT ?)`,
         ).run(license.projectId, license.projectId, MAX_REPORTS);
+        // Responsables prévenus dans la cloche et sur leurs appareils abonnés.
+        notify(license.projectId, license.name, {
+          kind: report.kind,
+          title: report.crash ? 'Plantage signalé' : KIND_TITLES[report.kind],
+          text: `${license.name} : ${report.description}`.slice(0, 300),
+        });
         return { id, duplicate: false };
       });
     },

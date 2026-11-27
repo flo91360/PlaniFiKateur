@@ -346,6 +346,16 @@
 .bug-reports p {
   margin: 0;
 }
+.bug-report-kind {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--warning-surface);
+  font-weight: 600;
+}
+.bug-report-idea {
+  background: light-dark(#e4f1ec, #22362f);
+}
 .bug-report-description {
   font-size: 13px;
   white-space: pre-wrap;

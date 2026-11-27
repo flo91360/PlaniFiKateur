@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.128 — 2026-11-27
+<!-- planifikateur:livraison-retours-familles -->
+
+- **Retours du logiciel : idées, avis et notification** : Les retours envoyés par le logiciel (problème, idée, avis, ou plantage proposé au redémarrage) se lisent dans Paramètres du projet → Retours du logiciel, et chaque nouveau retour est notifié aux responsables du projet dans la cloche et sur le téléphone.
+
 ## 0.1.127 — 2026-11-27
 <!-- planifikateur:livraison-bugs-signales -->
 

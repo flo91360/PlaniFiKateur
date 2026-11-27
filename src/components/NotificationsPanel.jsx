@@ -36,12 +36,12 @@ export default function NotificationsPanel({ notifications, onOpenCard }) {
                 <time dateTime={item.date}>{when(item.date)}</time>
               </span>
               <strong>
-                {item.action === 'system.alert'
+                {item.action === 'system.alert' || item.action === 'bug_report.received'
                   ? item.details?.title || 'Alerte'
                   : item.cardTitle || item.projectName || 'PlaniFiKateur'}
               </strong>
               <span className="attention-message">
-                {item.action === 'system.alert'
+                {item.action === 'system.alert' || item.action === 'bug_report.received'
                   ? item.details?.text
                   : `${item.actor.name} ${activityLabels[item.action] || item.action}`}
               </span>
