@@ -117,6 +117,47 @@ export function licenseRoutes({ store, auth, guards }) {
         },
       },
     },
+    // Bugs signalés par le logiciel (jeton de licence dans le corps) et leur lecture par les
+    // responsables du projet.
+    {
+      path: '/api/v1/bug-reports',
+      methods: {
+        async POST(ctx) {
+          auth.bugReportLimit(ctx.req);
+          const received = store.receiveBugReport(await ctx.body());
+          ctx.send(received.duplicate ? 200 : 201, { data: received });
+        },
+      },
+    },
+    {
+      path: '/api/v1/projects/:projectId/bug-reports',
+      guard: manager,
+      methods: {
+        GET: ctx => ctx.send(200, { data: store.bugReports(ctx.params.projectId) }),
+      },
+    },
+    {
+      path: '/api/v1/projects/:projectId/bug-reports/:reportId',
+      guard: manager,
+      methods: {
+        async PATCH(ctx) {
+          const { projectId, reportId } = ctx.params;
+          ctx.send(200, { data: store.updateBugReport(projectId, reportId, await ctx.body()) });
+        },
+        DELETE(ctx) {
+          store.deleteBugReport(ctx.params.projectId, ctx.params.reportId);
+          ctx.send(200, { data: { id: ctx.params.reportId, deleted: true } });
+        },
+      },
+    },
+    {
+      path: '/api/v1/projects/:projectId/bug-reports/:reportId/screenshot',
+      guard: manager,
+      methods: {
+        GET: ctx =>
+          ctx.send(200, { data: { screenshot: store.bugReportScreenshot(ctx.params.projectId, ctx.params.reportId) } }),
+      },
+    },
     {
       path: '/api/v1/licenses/public-key',
       methods: {

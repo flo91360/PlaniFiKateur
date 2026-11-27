@@ -1,4 +1,12 @@
-import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes, sign } from 'node:crypto';
+import {
+  createHash,
+  createPrivateKey,
+  createPublicKey,
+  generateKeyPairSync,
+  randomBytes,
+  sign,
+  verify,
+} from 'node:crypto';
 import { fail } from '../http.js';
 
 // Licences des logiciels livrés par un projet (exécutable de la Release GitHub).
@@ -123,6 +131,24 @@ export function createLicenseStore({ db, transaction, repositoryOf }) {
     // Clé publique (SPKI PEM) à intégrer au logiciel pour vérifier les jetons hors ligne.
     licensePublicKey() {
       return createPublicKey(privateKey()).export({ type: 'spki', format: 'pem' });
+    },
+    // Jeton remis par activateLicense, présenté par le logiciel pour signaler un bug : licence et
+    // projet qu’il désigne, ou null. Sa date de fin n’est pas exigée (un logiciel en lecture seule
+    // peut encore signaler un bug) ; la licence doit encore exister.
+    licenseFromToken(token) {
+      if (typeof token !== 'string' || token.length > 4096) return null;
+      const [body, signature, rest] = token.split('.');
+      if (!body || !signature || rest !== undefined) return null;
+      try {
+        if (!verify(null, Buffer.from(body), createPublicKey(privateKey()), Buffer.from(signature, 'base64url')))
+          return null;
+        const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+        const row = db.prepare('SELECT * FROM licenses WHERE id = ?').get(String(payload.license));
+        if (!row || repositoryOf(row.project_id)?.toLowerCase() !== payload.product) return null;
+        return { projectId: row.project_id, licenseId: row.id, name: row.name };
+      } catch {
+        return null;
+      }
     },
     licenses(projectId) {
       return db.prepare('SELECT * FROM licenses WHERE project_id = ? ORDER BY created_at, id').all(projectId).map(view);
