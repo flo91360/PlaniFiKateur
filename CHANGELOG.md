@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.130 — 2026-11-27
+<!-- planifikateur:retrait-metriques-utilisation -->
+
+- **Retrait des chiffres d’utilisation envoyés par le logiciel** : Les chiffres d’utilisation de DefilOrdi partent désormais avec le dossier de suivi de l’enfant : la route POST /api/v1/usage-metrics, sa lecture et l’onglet « Utilisation » sont retirés.
+
 ## 0.1.129 — 2026-11-27
 <!-- planifikateur:livraison-questionnaire-metriques -->
 
