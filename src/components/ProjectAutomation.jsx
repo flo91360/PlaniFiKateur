@@ -41,7 +41,7 @@ export default function ProjectAutomation({ project, user, onAiConfigured, onAcc
           { key: 'licenses', label: 'Licences', state: 'accès au logiciel' },
           {
             key: 'bugs',
-            label: 'Bugs signalés',
+            label: 'Retours du logiciel',
             state: bugs === null ? 'depuis le logiciel' : bugs ? `${bugs} à traiter` : 'aucun à traiter',
           },
         ]

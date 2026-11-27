@@ -46,6 +46,7 @@ export function pushMessage(event) {
     'card.subscriber_added': 'Ajout au suivi',
     'project.access_changed': 'Droits du projet modifiés',
     'system.alert': event.details?.title || 'Alerte de PlaniFiKateur',
+    'bug_report.received': event.details?.title || 'Nouveau retour du logiciel',
   };
   const details = {
     'work.question': 'L’agent attend votre réponse dans la discussion de la carte.',
@@ -69,6 +70,7 @@ export function pushMessage(event) {
     'card.subscriber_added': `${actor} vous a ajouté au suivi de la carte.`,
     'project.access_changed': `${actor} a modifié vos droits sur le projet.`,
     'system.alert': event.details?.text || 'Ouvrez PlaniFiKateur pour la consulter.',
+    'bug_report.received': event.details?.text || 'À lire dans Paramètres du projet → Retours du logiciel.',
   };
   const title = titles[event.action] || 'Nouvelle notification';
   const detail = details[event.action] || 'Ouvrez PlaniFiKateur pour la consulter.';

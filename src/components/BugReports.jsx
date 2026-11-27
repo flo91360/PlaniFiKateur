@@ -9,7 +9,10 @@ const dateFormat = new Intl.DateTimeFormat('fr-FR', {
   timeZone: 'Europe/Paris',
 });
 
-// Bugs signalés depuis le logiciel livré par le projet (bouton « bug » de DefilOrdi), envoyés avec
+const KINDS = { bug: 'Problème', idea: 'Idée', opinion: 'Avis' };
+
+// Retours envoyés depuis le logiciel livré par le projet (bouton « bug » de DefilOrdi : problème,
+// idée ou avis, et problème proposé après un plantage), envoyés avec
 // la licence du poste. Réservé aux responsables du projet. `onCount` reçoit le nombre à traiter,
 // affiché sur l’onglet.
 export default function BugReports({ projectId, onCount }) {
@@ -31,14 +34,14 @@ export default function BugReports({ projectId, onCount }) {
         replace(
           await apiData(`projects/${projectId}/bug-reports/${report.id}`, { method: 'PATCH', data: { handled } }),
         ),
-      handled ? 'Signalement marqué comme traité.' : 'Signalement rouvert.',
+      handled ? 'Retour marqué comme traité.' : 'Retour rouvert.',
     );
   const remove = report =>
-    window.confirm('Supprimer définitivement ce signalement ?') &&
+    window.confirm('Supprimer définitivement ce retour ?') &&
     action.run(async () => {
       await apiData(`projects/${projectId}/bug-reports/${report.id}`, { method: 'DELETE' });
       list.setData(items => items.filter(item => item.id !== report.id));
-    }, 'Signalement supprimé.');
+    }, 'Retour supprimé.');
   const screenshot = report =>
     action.run(async () => {
       const { screenshot: image } = await apiData(`projects/${projectId}/bug-reports/${report.id}/screenshot`);
@@ -46,24 +49,32 @@ export default function BugReports({ projectId, onCount }) {
     });
   return (
     <details className="agent-setup" open>
-      <summary>Bugs signalés depuis le logiciel</summary>
+      <summary>Retours envoyés depuis le logiciel</summary>
       <p>
-        Le bouton « bug » du logiciel envoie ici la description écrite par l’adulte, la version, l’écran en cours, le
-        journal technique et, si elle a été choisie, une capture d’écran. Rien sur les enfants n’est envoyé. Un
-        signalement fait hors connexion arrive au prochain lancement connecté.
+        Le bouton « bug » du logiciel envoie ici un problème, une idée ou un avis : le texte écrit par l’adulte, la
+        version, l’écran en cours, le journal technique et, si elle a été choisie, une capture d’écran. Après un
+        plantage, le logiciel propose aussi de le signaler. Rien sur les enfants n’est envoyé. Un retour fait hors
+        connexion arrive au prochain lancement connecté. Chaque nouveau retour est notifié aux responsables du projet.
       </p>
       <label className="bug-reports-filter">
         <input type="checkbox" checked={showHandled} onChange={event => setShowHandled(event.target.checked)} />
-        Afficher aussi les signalements traités ({reports.length - open.length})
+        Afficher aussi les retours traités ({reports.length - open.length})
       </label>
       {list.loaded && shown.length === 0 && (
-        <p className="muted">{reports.length ? 'Aucun signalement à traiter.' : 'Aucun bug signalé pour le moment.'}</p>
+        <p className="muted">{reports.length ? 'Aucun retour à traiter.' : 'Aucun retour reçu pour le moment.'}</p>
       )}
       {shown.length > 0 && (
-        <ul className="bug-reports" aria-label="Bugs signalés">
+        <ul className="bug-reports" aria-label="Retours du logiciel">
           {shown.map(report => (
             <li key={report.id} className={report.handled ? 'handled' : ''}>
               <p className="bug-report-meta">
+                <span
+                  className={
+                    report.kind === 'bug' || report.crash ? 'bug-report-kind' : 'bug-report-kind bug-report-idea'
+                  }
+                >
+                  {report.crash ? 'Plantage' : KINDS[report.kind] || report.kind}
+                </span>{' '}
                 <strong>{dateFormat.format(new Date(report.reportedAt || report.receivedAt))}</strong> ·{' '}
                 {report.licenseName}
                 {report.version && <> · version {report.version}</>}

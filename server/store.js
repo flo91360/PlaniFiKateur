@@ -44,6 +44,7 @@ export const NOTIFIED = [
   'work.reject',
   'project.access_changed',
   'system.alert',
+  'bug_report.received',
 ];
 // Réglages rattachés à un projet, effacés avec lui et rétablis par une restauration.
 export const PROJECT_SETTINGS = [
@@ -620,7 +621,25 @@ export function createStore(filename, { backupDirectory, demo = true } = {}) {
   const push = createPushStore({ db });
   const alerts = createAlertStore({ db, transaction, audit });
   const licenses = createLicenseStore({ db, transaction, repositoryOf: workflows.githubProject });
-  const bugReports = createBugReportStore({ db, transaction, licenseFromToken: licenses.licenseFromToken });
+  // Responsables d’un projet, prévenus (cloche et téléphone) d’un retour envoyé par le logiciel.
+  const projectManagers = projectId =>
+    db
+      .prepare('SELECT id,name,role FROM users WHERE active = 1 AND password_hash IS NOT NULL')
+      .all()
+      .filter(user => access.role(user, projectId) === 'manager')
+      .map(user => user.id);
+  const bugReports = createBugReportStore({
+    db,
+    transaction,
+    licenseFromToken: licenses.licenseFromToken,
+    notify: (projectId, actorName, details) =>
+      audit({ id: null, name: actorName }, 'bug_report.received', {
+        projectId,
+        projectName: readProjects().find(project => project.id === projectId)?.name,
+        details,
+        recipientIds: projectManagers(projectId),
+      }),
+  });
   return {
     workflows,
     githubDeliveries: createGithubDeliveries(db),

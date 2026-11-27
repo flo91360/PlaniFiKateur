@@ -33,7 +33,7 @@ async function fixture(t) {
   };
   const { key, id } = (await call('POST', `/projects/${project.id}/licenses`, { name: 'Cabinet Dupont' })).body.data;
   const { token } = store.activateLicense({ key, machine, product });
-  return { store, project, second, call, token, licenseId: id };
+  return { store, admin, project, second, call, token, licenseId: id };
 }
 
 const report = (token, extra = {}) => ({
@@ -108,4 +108,24 @@ test('a project keeps its most recent bug reports only', async t => {
   const kept = store.bugReports(project.id);
   assert.equal(kept.length, MAX_REPORTS);
   assert.equal(kept.at(-1).receivedAt, new Date(start + 1000).toISOString());
+});
+
+test('an idea or an opinion is kept with its kind and every new report notifies the project managers', async t => {
+  const { store, admin, project, call, token } = await fixture(t);
+  const sent = await call('POST', '/bug-reports', report(token, { id: 'idee-0001', kind: 'idea' }), '');
+  assert.equal(sent.status, 201);
+  const crash = await call('POST', '/bug-reports', report(token, { id: 'plantage-01', crash: true }), '');
+  assert.equal(crash.status, 201);
+  assert.equal((await call('POST', '/bug-reports', report(token, { id: 'autre-0001', kind: 'note' }), '')).status, 400);
+  // Renvoi de la file d’attente : pas de seconde notification.
+  await call('POST', '/bug-reports', report(token, { id: 'idee-0001', kind: 'idea' }), '');
+
+  const listed = store.bugReports(project.id);
+  assert.deepEqual(listed.map(item => `${item.kind}:${item.crash}`).sort(), ['bug:true', 'idea:false']);
+  const notified = store.notifications(admin).items.filter(item => item.action === 'bug_report.received');
+  assert.equal(notified.length, 2);
+  const idea = notified.find(item => item.details.title === 'Nouvelle idée');
+  assert.ok(notified.some(item => item.details.title === 'Plantage signalé'));
+  assert.match(idea.details.text, /^Cabinet Dupont : Le jeu se fige/);
+  assert.equal(idea.projectId, project.id);
 });
