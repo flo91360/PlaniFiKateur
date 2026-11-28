@@ -150,6 +150,17 @@ function ReportList({ reports, shown, filters, onFilters, onOpen, loaded }) {
   );
 }
 
+// Les navigateurs refusent d’ouvrir une URL data: dans un nouvel onglet (page vide) : la
+// capture y est ouverte depuis une copie locale (URL blob:), libérée en quittant le retour.
+function blobUrl(dataUrl) {
+  const match = /^data:([^;,]+);base64,(.*)$/s.exec(dataUrl || '');
+  if (!match) return '';
+  const binary = atob(match[2]);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return URL.createObjectURL(new Blob([bytes], { type: match[1] }));
+}
+
 // Détail d’un retour : texte entier, informations du poste, capture affichée d’emblée et journal.
 function ReportDetail({ projectId, report, previous, next, onOpen, onBack, onReplace, onRemoved }) {
   const action = useApiAction();
@@ -164,6 +175,12 @@ function ReportDetail({ projectId, report, previous, next, onOpen, onBack, onRep
     return () => controller.abort();
   }, [projectId, report.id, report.hasScreenshot]);
   const image = screenshot.id === report.id ? screenshot.image : '';
+  const [fullSize, setFullSize] = useState('');
+  useEffect(() => {
+    const url = blobUrl(image);
+    setFullSize(url);
+    return () => url && URL.revokeObjectURL(url);
+  }, [image]);
   const mark = handled =>
     action.run(
       async () =>
@@ -241,7 +258,7 @@ function ReportDetail({ projectId, report, previous, next, onOpen, onBack, onRep
         <section>
           <h3>Capture d’écran</h3>
           {image ? (
-            <a href={image} target="_blank" rel="noreferrer">
+            <a href={fullSize || undefined} target="_blank" rel="noreferrer" title="Ouvrir en grand">
               <img className="bug-report-screenshot" src={image} alt="Capture d’écran jointe" />
             </a>
           ) : (
