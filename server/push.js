@@ -70,16 +70,19 @@ export function pushMessage(event) {
     'card.subscriber_added': `${actor} vous a ajouté au suivi de la carte.`,
     'project.access_changed': `${actor} a modifié vos droits sur le projet.`,
     'system.alert': event.details?.text || 'Ouvrez PlaniFiKateur pour la consulter.',
-    'bug_report.received': event.details?.text || 'À lire dans Paramètres du projet → Retours du logiciel.',
+    'bug_report.received': event.details?.text || 'À lire dans la page Retours du logiciel du projet.',
   };
   const title = titles[event.action] || 'Nouvelle notification';
   const detail = details[event.action] || 'Ouvrez PlaniFiKateur pour la consulter.';
+  const project = event.projectId && `/#/projets/${encodeURIComponent(event.projectId)}`;
   const route =
-    event.projectId && event.action !== 'card.deleted'
-      ? `/#/projets/${encodeURIComponent(event.projectId)}${event.cardId ? `/cartes/${encodeURIComponent(event.cardId)}` : ''}`
-      : event.projectId
-        ? `/#/projets/${encodeURIComponent(event.projectId)}`
-        : '/';
+    event.action === 'bug_report.received' && project
+      ? `${project}/retours${event.details?.reportId ? `/${encodeURIComponent(event.details.reportId)}` : ''}`
+      : event.projectId && event.action !== 'card.deleted'
+        ? `/#/projets/${encodeURIComponent(event.projectId)}${event.cardId ? `/cartes/${encodeURIComponent(event.cardId)}` : ''}`
+        : event.projectId
+          ? `/#/projets/${encodeURIComponent(event.projectId)}`
+          : '/';
   return {
     title,
     body: (event.action === 'system.alert'

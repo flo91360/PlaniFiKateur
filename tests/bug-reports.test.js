@@ -127,6 +127,8 @@ test('an idea or an opinion is kept with its kind and every new report notifies 
   const idea = notified.find(item => item.details.title === 'Nouvelle idée');
   assert.ok(notified.some(item => item.details.title === 'Plantage signalé'));
   assert.match(idea.details.text, /^Cabinet Dupont : Le jeu se fige/);
+  // La notification mène au détail du retour, dans la page des retours du projet.
+  assert.equal(idea.details.reportId, sent.body.data.id);
   assert.equal(idea.projectId, project.id);
 });
 

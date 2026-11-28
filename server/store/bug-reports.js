@@ -161,6 +161,7 @@ export function createBugReportStore({ db, transaction, licenseFromToken, notify
         ).run(license.projectId, license.projectId, MAX_REPORTS);
         // Responsables prévenus dans la cloche et sur leurs appareils abonnés.
         notify(license.projectId, license.name, {
+          reportId: id,
           kind: report.kind,
           title: report.crash ? 'Plantage signalé' : KIND_TITLES[report.kind],
           text: `${license.name} : ${report.description}`.slice(0, 300),
