@@ -30,6 +30,7 @@ import ActivityPanel from './components/ActivityPanel.jsx';
 import AttentionPanel from './components/AttentionPanel.jsx';
 import NotificationsPanel from './components/NotificationsPanel.jsx';
 import Board from './components/Board.jsx';
+import BugReportsPage from './components/BugReports.jsx';
 import CardDetail from './components/CardDetail.jsx';
 import ErrorBoundary, { DisplayError } from './components/ErrorBoundary.jsx';
 import CreationForm from './components/CreationForm.jsx';
@@ -120,16 +121,24 @@ function DeleteProjectConfirm({ name, onCancel, onConfirm }) {
   );
 }
 
-// Adresse d’un projet ou d’une carte : #/projets/<id>[/cartes/<id>], partageable et conservée au
-// rechargement (hors copie HTML autonome).
+// Adresse d’un projet, d’une carte ou de la page des retours du logiciel :
+// #/projets/<id>[/cartes/<id> | /retours[/<id>]], partageable et conservée au rechargement (hors
+// copie HTML autonome).
 const parseRoute = hash => {
-  const match = /^#\/projets\/([^/]+)(?:\/cartes\/([^/]+))?$/.exec(hash);
+  const match = /^#\/projets\/([^/]+)(?:\/cartes\/([^/]+)|\/(retours)(?:\/([^/]+))?)?$/.exec(hash);
+  const part = value => (value ? decodeURIComponent(value) : null);
   return match
-    ? { projectId: decodeURIComponent(match[1]), cardId: match[2] ? decodeURIComponent(match[2]) : null }
+    ? { projectId: part(match[1]), cardId: part(match[2]), bugs: !!match[3], reportId: part(match[4]) }
     : null;
 };
-const routeOf = (projectId, cardId) =>
-  `#/projets/${encodeURIComponent(projectId)}${cardId ? `/cartes/${encodeURIComponent(cardId)}` : ''}`;
+const routeOf = (projectId, cardId, bugPage) =>
+  `#/projets/${encodeURIComponent(projectId)}${
+    cardId
+      ? `/cartes/${encodeURIComponent(cardId)}`
+      : bugPage
+        ? `/retours${bugPage.reportId ? `/${encodeURIComponent(bugPage.reportId)}` : ''}`
+        : ''
+  }`;
 const initialRoute = offlineMode ? null : parseRoute(globalThis.location?.hash || '');
 
 function App() {
@@ -139,6 +148,8 @@ function App() {
   );
   const [modal, setModal] = useState(null);
   const [selectedId, setSelectedId] = useState(initialRoute?.cardId ?? null);
+  // Page des retours du logiciel affichée à la place du tableau : { reportId } (null : la liste).
+  const [bugPage, setBugPage] = useState(initialRoute?.bugs ? { reportId: initialRoute.reportId } : null);
   const [dragging, setDragging] = useState(null);
   // Une carte ouverte reste actualisée (commentaires, statut, fichiers d’autres personnes) : son
   // détail ne remplace que les champs qui ne sont pas en cours de saisie.
@@ -166,6 +177,12 @@ function App() {
     enabled: !offlineMode && ready && !needsLogin,
   });
   const projectMembers = (membersResource.data?.members || []).filter(member => member.role);
+  // Retours du logiciel (responsables) : leur nombre sur le bouton d’accès, leur contenu dans la page.
+  const bugReports = useApiResource(project ? `projects/${project.id}/bug-reports` : '', {
+    enabled: !offlineMode && ready && !needsLogin && access.canManage,
+    every: 120000,
+  });
+  const showBugPage = !!(bugPage && project && !offlineMode && access.canManage);
   useServerEvents(!offlineMode && ready && !needsLogin);
   const notifications = useNotifications(!offlineMode && ready && !needsLogin);
   // Abonnement Web Push de cet appareil renvoyé au serveur à chaque ouverture (voir lib/push.js).
@@ -189,11 +206,20 @@ function App() {
       setSelectedId(null);
       return;
     }
-    const hash = routeOf(project.id, selected?.id);
-    if (location.hash !== hash)
-      history[selected && !parseRoute(location.hash)?.cardId ? 'pushState' : 'replaceState'](null, '', hash);
-    document.title = [selected?.title, project.name, 'PlaniFiKateur'].filter(Boolean).join(' · ');
-  }, [ready, acceptingInvitation, project, selected, selectedId]);
+    if (bugPage && !showBugPage) {
+      setBugPage(null);
+      return;
+    }
+    const hash = routeOf(project.id, selected?.id, bugPage);
+    const current = parseRoute(location.hash);
+    // Ouvrir une carte, entrer dans la page des retours, y changer de retour ou la quitter ajoute une
+    // entrée d’historique ; fermer une carte ou corriger l’adresse la remplace.
+    const push = current && (selected ? !current.cardId : !!bugPage || current.bugs);
+    if (location.hash !== hash) history[push ? 'pushState' : 'replaceState'](null, '', hash);
+    document.title = [selected?.title, bugPage && 'Retours du logiciel', project.name, 'PlaniFiKateur']
+      .filter(Boolean)
+      .join(' · ');
+  }, [ready, acceptingInvitation, project, selected, selectedId, bugPage, showBugPage]);
   useEffect(() => {
     if (offlineMode) return;
     const follow = () => {
@@ -201,6 +227,7 @@ function App() {
       if (!route) return;
       setProjectId(route.projectId);
       setSelectedId(route.cardId);
+      setBugPage(route.bugs ? { reportId: route.reportId } : null);
     };
     window.addEventListener('popstate', follow);
     window.addEventListener('hashchange', follow);
@@ -261,12 +288,18 @@ function App() {
     setProjectId(id);
     setFilters(NO_FILTERS);
     setSelectedId(null);
+    setBugPage(null);
     setSidebar(false);
   };
   const openCard = (id, cardId) => {
     chooseProject(id);
     setModal(null);
     setSelectedId(cardId);
+  };
+  const openBugReport = (id, reportId) => {
+    chooseProject(id);
+    setModal(null);
+    setBugPage({ reportId: reportId || null });
   };
 
   const createProject = values => {
@@ -404,7 +437,9 @@ function App() {
       case 'worker':
         return <WorkerPanel activity={workerActivity} onOpenCard={openCard} />;
       case 'notifications':
-        return <NotificationsPanel notifications={notifications} onOpenCard={openCard} />;
+        return (
+          <NotificationsPanel notifications={notifications} onOpenCard={openCard} onOpenBugReport={openBugReport} />
+        );
       case 'activity':
         return (
           <div className="accounts-panel">
@@ -533,11 +568,29 @@ function App() {
                 <BackupAlert />
               </>
             )}
-            {project ? (
+            {showBugPage ? (
+              <BugReportsPage
+                key={project.id}
+                project={project}
+                list={bugReports}
+                reportId={bugPage.reportId}
+                onOpenReport={reportId => setBugPage({ reportId })}
+                onBack={() => setBugPage(null)}
+              />
+            ) : project ? (
               <>
                 <ProjectHeader
                   project={project}
                   offline={offlineMode}
+                  bugReports={
+                    bugReports.data?.length
+                      ? {
+                          total: bugReports.data.length,
+                          open: bugReports.data.filter(report => !report.handled).length,
+                        }
+                      : null
+                  }
+                  onOpenBugReports={() => setBugPage({ reportId: null })}
                   onOpenSettings={() => setModal('project-settings')}
                   onEdit={() => setModal('edit-project')}
                   onDelete={() => setModal({ type: 'delete-project', projectId: project.id })}

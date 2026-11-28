@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCheck, CircleHelp, Clock3, Lightbulb, Pencil, PencilLine, Trash2 } from 'lucide-react';
+import { Bug, CheckCheck, CircleHelp, Clock3, Lightbulb, Pencil, PencilLine, Trash2 } from 'lucide-react';
 import { ideaCards } from '../lib/infos.js';
 import { useProjectAccess } from '../lib/project-access.js';
 
@@ -59,7 +59,16 @@ function ProjectStats({ cards }) {
   );
 }
 
-export default function ProjectHeader({ project, offline, onOpenSettings, onEdit, onDelete }) {
+// `bugReports` : nombre de retours du logiciel reçus et à traiter (responsables), ou null sans retour.
+export default function ProjectHeader({
+  project,
+  offline,
+  bugReports,
+  onOpenBugReports,
+  onOpenSettings,
+  onEdit,
+  onDelete,
+}) {
   const { readOnly, canManage: canDelete } = useProjectAccess();
   return (
     <>
@@ -79,6 +88,18 @@ export default function ProjectHeader({ project, offline, onOpenSettings, onEdit
             <span className="read-only-badge" title="Votre rôle sur ce projet ne permet pas de le modifier.">
               Lecture seule
             </span>
+          )}
+          {bugReports && (
+            <button
+              className="secondary-button bug-page-button"
+              onClick={onOpenBugReports}
+              aria-label={`Retours du logiciel${bugReports.open ? ` (${bugReports.open} à traiter)` : ''}`}
+              title={`${bugReports.total} retour(s) reçu(s) depuis le logiciel`}
+            >
+              <Bug size={16} />
+              Retours du logiciel
+              {bugReports.open > 0 && <span className="bug-page-badge">{bugReports.open}</span>}
+            </button>
           )}
           {!offline && (
             <button className="secondary-button" onClick={onOpenSettings}>

@@ -2,6 +2,11 @@
 
 Modifications livrées par PlaniFiKateur depuis la mise en place de ce journal, de la plus récente à la plus ancienne.
 
+## 0.1.131 — 2026-11-28
+<!-- planifikateur:page-retours-logiciel -->
+
+- **Page dédiée aux retours du logiciel** : Un bouton « Retours du logiciel » en tête du tableau ouvre une page à part : la liste des retours, filtrable par état, type et texte, puis le détail de chaque retour (texte entier, capture affichée d’emblée, journal technique) avec retour précédent et suivant. La notification d’un nouveau retour ouvre directement son détail ; l’onglet des Paramètres du projet est retiré.
+
 ## 0.1.130 — 2026-11-27
 <!-- planifikateur:retrait-metriques-utilisation -->
 

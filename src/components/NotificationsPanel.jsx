@@ -6,7 +6,7 @@ const when = date =>
   new Date(date).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
 // Notifications du compte (actions des autres sur ses cartes) ; l’ouverture les marque comme lues.
-export default function NotificationsPanel({ notifications, onOpenCard }) {
+export default function NotificationsPanel({ notifications, onOpenCard, onOpenBugReport }) {
   const { items, markRead } = notifications;
   // Les notifications nouvelles à l’ouverture restent mises en avant tant que la fenêtre est ouverte.
   const [seenUpTo] = useState(notifications.lastReadId);
@@ -25,35 +25,51 @@ export default function NotificationsPanel({ notifications, onOpenCard }) {
   return (
     <div className="attention-panel">
       <ul aria-label="Notifications">
-        {items.map(item => (
-          <li key={item.id} className={item.id > seenUpTo ? 'unread' : ''}>
-            <button
-              disabled={!item.cardId || item.action === 'card.deleted'}
-              onClick={() => onOpenCard(item.projectId, item.cardId)}
-            >
-              <span className="attention-kind">
-                {item.projectName || 'Espace'}
-                <time dateTime={item.date}>{when(item.date)}</time>
-              </span>
-              <strong>
-                {item.action === 'system.alert' || item.action === 'bug_report.received'
-                  ? item.details?.title || 'Alerte'
-                  : item.cardTitle || item.projectName || 'PlaniFiKateur'}
-              </strong>
-              <span className="attention-message">
-                {item.action === 'system.alert' || item.action === 'bug_report.received'
-                  ? item.details?.text
-                  : `${item.actor.name} ${activityLabels[item.action] || item.action}`}
-              </span>
-              {item.cardId && item.action !== 'card.deleted' && (
-                <span className="attention-open">
-                  Ouvrir la carte
-                  <ArrowRight size={13} />
+        {items.map(item => {
+          // Un retour du logiciel s’ouvre dans la page des retours du projet.
+          const bug = item.action === 'bug_report.received' && !!item.projectId;
+          return (
+            <li key={item.id} className={item.id > seenUpTo ? 'unread' : ''}>
+              <button
+                disabled={!bug && (!item.cardId || item.action === 'card.deleted')}
+                onClick={() =>
+                  bug
+                    ? onOpenBugReport(item.projectId, item.details?.reportId)
+                    : onOpenCard(item.projectId, item.cardId)
+                }
+              >
+                <span className="attention-kind">
+                  {item.projectName || 'Espace'}
+                  <time dateTime={item.date}>{when(item.date)}</time>
                 </span>
-              )}
-            </button>
-          </li>
-        ))}
+                <strong>
+                  {item.action === 'system.alert' || item.action === 'bug_report.received'
+                    ? item.details?.title || 'Alerte'
+                    : item.cardTitle || item.projectName || 'PlaniFiKateur'}
+                </strong>
+                <span className="attention-message">
+                  {item.action === 'system.alert' || item.action === 'bug_report.received'
+                    ? item.details?.text
+                    : `${item.actor.name} ${activityLabels[item.action] || item.action}`}
+                </span>
+                {bug ? (
+                  <span className="attention-open">
+                    Voir le retour
+                    <ArrowRight size={13} />
+                  </span>
+                ) : (
+                  item.cardId &&
+                  item.action !== 'card.deleted' && (
+                    <span className="attention-open">
+                      Ouvrir la carte
+                      <ArrowRight size={13} />
+                    </span>
+                  )
+                )}
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

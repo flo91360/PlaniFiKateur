@@ -98,6 +98,11 @@ test('every account notification becomes a device notification with a link to th
   assert.equal(pushMessage({ ...base, action: 'card.status_changed' }).body, 'Menu · Site\nBob a changé le statut.');
   // Carte supprimée : le lien ouvre le projet.
   assert.equal(pushMessage({ ...base, action: 'card.deleted' }).url, '/#/projets/p1');
+  // Retour du logiciel : le lien ouvre son détail dans la page des retours.
+  assert.equal(
+    pushMessage({ projectId: 'p1', activityId: 7, action: 'bug_report.received', details: { reportId: 'bug-1' } }).url,
+    '/#/projets/p1/retours/bug-1',
+  );
   assert.equal(
     pushMessage({ projectId: 'p1', projectName: 'Site', activityId: 9, action: 'project.access_changed' }).body,
     'Site\nQuelqu’un a modifié vos droits sur le projet.',

@@ -196,7 +196,7 @@ fin) au plus tard 30 jours après le dernier renouvellement.
 | `DELETE /api/v1/projects/{projectId}/bug-reports/{reportId}` | Supprime le signalement |
 | `GET /api/v1/projects/{projectId}/bug-reports/{reportId}/screenshot` | `{ screenshot }` (URL `data:`) ; `screenshot_missing` (404) sans capture |
 
-Les retours (problèmes, idées, avis, questionnaires) se lisent dans **Paramètres du projet → Retours du logiciel**, avec la moyenne des notes des questionnaires. Ils ne contiennent rien
+Les retours (problèmes, idées, avis, questionnaires) se lisent dans la page **Retours du logiciel** du projet, ouverte par le bouton du même nom en tête du tableau (`#/projets/<id>/retours`, et `#/projets/<id>/retours/<reportId>` pour le détail d’un retour, adresse aussi ouverte par la notification) : la liste se filtre par état, type et texte, avec la moyenne des notes des questionnaires. Ils ne contiennent rien
 sur les enfants (ni prénom, ni résultats) : seulement ce que l’adulte écrit, l’écran en cours, la
 version, le journal technique et, si l’adulte l’a choisie, une capture d’écran.
 

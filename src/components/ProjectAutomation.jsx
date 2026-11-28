@@ -6,7 +6,6 @@ import AiSettings from './AiSettings.jsx';
 import ExecutionSettings from './ExecutionSettings.jsx';
 import ProjectMembers, { roleLabels } from './ProjectMembers.jsx';
 import Licenses from './Licenses.jsx';
-import BugReports from './BugReports.jsx';
 import { useProjectAccess } from '../lib/project-access.js';
 
 const engineLabels = { codex: 'Codex', 'claude-code': 'Claude Code' };
@@ -20,8 +19,7 @@ export default function ProjectAutomation({ project, user, onAiConfigured, onAcc
     setConfiguration = github.setData,
     error = github.error;
   const [tab, setTab] = useState('access'),
-    [ai, setAi] = useState(null),
-    [bugs, setBugs] = useState(null);
+    [ai, setAi] = useState(null);
   const id = useId(),
     tabs = useRef({});
   const sections = [
@@ -36,16 +34,7 @@ export default function ProjectAutomation({ project, user, onAiConfigured, onAcc
       state: ai ? `${engineLabels[ai.engine] || ai.engine} · ${ai.model || 'modèle par défaut'}` : '',
     },
     { key: 'repository', label: 'Dépôt', state: configuration?.repository || 'non configuré' },
-    ...(canManage
-      ? [
-          { key: 'licenses', label: 'Licences', state: 'accès au logiciel' },
-          {
-            key: 'bugs',
-            label: 'Retours du logiciel',
-            state: bugs === null ? 'depuis le logiciel' : bugs ? `${bugs} à traiter` : 'aucun à traiter',
-          },
-        ]
-      : []),
+    ...(canManage ? [{ key: 'licenses', label: 'Licences', state: 'accès au logiciel' }] : []),
   ];
   const keydown = event => {
     const step = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
@@ -120,7 +109,6 @@ export default function ProjectAutomation({ project, user, onAiConfigured, onAcc
             </>,
           )}
           {canManage && panel('licenses', <Licenses projectId={project.id} repository={configuration.repository} />)}
-          {canManage && panel('bugs', <BugReports projectId={project.id} onCount={setBugs} />)}
         </>
       )}
     </div>
