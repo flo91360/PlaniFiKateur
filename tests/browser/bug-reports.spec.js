@@ -88,6 +88,8 @@ test('the software feedback opens in its own page, listed then read one by one @
   await expect(detail).toContainText('Il faut relancer le logiciel.');
   await expect(detail).toContainText('Cabinet Dupont');
   await expect(detail.getByRole('img', { name: 'Capture d’écran jointe' })).toBeVisible();
+  // Ouverte en grand depuis une copie locale : un onglet refuse d’afficher une URL data:.
+  await expect(detail.getByRole('link', { name: 'Capture d’écran jointe' })).toHaveAttribute('href', /^blob:/);
   await expect(detail.locator('.bug-page-journal')).toContainText('TypeError: x is undefined');
   await detail.getByRole('button', { name: 'Marquer comme traité', exact: true }).click();
   await expect(detail.getByRole('button', { name: 'Rouvrir', exact: true })).toBeVisible();
